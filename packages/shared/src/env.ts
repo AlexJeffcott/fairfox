@@ -15,7 +15,7 @@ export function loadEnv(): Env {
   }
 
   const PORT = Number(process.env.PORT ?? '3000');
-  if (!Number.isInteger(PORT) || PORT <= 0 || PORT > 65535) {
+  if (!Number.isInteger(PORT) || PORT < 0 || PORT > 65535) {
     die(`PORT must be a valid port number, got ${JSON.stringify(process.env.PORT)}`);
   }
 
