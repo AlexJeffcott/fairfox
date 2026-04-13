@@ -12,11 +12,15 @@ const PACKAGE_DIR = join(import.meta.dir, '..');
 const PUBLIC_DIR = join(PACKAGE_DIR, 'public');
 const BASE_PATH = '/struggle';
 
-const rawIndexHtml = readFileSync(join(PUBLIC_DIR, 'index.html'), 'utf-8');
-const indexHtml = rawIndexHtml.replace(
-  '</head>',
-  `<script>window.BASE_PATH=${JSON.stringify(BASE_PATH)};</script></head>`
-);
+function injectBasePath(html: string): string {
+  return html.replace(
+    '</head>',
+    `<script>window.BASE_PATH=${JSON.stringify(BASE_PATH)};</script></head>`
+  );
+}
+
+const indexHtml = injectBasePath(readFileSync(join(PUBLIC_DIR, 'index.html'), 'utf-8'));
+const libraryHtml = injectBasePath(readFileSync(join(PUBLIC_DIR, 'library.html'), 'utf-8'));
 
 const db = openDb('struggle');
 runMigrations(db);
@@ -556,6 +560,13 @@ const app = new Elysia()
     '/',
     () =>
       new Response(indexHtml, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      })
+  )
+  .get(
+    '/library.html',
+    () =>
+      new Response(libraryHtml, {
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       })
   );

@@ -101,10 +101,11 @@
 <body>
   <div id="app"></div>
 
+  <script>window.BASE_PATH = window.BASE_PATH || '';</script>
   <script type="module">
     import { effect, signal } from 'https://esm.sh/@preact/signals-core@1.8.0';
 
-    const API = '/api';
+    const API = `${window.BASE_PATH}/api`;
     const app = document.getElementById('app');
 
     const view = signal('list'); // 'list' | 'detail' | 'edit' | 'new'
