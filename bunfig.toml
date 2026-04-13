@@ -1,0 +1,11 @@
+# Bun runtime configuration
+# https://bun.sh/docs/runtime/bunfig
+
+[install]
+cache = "node_modules/.cache/bun"
+registry = "https://registry.npmjs.org"
+lockfile = true
+
+[loader]
+".sql" = "text"
+".css" = "css"
