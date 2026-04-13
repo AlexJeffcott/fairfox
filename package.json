@@ -33,7 +33,8 @@
     "check": "biome check --write .",
     "typecheck": "bun --filter='@fairfox/*' run typecheck",
     "test": "bun test",
-    "backup": "mkdir -p backups && curl -fsSL $FAIRFOX_URL/todo/api/backup > backups/todo-$(date +%F).json && curl -fsSL $FAIRFOX_URL/struggle/api/backup/full > backups/struggle-$(date +%F).json"
+    "backup": "mkdir -p backups && curl -fsSL ${FAIRFOX_URL:-https://fairfox-production-8273.up.railway.app}/todo/api/backup > backups/todo-$(date +%F).json && curl -fsSL ${FAIRFOX_URL:-https://fairfox-production-8273.up.railway.app}/struggle/api/backup/full > backups/struggle-$(date +%F).json",
+    "relay": "bun scripts/relay.ts"
   },
   "dependencies": {}
 }
