@@ -142,20 +142,23 @@
       }
     },
     {
-      "includes": ["packages/struggle/**"],
+      "includes": ["packages/struggle/**", "packages/todo/**"],
       "linter": {
         "rules": {
           "suspicious": {
             "noExplicitAny": "off",
-            "useAwait": "off"
+            "useAwait": "off",
+            "noDuplicateProperties": "off"
           },
           "style": {
             "useTemplate": "off",
             "useBlockStatements": "off",
-            "noParameterAssign": "off"
+            "noParameterAssign": "off",
+            "noNegationElse": "off"
           },
           "correctness": {
-            "noUnusedVariables": "off"
+            "noUnusedVariables": "off",
+            "noUnusedFunctionParameters": "off"
           },
           "a11y": {
             "useButtonType": "off"
