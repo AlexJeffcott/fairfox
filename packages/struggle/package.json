@@ -1,19 +1,20 @@
 {
-  "name": "@fairfox/web",
+  "name": "@fairfox/struggle",
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "main": "src/index.ts",
   "imports": {
     "#src/*": "./src/*"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "dev": "bun --hot src/server.ts",
-    "start": "bun src/server.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fairfox/shared": "workspace:*",
-    "@fairfox/struggle": "workspace:*"
+    "elysia": "catalog:",
+    "@elysiajs/static": "catalog:",
+    "@fairfox/polly": "catalog:"
   },
   "devDependencies": {
     "@types/bun": "catalog:",

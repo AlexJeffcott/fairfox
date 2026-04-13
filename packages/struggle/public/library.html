@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Struggle — Library</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 16px; line-height: 1.6;
+      color: #1a1a1a; background: #f5f1eb;
+    }
+
+    #app { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+    /* Header */
+    .header { margin-bottom: 2rem; }
+    .header h1 { font-size: 1.4em; font-weight: normal; color: #1a1a1a; }
+    .header .subtitle { font-size: 0.85em; color: #8a7a6a; }
+    .header a { font-size: 0.85em; color: #8a7a6a; text-decoration: none; }
+    .header a:hover { color: #5a4a3a; }
+    .header-row { display: flex; justify-content: space-between; align-items: baseline; }
+
+    /* Table */
+    table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+    th {
+      text-align: left; padding: 0.5em 0.5em; border-bottom: 2px solid #d0c8b8;
+      font-weight: normal; color: #8a7a6a; font-size: 0.8em;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    td { padding: 0.5em; border-bottom: 1px solid #e8e0d4; vertical-align: top; }
+    tr:hover { background: #eee8dd; cursor: pointer; }
+    .tag { display: inline-block; padding: 0.1em 0.4em; font-size: 0.75em; background: #e8e0d4; border-radius: 2px; margin-right: 0.2em; }
+    .type-badge { display: inline-block; padding: 0.1em 0.4em; font-size: 0.75em; border-radius: 2px; margin-right: 0.3em; }
+    .type-badge.poem { background: #d8cce8; }
+    .type-badge.prose { background: #cce0d8; }
+    .type-badge.doc { background: #ddd8c8; }
+
+    /* Filters */
+    .filters { display: flex; gap: 0.5em; margin-bottom: 1em; flex-wrap: wrap; }
+    .filters input, .filters select {
+      padding: 0.3em 0.6em; font-family: inherit; font-size: 0.85em;
+      border: 1px solid #d0c8b8; border-radius: 3px; background: #faf7f2;
+    }
+    .filters input:focus, .filters select:focus { outline: none; border-color: #8a7a6a; }
+    .filters input { flex: 1; min-width: 200px; }
+
+    /* Buttons */
+    .btn {
+      padding: 0.3em 0.8em; font-family: inherit; font-size: 0.85em;
+      background: none; border: 1px solid #c8b898; color: #5a4a3a;
+      cursor: pointer; border-radius: 3px; transition: background 0.2s;
+    }
+    .btn:hover { background: #5a4a3a; color: #f5f1eb; }
+    .btn-danger { border-color: #c89898; color: #8a4a4a; }
+    .btn-danger:hover { background: #8a4a4a; color: #f5f1eb; }
+
+    /* Detail view */
+    .detail { animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .detail .meta { color: #8a7a6a; font-size: 0.85em; margin-bottom: 1em; }
+    .detail .meta span { margin-right: 1em; }
+    .detail .back { font-size: 0.85em; color: #8a7a6a; text-decoration: none; cursor: pointer; margin-bottom: 1em; display: inline-block; }
+    .detail .back:hover { color: #5a4a3a; }
+    .detail .back::before { content: '← '; }
+
+    /* Editor */
+    .editor textarea {
+      width: 100%; min-height: 400px; padding: 1em;
+      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 14px;
+      line-height: 1.6; border: 1px solid #d0c8b8; border-radius: 3px;
+      background: #faf7f2; color: #1a1a1a; resize: vertical;
+    }
+    .editor textarea:focus { outline: none; border-color: #8a7a6a; }
+    .editor .field { margin-bottom: 0.8em; }
+    .editor label { display: block; font-size: 0.8em; color: #8a7a6a; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2em; }
+    .editor input, .editor select {
+      width: 100%; padding: 0.4em; font-family: inherit; font-size: 0.9em;
+      border: 1px solid #d0c8b8; border-radius: 3px; background: #faf7f2;
+    }
+    .editor input:focus, .editor select:focus { outline: none; border-color: #8a7a6a; }
+    .editor .actions { display: flex; gap: 0.5em; margin-top: 1em; }
+    .editor .status { font-size: 0.8em; color: #8a7a6a; margin-left: 1em; align-self: center; }
+
+    /* Rendered markdown */
+    .rendered h1 { font-size: 1.5em; font-weight: normal; margin-bottom: 0.5em; }
+    .rendered h2 { font-size: 1.2em; font-weight: normal; color: #5a4a3a; margin: 1.5em 0 0.5em; }
+    .rendered h3 { font-size: 1em; color: #8a7a6a; margin: 1.2em 0 0.4em; }
+    .rendered p { margin-bottom: 1em; }
+    .rendered ul, .rendered ol { margin: 0.5em 0 1em 1.5em; }
+    .rendered li { margin-bottom: 0.3em; }
+    .rendered blockquote { margin: 1em 0; padding: 0 0 0 1em; border-left: 2px solid #b8a88a; color: #5a5a5a; font-style: italic; }
+    .rendered code { background: #e8e0d4; padding: 0.1em 0.3em; border-radius: 2px; font-size: 0.9em; }
+    .rendered pre { background: #e8e0d4; padding: 1em; border-radius: 3px; overflow-x: auto; margin: 1em 0; white-space: pre-wrap; }
+    .rendered hr { border: none; border-top: 1px solid #d0c8b8; margin: 1.5em 0; }
+    .rendered strong { font-weight: 600; }
+    .rendered em { font-style: italic; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script type="module">
+    import { effect, signal } from 'https://esm.sh/@preact/signals-core@1.8.0';
+
+    const API = '/api';
+    const app = document.getElementById('app');
+
+    const view = signal('list'); // 'list' | 'detail' | 'edit' | 'new'
+    const items = signal([]);
+    const currentItem = signal(null);
+    const filterText = signal('');
+    const filterType = signal('all');
+
+    function esc(t) { return (t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+    // --- Data loading ---
+    async function loadAll() {
+      const [docsRes, refsRes] = await Promise.all([
+        fetch(`${API}/docs`).then(r => r.json()),
+        fetch(`${API}/refs`).then(r => r.json()),
+      ]);
+
+      const all = [];
+
+      for (const d of docsRes) {
+        all.push({
+          kind: 'doc',
+          id: d.path,
+          title: d.path.split('/').pop().replace('.md', ''),
+          group: d.path.split('/').slice(0, -1).join('/'),
+          author: '',
+          form: 'doc',
+          tags: [],
+          path: d.path,
+        });
+      }
+
+      for (const r of refsRes) {
+        all.push({
+          kind: 'ref',
+          id: r.id,
+          title: r.title,
+          group: 'references',
+          author: r.author || '',
+          form: r.form,
+          tags: JSON.parse(r.tags || '[]'),
+          refData: r,
+        });
+      }
+
+      items.value = all;
+    }
+
+    // --- Render list ---
+    function renderList() {
+      const ft = filterText.value.toLowerCase();
+      const ftype = filterType.value;
+      const filtered = items.value.filter(item => {
+        if (ftype !== 'all') {
+          if (ftype === 'doc' && item.kind !== 'doc') return false;
+          if (ftype === 'poem' && !(item.kind === 'ref' && item.form === 'poem')) return false;
+          if (ftype === 'prose' && !(item.kind === 'ref' && item.form === 'prose')) return false;
+        }
+        if (ft) {
+          const haystack = (item.title + ' ' + item.author + ' ' + item.group + ' ' + item.tags.join(' ')).toLowerCase();
+          if (!haystack.includes(ft)) return false;
+        }
+        return true;
+      });
+
+      let html = '<div class="header">';
+      html += '<div class="header-row"><h1>Library</h1><div><a href="/">← Story</a></div></div>';
+      html += '<p class="subtitle">' + items.value.length + ' items</p>';
+      html += '</div>';
+
+      html += '<div class="filters">';
+      html += '<input type="text" id="search" placeholder="Search..." value="' + esc(filterText.value) + '">';
+      html += '<select id="type-filter"><option value="all">All</option><option value="doc"' + (ftype === 'doc' ? ' selected' : '') + '>Docs</option><option value="poem"' + (ftype === 'poem' ? ' selected' : '') + '>Poems</option><option value="prose"' + (ftype === 'prose' ? ' selected' : '') + '>Prose</option></select>';
+      html += '<button class="btn" id="add-ref-btn">+ Reference</button>';
+      html += '</div>';
+
+      html += '<table><thead><tr><th>Type</th><th>Title</th><th>Author / Path</th><th>Tags</th></tr></thead><tbody>';
+      for (const item of filtered) {
+        const badge = item.kind === 'doc' ? '<span class="type-badge doc">doc</span>' : '<span class="type-badge ' + item.form + '">' + esc(item.form) + '</span>';
+        const subtitle = item.kind === 'doc' ? item.group : item.author;
+        const tags = item.tags.map(t => '<span class="tag">' + esc(t) + '</span>').join(' ');
+        html += '<tr data-kind="' + item.kind + '" data-id="' + esc(String(item.id)) + '">';
+        html += '<td>' + badge + '</td>';
+        html += '<td>' + esc(item.title) + '</td>';
+        html += '<td style="color:#8a7a6a;">' + esc(subtitle) + '</td>';
+        html += '<td>' + tags + '</td>';
+        html += '</tr>';
+      }
+      html += '</tbody></table>';
+
+      app.innerHTML = html;
+
+      // Bind
+      document.getElementById('search').addEventListener('input', e => { filterText.value = e.target.value; });
+      document.getElementById('type-filter').addEventListener('change', e => { filterType.value = e.target.value; });
+      document.getElementById('add-ref-btn').addEventListener('click', () => { view.value = 'new'; });
+      app.querySelectorAll('tr[data-id]').forEach(tr => {
+        tr.addEventListener('click', () => openItem(tr.dataset.kind, tr.dataset.id));
+      });
+    }
+
+    // --- Open item ---
+    async function openItem(kind, id) {
+      if (kind === 'doc') {
+        const res = await fetch(`${API}/docs/${id}`);
+        const data = await res.json();
+        currentItem.value = { kind: 'doc', path: id, content: data.content, title: id.split('/').pop().replace('.md', '') };
+      } else {
+        const res = await fetch(`${API}/refs/${id}`);
+        const data = await res.json();
+        currentItem.value = { kind: 'ref', ...data, tags: JSON.parse(data.tags || '[]') };
+      }
+      view.value = 'detail';
+    }
+
+    // --- Render detail ---
+    function renderDetail() {
+      const item = currentItem.value;
+      if (!item) return;
+
+      let html = '<div class="detail">';
+      html += '<a class="back" id="back-btn">Library</a>';
+
+      if (item.kind === 'doc') {
+        html += '<h1 style="font-size:1.3em; font-weight:normal; margin-bottom:0.3em;">' + esc(item.title) + '</h1>';
+        html += '<div class="meta"><span>' + esc(item.path) + '</span></div>';
+        html += '<div style="margin-bottom:1em;"><button class="btn" id="edit-btn">Edit</button></div>';
+        html += '<div class="rendered">' + renderMarkdown(item.content) + '</div>';
+      } else {
+        html += '<h1 style="font-size:1.3em; font-weight:normal; margin-bottom:0.3em;">' + esc(item.title) + '</h1>';
+        html += '<div class="meta">';
+        if (item.author) html += '<span>' + esc(item.author) + '</span>';
+        html += '<span class="type-badge ' + item.form + '">' + esc(item.form) + '</span>';
+        html += item.tags.map(t => '<span class="tag">' + esc(t) + '</span>').join(' ');
+        html += '</div>';
+        html += '<div style="margin-bottom:1em;"><button class="btn" id="edit-btn">Edit</button> <button class="btn btn-danger" id="delete-btn">Delete</button></div>';
+        if (item.body) html += '<div class="rendered">' + renderMarkdown(item.body) + '</div>';
+        if (item.notes) html += '<hr><h2 style="font-size:1em; color:#8a7a6a;">Notes</h2><div class="rendered">' + renderMarkdown(item.notes) + '</div>';
+      }
+
+      html += '</div>';
+      app.innerHTML = html;
+
+      document.getElementById('back-btn').addEventListener('click', () => { view.value = 'list'; });
+      document.getElementById('edit-btn').addEventListener('click', () => { view.value = 'edit'; });
+      const delBtn = document.getElementById('delete-btn');
+      if (delBtn) {
+        delBtn.addEventListener('click', async () => {
+          if (!confirm('Delete this reference?')) return;
+          await fetch(`${API}/refs/delete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id }) });
+          await loadAll();
+          view.value = 'list';
+        });
+      }
+    }
+
+    // --- Render edit ---
+    function renderEdit() {
+      const item = currentItem.value;
+      if (!item) return;
+
+      let html = '<div class="detail">';
+      html += '<a class="back" id="back-btn">Back</a>';
+
+      if (item.kind === 'doc') {
+        html += '<h2 style="font-size:1.1em; font-weight:normal; margin-bottom:1em;">Editing: ' + esc(item.path) + '</h2>';
+        html += '<div class="editor">';
+        html += '<textarea id="edit-content">' + esc(item.content) + '</textarea>';
+        html += '<div class="actions"><button class="btn" id="save-btn">Save</button><span class="status" id="status"></span></div>';
+        html += '</div>';
+      } else {
+        html += '<h2 style="font-size:1.1em; font-weight:normal; margin-bottom:1em;">Editing Reference</h2>';
+        html += '<div class="editor">';
+        html += '<div class="field"><label>Title</label><input id="ed-title" value="' + esc(item.title) + '"></div>';
+        html += '<div class="field"><label>Author</label><input id="ed-author" value="' + esc(item.author || '') + '"></div>';
+        html += '<div class="field"><label>Form</label><select id="ed-form"><option value="poem"' + (item.form === 'poem' ? ' selected' : '') + '>Poem</option><option value="prose"' + (item.form === 'prose' ? ' selected' : '') + '>Prose</option></select></div>';
+        html += '<div class="field"><label>Tags (comma separated)</label><input id="ed-tags" value="' + esc((item.tags || []).join(', ')) + '"></div>';
+        html += '<div class="field"><label>Body</label><textarea id="ed-body">' + esc(item.body || '') + '</textarea></div>';
+        html += '<div class="field"><label>Notes</label><textarea id="ed-notes" style="min-height:150px;">' + esc(item.notes || '') + '</textarea></div>';
+        html += '<div class="actions"><button class="btn" id="save-btn">Save</button><span class="status" id="status"></span></div>';
+        html += '</div>';
+      }
+
+      html += '</div>';
+      app.innerHTML = html;
+
+      document.getElementById('back-btn').addEventListener('click', () => { view.value = 'detail'; });
+      document.getElementById('save-btn').addEventListener('click', async () => {
+        const status = document.getElementById('status');
+        status.textContent = 'Saving...';
+
+        if (item.kind === 'doc') {
+          const content = document.getElementById('edit-content').value;
+          await fetch(`${API}/docs/update`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: item.path, content }) });
+          currentItem.value = { ...item, content };
+        } else {
+          const tags = document.getElementById('ed-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+          const updates = {
+            id: item.id,
+            title: document.getElementById('ed-title').value,
+            author: document.getElementById('ed-author').value,
+            form: document.getElementById('ed-form').value,
+            tags,
+            body: document.getElementById('ed-body').value,
+            notes: document.getElementById('ed-notes').value,
+          };
+          await fetch(`${API}/refs/update`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
+          currentItem.value = { ...item, ...updates };
+          await loadAll();
+        }
+
+        status.textContent = 'Saved.';
+        setTimeout(() => { if (document.getElementById('status')) document.getElementById('status').textContent = ''; }, 2000);
+      });
+    }
+
+    // --- Render new reference ---
+    function renderNew() {
+      let html = '<div class="detail">';
+      html += '<a class="back" id="back-btn">Library</a>';
+      html += '<h2 style="font-size:1.1em; font-weight:normal; margin-bottom:1em;">New Reference</h2>';
+      html += '<div class="editor">';
+      html += '<div class="field"><label>Title</label><input id="ed-title"></div>';
+      html += '<div class="field"><label>Author</label><input id="ed-author"></div>';
+      html += '<div class="field"><label>Form</label><select id="ed-form"><option value="poem">Poem</option><option value="prose">Prose</option></select></div>';
+      html += '<div class="field"><label>Tags (comma separated)</label><input id="ed-tags" placeholder="thematic, stylistic"></div>';
+      html += '<div class="field"><label>Body</label><textarea id="ed-body"></textarea></div>';
+      html += '<div class="field"><label>Notes</label><textarea id="ed-notes" style="min-height:150px;"></textarea></div>';
+      html += '<div class="actions"><button class="btn" id="save-btn">Create</button><span class="status" id="status"></span></div>';
+      html += '</div></div>';
+
+      app.innerHTML = html;
+
+      document.getElementById('back-btn').addEventListener('click', () => { view.value = 'list'; });
+      document.getElementById('save-btn').addEventListener('click', async () => {
+        const title = document.getElementById('ed-title').value.trim();
+        if (!title) return;
+        const status = document.getElementById('status');
+        status.textContent = 'Creating...';
+
+        const tags = document.getElementById('ed-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+        const ref = {
+          title,
+          author: document.getElementById('ed-author').value,
+          form: document.getElementById('ed-form').value,
+          tags,
+          body: document.getElementById('ed-body').value,
+          notes: document.getElementById('ed-notes').value,
+        };
+        const res = await fetch(`${API}/refs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ref) });
+        const data = await res.json();
+        await loadAll();
+        status.textContent = 'Created.';
+        setTimeout(() => { openItem('ref', data.id); }, 500);
+      });
+    }
+
+    // --- Markdown renderer ---
+    function renderMarkdown(md) {
+      if (!md) return '';
+      let html = md
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+        .replace(/^---$/gm, '<hr>')
+        .replace(/^> (.+)$/gm, '<blockquote><p>$1</p></blockquote>')
+        .replace(/^- (.+)$/gm, '<li>$1</li>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>');
+      html = html.replace(/(<li>.*?<\/li>\n?)+/g, '<ul>$&</ul>');
+      html = html.split('\n\n').map(block => {
+        block = block.trim();
+        if (!block || block.startsWith('<')) return block;
+        return '<p>' + block.replace(/\n/g, '<br>') + '</p>';
+      }).join('\n');
+      return html;
+    }
+
+    // --- Reactive render ---
+    effect(() => {
+      const v = view.value;
+      // Read all signals to track them
+      const _ = [items.value, currentItem.value, filterText.value, filterType.value];
+      if (v === 'list') renderList();
+      else if (v === 'detail') renderDetail();
+      else if (v === 'edit') renderEdit();
+      else if (v === 'new') renderNew();
+    });
+
+    // --- Boot ---
+    await loadAll();
+  </script>
+</body>
+</html>

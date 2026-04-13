@@ -140,6 +140,28 @@
           }
         }
       }
+    },
+    {
+      "includes": ["packages/struggle/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off",
+            "useAwait": "off"
+          },
+          "style": {
+            "useTemplate": "off",
+            "useBlockStatements": "off",
+            "noParameterAssign": "off"
+          },
+          "correctness": {
+            "noUnusedVariables": "off"
+          },
+          "a11y": {
+            "useButtonType": "off"
+          }
+        }
+      }
     }
   ]
 }
