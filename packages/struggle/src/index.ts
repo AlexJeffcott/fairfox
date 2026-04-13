@@ -549,13 +549,6 @@ const app = new Elysia()
       }),
     }
   )
-  .use(
-    staticPlugin({
-      assets: PUBLIC_DIR,
-      prefix: '/',
-      indexHTML: false,
-    })
-  )
   .get(
     '/',
     () =>
@@ -569,6 +562,13 @@ const app = new Elysia()
       new Response(libraryHtml, {
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       })
+  )
+  .use(
+    staticPlugin({
+      assets: PUBLIC_DIR,
+      prefix: '/',
+      indexHTML: false,
+    })
   );
 
 export const mount = '/struggle' as const;
