@@ -13,8 +13,82 @@ type View =
   | 'chat'
   | 'conversation'
   | 'research'
-  | 'document';
+  | 'document'
+  | 'agenda';
 const activeView = signal<View>('projects');
+
+type AgendaSubView = 'today' | 'items' | 'fairness';
+const agendaSubView = signal<AgendaSubView>('today');
+
+type AgendaPerson = 'Leo' | 'Elisa' | 'Alex';
+const AGENDA_PEOPLE: AgendaPerson[] = ['Leo', 'Elisa', 'Alex'];
+const AGENDA_ROOMS = [
+  'kitchen',
+  'master_bedroom',
+  'leos_bedroom',
+  'music_room',
+  'music_room_balcony',
+  'utility_room',
+  'living_room',
+  'kitchen_balcony',
+  'guest_bathroom',
+  'main_bathroom',
+  'entrance_hall',
+] as const;
+type AgendaRoom = (typeof AGENDA_ROOMS)[number];
+
+interface AgendaItemRow {
+  id: number;
+  kind: 'task' | 'event';
+  name: string;
+  room: AgendaRoom | null;
+  points: number;
+  time_of_day: string | null;
+  recurrence: 'once' | 'daily' | 'weekdays' | 'interval';
+  recurrence_data: string;
+  notes: string;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface AgendaTodayEntry {
+  item: AgendaItemRow;
+  daysOverdue: number;
+  lastCompletion: { id: number; done_by: string; done_at: string; kind: string } | null;
+}
+
+interface AgendaTodayResponse {
+  date: string;
+  scheduled: AgendaTodayEntry[];
+  anytime: AgendaTodayEntry[];
+}
+
+interface AgendaFairnessResponse {
+  days: number;
+  by_person: { done_by: string; completions: number; total_points: number }[];
+}
+
+const agendaToday = signal<AgendaTodayResponse | null>(null);
+const agendaItemsList = signal<AgendaItemRow[]>([]);
+const agendaFairness = signal<AgendaFairnessResponse | null>(null);
+const agendaCreating = signal<boolean>(false);
+const agendaEditingId = signal<number | null>(null);
+const agendaPendingSnooze = signal<Record<number, 'snooze_1d' | 'snooze_3d' | 'snooze_7d'>>({});
+
+const emptyAgendaDraft = (): Record<string, any> => ({
+  kind: 'task',
+  name: '',
+  room: '',
+  points: 5,
+  time_of_day: '',
+  recurrence: 'interval',
+  interval_days: 7,
+  date: '',
+  weekdays: [1, 2, 3, 4, 5],
+  notes: '',
+});
+const agendaCreateDraft = signal<Record<string, any>>(emptyAgendaDraft());
 const selectedProject = signal<string | null>(null);
 const projects = signal<any[]>([]);
 const tasks = signal<any[]>([]);
@@ -59,6 +133,177 @@ async function fetchAll() {
   conversations.value = convs;
   documents.value = docs;
   relayConnected.value = health.relay || false;
+  await fetchAgendaToday();
+}
+
+async function fetchAgendaToday() {
+  const r = await fetch(`${API}/api/agenda/today`);
+  agendaToday.value = await r.json();
+}
+
+async function fetchAgendaItems() {
+  const r = await fetch(`${API}/api/agenda/items`);
+  agendaItemsList.value = await r.json();
+}
+
+async function fetchAgendaFairness() {
+  const r = await fetch(`${API}/api/agenda/fairness`);
+  agendaFairness.value = await r.json();
+}
+
+async function completeAgendaItem(id: number, doneBy: AgendaPerson, kind: string) {
+  await fetch(`${API}/api/agenda/items/${id}/complete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ done_by: doneBy, kind }),
+  });
+  await fetchAgendaToday();
+}
+
+function startSnooze(id: number, kind: 'snooze_1d' | 'snooze_3d' | 'snooze_7d') {
+  agendaPendingSnooze.value = { ...agendaPendingSnooze.value, [id]: kind };
+}
+
+function cancelSnooze(id: number) {
+  const next = { ...agendaPendingSnooze.value };
+  delete next[id];
+  agendaPendingSnooze.value = next;
+}
+
+async function confirmSnooze(id: number, person: AgendaPerson) {
+  const kind = agendaPendingSnooze.value[id];
+  if (!kind) return;
+  await fetch(`${API}/api/agenda/items/${id}/complete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ done_by: person, kind }),
+  });
+  cancelSnooze(id);
+  await fetchAgendaToday();
+}
+
+async function deleteAgendaItem(id: number) {
+  await fetch(`${API}/api/agenda/items/${id}`, { method: 'DELETE' });
+  await fetchAgendaItems();
+  await fetchAgendaToday();
+}
+
+function buildRecurrenceData(draft: Record<string, any>): Record<string, any> | null {
+  switch (draft.recurrence) {
+    case 'once': {
+      if (typeof draft.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(draft.date)) {
+        return null;
+      }
+      return { date: draft.date };
+    }
+    case 'daily':
+      return {};
+    case 'weekdays': {
+      const days = Array.isArray(draft.weekdays) ? draft.weekdays : [];
+      if (days.length === 0) return null;
+      return { days };
+    }
+    case 'interval': {
+      const n = Number(draft.interval_days);
+      if (!Number.isInteger(n) || n < 1) return null;
+      return { interval_days: n };
+    }
+    default:
+      return null;
+  }
+}
+
+function startEditAgendaItem(item: AgendaItemRow) {
+  let data: Record<string, any> = {};
+  try {
+    data = JSON.parse(item.recurrence_data);
+  } catch (_err) {
+    data = {};
+  }
+  agendaCreateDraft.value = {
+    kind: item.kind,
+    name: item.name,
+    room: item.room ?? '',
+    points: item.points,
+    time_of_day: item.time_of_day ?? '',
+    recurrence: item.recurrence,
+    interval_days: typeof data.interval_days === 'number' ? data.interval_days : 7,
+    date: typeof data.date === 'string' ? data.date : '',
+    weekdays: Array.isArray(data.days) ? data.days : [1, 2, 3, 4, 5],
+    notes: item.notes,
+  };
+  agendaEditingId.value = item.id;
+  agendaCreating.value = true;
+}
+
+function resetAgendaForm() {
+  agendaCreating.value = false;
+  agendaEditingId.value = null;
+  agendaCreateDraft.value = emptyAgendaDraft();
+}
+
+async function saveAgendaItem() {
+  const draft = agendaCreateDraft.value;
+  const recurrenceData = buildRecurrenceData(draft);
+  if (recurrenceData === null) {
+    alert('Recurrence data is incomplete or invalid');
+    return;
+  }
+  if (!draft.name || !draft.name.trim()) {
+    alert('Name is required');
+    return;
+  }
+  const body: Record<string, any> = {
+    kind: draft.kind,
+    name: draft.name.trim(),
+    points: Number(draft.points) || 1,
+    recurrence: draft.recurrence,
+    recurrence_data: recurrenceData,
+    notes: draft.notes || '',
+  };
+  if (draft.room && draft.room !== '') body.room = draft.room;
+  else body.room = null;
+  if (draft.time_of_day && draft.time_of_day !== '') body.time_of_day = draft.time_of_day;
+  else body.time_of_day = null;
+
+  const editingId = agendaEditingId.value;
+  const url =
+    editingId !== null ? `${API}/api/agenda/items/${editingId}` : `${API}/api/agenda/items`;
+  const method = editingId !== null ? 'PUT' : 'POST';
+  const res = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'unknown' }));
+    alert(`Could not save item: ${err.error}`);
+    return;
+  }
+  resetAgendaForm();
+  await fetchAgendaItems();
+  await fetchAgendaToday();
+}
+
+function roomLabel(room: string | null): string {
+  if (!room) return '';
+  return room
+    .split('_')
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(' ');
+}
+
+function escalationClass(daysOverdue: number): string {
+  if (daysOverdue >= 8) return 'agenda-escalation-red';
+  if (daysOverdue >= 3) return 'agenda-escalation-orange';
+  if (daysOverdue >= 1) return 'agenda-escalation-amber';
+  return 'agenda-escalation-neutral';
+}
+
+function overdueLabel(daysOverdue: number): string {
+  if (daysOverdue === 0) return 'due today';
+  if (daysOverdue === 1) return '1 day overdue';
+  return `${daysOverdue} days overdue`;
 }
 
 function connectWS() {
@@ -185,6 +430,11 @@ function startCreate(defaults: any = {}) {
 }
 
 function navigate(view: View, projectPid?: string) {
+  if (view === 'agenda') {
+    fetchAgendaToday();
+    fetchAgendaItems();
+    fetchAgendaFairness();
+  }
   activeView.value = view;
   selectedProject.value = projectPid || null;
   editing.value = null;
@@ -1060,9 +1310,409 @@ function ConversationView() {
 
 // --- App ---
 
+function AgendaTodayView() {
+  const data = agendaToday.value;
+  if (!data) {
+    return html`<div class="empty">Loading…</div>`;
+  }
+  const dateLabel = new Date(`${data.date}T00:00:00`).toLocaleDateString(undefined, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  return html`
+    <div class="agenda-today">
+      <h2 class="agenda-date">${dateLabel}</h2>
+
+      <section class="agenda-section">
+        <h3>Scheduled</h3>
+        ${
+          data.scheduled.length === 0
+            ? html`<div class="empty">No scheduled items today.</div>`
+            : data.scheduled.map(
+                (entry) => html`<${AgendaTodayRow} entry=${entry} key=${entry.item.id} />`
+              )
+        }
+      </section>
+
+      <section class="agenda-section">
+        <h3>Anytime</h3>
+        ${
+          data.anytime.length === 0
+            ? html`<div class="empty">Nothing pending. ✨</div>`
+            : data.anytime.map(
+                (entry) => html`<${AgendaTodayRow} entry=${entry} key=${entry.item.id} />`
+              )
+        }
+      </section>
+    </div>
+  `;
+}
+
+function AgendaTodayRow({ entry }: { entry: AgendaTodayEntry }) {
+  const item = entry.item;
+  const isEvent = item.kind === 'event';
+  const escalation =
+    item.time_of_day !== null ? 'agenda-escalation-neutral' : escalationClass(entry.daysOverdue);
+  const pendingKind = agendaPendingSnooze.value[item.id];
+  const snoozeLabels: Record<'snooze_1d' | 'snooze_3d' | 'snooze_7d', string> = {
+    snooze_1d: '1 day',
+    snooze_3d: '3 days',
+    snooze_7d: '7 days',
+  };
+  return html`
+    <div class="agenda-row ${escalation}">
+      <div class="agenda-row-meta">
+        ${item.time_of_day ? html`<span class="agenda-time">${item.time_of_day}</span>` : null}
+        ${item.room ? html`<span class="agenda-room">${roomLabel(item.room)}</span>` : null}
+      </div>
+      <div class="agenda-row-name">${item.name}</div>
+      ${
+        item.time_of_day === null
+          ? html`<div class="agenda-row-overdue">${overdueLabel(entry.daysOverdue)}</div>`
+          : null
+      }
+      ${
+        isEvent
+          ? html`<div class="agenda-row-actions agenda-row-event">event</div>`
+          : pendingKind
+            ? html`
+              <div class="agenda-row-actions agenda-row-pending">
+                <div class="agenda-action-group">
+                  <span class="agenda-action-label">Snooze ${snoozeLabels[pendingKind]} as:</span>
+                  ${AGENDA_PEOPLE.map(
+                    (person) => html`
+                      <button
+                        class="btn agenda-snooze-btn"
+                        onClick=${() => confirmSnooze(item.id, person)}
+                      >${person}</button>
+                    `
+                  )}
+                  <button
+                    class="btn agenda-cancel-btn"
+                    onClick=${() => cancelSnooze(item.id)}
+                  >cancel</button>
+                </div>
+              </div>
+            `
+            : html`
+              <div class="agenda-row-actions">
+                <div class="agenda-action-group">
+                  <span class="agenda-action-label">Done by:</span>
+                  ${AGENDA_PEOPLE.map(
+                    (person) => html`
+                      <button
+                        class="btn agenda-done-btn"
+                        onClick=${() => completeAgendaItem(item.id, person, 'done')}
+                      >${person}</button>
+                    `
+                  )}
+                </div>
+                <div class="agenda-action-group">
+                  <span class="agenda-action-label">Snooze:</span>
+                  <button class="btn agenda-snooze-btn" onClick=${() => startSnooze(item.id, 'snooze_1d')}>1d</button>
+                  <button class="btn agenda-snooze-btn" onClick=${() => startSnooze(item.id, 'snooze_3d')}>3d</button>
+                  <button class="btn agenda-snooze-btn" onClick=${() => startSnooze(item.id, 'snooze_7d')}>7d</button>
+                </div>
+              </div>
+            `
+      }
+    </div>
+  `;
+}
+
+function AgendaItemsView() {
+  const items = agendaItemsList.value;
+  return html`
+    <div class="agenda-items">
+      <div class="agenda-items-header">
+        <h2>Items</h2>
+        <button class="btn btn-save" onClick=${() => {
+          agendaEditingId.value = null;
+          agendaCreateDraft.value = emptyAgendaDraft();
+          agendaCreating.value = true;
+        }}>+ New item</button>
+      </div>
+      ${agendaCreating.value ? html`<${AgendaCreateForm} />` : null}
+      ${
+        items.length === 0
+          ? html`<div class="empty">No items yet.</div>`
+          : html`
+            <table class="agenda-items-table">
+              <thead>
+                <tr>
+                  <th>Kind</th>
+                  <th>Name</th>
+                  <th>Room</th>
+                  <th>Time</th>
+                  <th>Recurrence</th>
+                  <th>Points</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items.map(
+                  (item) => html`
+                    <tr key=${item.id}>
+                      <td>${item.kind}</td>
+                      <td>${item.name}</td>
+                      <td>${roomLabel(item.room)}</td>
+                      <td>${item.time_of_day ?? '—'}</td>
+                      <td>${item.recurrence} <code class="agenda-rdata">${item.recurrence_data}</code></td>
+                      <td>${item.points}</td>
+                      <td>${item.archived_at ? 'archived' : 'active'}</td>
+                      <td class="agenda-row-actions-cell">
+                        <button
+                          class="btn"
+                          onClick=${() => startEditAgendaItem(item)}
+                        >Edit</button>
+                        <button
+                          class="btn btn-delete"
+                          onClick=${() => {
+                            if (confirm(`Delete "${item.name}"?`)) {
+                              deleteAgendaItem(item.id);
+                            }
+                          }}
+                        >Delete</button>
+                      </td>
+                    </tr>
+                  `
+                )}
+              </tbody>
+            </table>
+          `
+      }
+    </div>
+  `;
+}
+
+function AgendaCreateForm() {
+  const draft = agendaCreateDraft.value;
+  const editing = agendaEditingId.value !== null;
+  const setDraft = (patch: Record<string, any>) => {
+    agendaCreateDraft.value = { ...agendaCreateDraft.value, ...patch };
+  };
+  const toggleWeekday = (d: number) => {
+    const current: number[] = Array.isArray(draft.weekdays) ? draft.weekdays : [];
+    const next = current.includes(d) ? current.filter((x) => x !== d) : [...current, d].sort();
+    setDraft({ weekdays: next });
+  };
+  return html`
+    <div class="agenda-form">
+      <h3 class="agenda-form-title">${editing ? 'Edit item' : 'New item'}</h3>
+      <div class="agenda-form-row">
+        <label>Kind</label>
+        <select value=${draft.kind} onChange=${(e: any) => setDraft({ kind: e.target.value })}>
+          <option value="task">task — actionable, has done buttons</option>
+          <option value="event">event — display only (drum class, yoga, pickup)</option>
+        </select>
+      </div>
+      <div class="agenda-form-row">
+        <label>Name</label>
+        <input
+          type="text"
+          value=${draft.name}
+          onInput=${(e: any) => setDraft({ name: e.target.value })}
+          placeholder="Clean kitchen windows"
+        />
+      </div>
+      <div class="agenda-form-row">
+        <label>Room (chores)</label>
+        <select value=${draft.room} onChange=${(e: any) => setDraft({ room: e.target.value })}>
+          <option value="">— none —</option>
+          ${AGENDA_ROOMS.map((r) => html`<option value=${r}>${roomLabel(r)}</option>`)}
+        </select>
+      </div>
+      <div class="agenda-form-row">
+        <label>Time of day (optional)</label>
+        <input
+          type="time"
+          value=${draft.time_of_day}
+          onInput=${(e: any) => setDraft({ time_of_day: e.target.value })}
+        />
+      </div>
+      ${
+        draft.kind === 'task'
+          ? html`
+            <div class="agenda-form-row">
+              <label>Points (1–10)</label>
+              <input
+                type="number"
+                min="1"
+                max="10"
+                value=${draft.points}
+                onInput=${(e: any) => setDraft({ points: Number(e.target.value) })}
+              />
+            </div>
+          `
+          : null
+      }
+      <div class="agenda-form-row">
+        <label>Recurrence</label>
+        <select value=${draft.recurrence} onChange=${(e: any) => setDraft({ recurrence: e.target.value })}>
+          <option value="once">once — a single date</option>
+          <option value="daily">daily — every day</option>
+          <option value="weekdays">weekdays — pick which days</option>
+          <option value="interval">interval — every N days, anytime</option>
+        </select>
+      </div>
+      ${
+        draft.recurrence === 'once'
+          ? html`
+            <div class="agenda-form-row">
+              <label>Date</label>
+              <input
+                type="date"
+                value=${draft.date}
+                onInput=${(e: any) => setDraft({ date: e.target.value })}
+              />
+            </div>
+          `
+          : null
+      }
+      ${
+        draft.recurrence === 'weekdays'
+          ? html`
+            <div class="agenda-form-row">
+              <label>Days</label>
+              <div class="agenda-weekdays">
+                ${[1, 2, 3, 4, 5, 6, 7].map((d) => {
+                  const labels: Record<number, string> = {
+                    1: 'Mon',
+                    2: 'Tue',
+                    3: 'Wed',
+                    4: 'Thu',
+                    5: 'Fri',
+                    6: 'Sat',
+                    7: 'Sun',
+                  };
+                  const checked: number[] = Array.isArray(draft.weekdays) ? draft.weekdays : [];
+                  return html`
+                    <label class="agenda-weekday">
+                      <input
+                        type="checkbox"
+                        checked=${checked.includes(d)}
+                        onChange=${() => toggleWeekday(d)}
+                      />
+                      ${labels[d]}
+                    </label>
+                  `;
+                })}
+              </div>
+            </div>
+          `
+          : null
+      }
+      ${
+        draft.recurrence === 'interval'
+          ? html`
+            <div class="agenda-form-row">
+              <label>Interval (days)</label>
+              <input
+                type="number"
+                min="1"
+                value=${draft.interval_days}
+                onInput=${(e: any) => setDraft({ interval_days: Number(e.target.value) })}
+              />
+            </div>
+          `
+          : null
+      }
+      <div class="agenda-form-row">
+        <label>Notes</label>
+        <textarea
+          rows="2"
+          value=${draft.notes}
+          onInput=${(e: any) => setDraft({ notes: e.target.value })}
+        />
+      </div>
+      <div class="agenda-form-actions">
+        <button class="btn btn-save" onClick=${saveAgendaItem}>${editing ? 'Save' : 'Create'}</button>
+        <button class="btn" onClick=${resetAgendaForm}>Cancel</button>
+      </div>
+    </div>
+  `;
+}
+
+function AgendaFairnessView() {
+  const data = agendaFairness.value;
+  if (!data) return html`<div class="empty">Loading…</div>`;
+  const totalPoints = data.by_person.reduce((s, p) => s + p.total_points, 0);
+  return html`
+    <div class="agenda-fairness">
+      <h2>Last ${data.days} days</h2>
+      ${
+        data.by_person.length === 0
+          ? html`<div class="empty">No completions yet.</div>`
+          : html`
+            <table class="agenda-fairness-table">
+              <thead>
+                <tr><th>Person</th><th>Completions</th><th>Points</th><th>Share</th></tr>
+              </thead>
+              <tbody>
+                ${data.by_person.map((row) => {
+                  const share =
+                    totalPoints > 0 ? Math.round((row.total_points / totalPoints) * 100) : 0;
+                  return html`
+                    <tr key=${row.done_by}>
+                      <td>${row.done_by}</td>
+                      <td>${row.completions}</td>
+                      <td>${row.total_points}</td>
+                      <td>${share}%</td>
+                    </tr>
+                  `;
+                })}
+              </tbody>
+            </table>
+          `
+      }
+    </div>
+  `;
+}
+
+function AgendaView() {
+  return html`
+    <div class="agenda">
+      <div class="agenda-subnav">
+        <button
+          class="tab ${agendaSubView.value === 'today' ? 'active' : ''}"
+          onClick=${() => {
+            agendaSubView.value = 'today';
+            fetchAgendaToday();
+          }}
+        >Today</button>
+        <button
+          class="tab ${agendaSubView.value === 'items' ? 'active' : ''}"
+          onClick=${() => {
+            agendaSubView.value = 'items';
+            fetchAgendaItems();
+          }}
+        >Items</button>
+        <button
+          class="tab ${agendaSubView.value === 'fairness' ? 'active' : ''}"
+          onClick=${() => {
+            agendaSubView.value = 'fairness';
+            fetchAgendaFairness();
+          }}
+        >Fairness</button>
+      </div>
+      ${
+        agendaSubView.value === 'today'
+          ? html`<${AgendaTodayView} />`
+          : agendaSubView.value === 'items'
+            ? html`<${AgendaItemsView} />`
+            : html`<${AgendaFairnessView} />`
+      }
+    </div>
+  `;
+}
+
 const TABS: { id: View; label: string }[] = [
   { id: 'projects', label: 'Projects' },
   { id: 'tasks', label: 'Tasks' },
+  { id: 'agenda', label: 'Agenda' },
   { id: 'research', label: 'Research' },
   { id: 'quick-capture', label: 'Capture' },
   { id: 'chat', label: 'Chat' },
@@ -1076,9 +1726,16 @@ function App() {
 
   const docCount = computed(() => documents.value.length);
 
+  const agendaTodayCount = computed(() => {
+    const t = agendaToday.value;
+    if (!t) return 0;
+    return t.scheduled.length + t.anytime.length;
+  });
+
   const counts: Record<View, any> = {
     projects: projectCount,
     tasks: openTasks,
+    agenda: agendaTodayCount,
     research: docCount,
     'quick-capture': captureCount,
     chat: convCount,
@@ -1157,15 +1814,17 @@ function App() {
               ? html`<${ProjectDetailView} />`
               : activeView.value === 'tasks'
                 ? html`<${AllTasksView} />`
-                : activeView.value === 'research'
-                  ? html`<${ResearchListView} />`
-                  : activeView.value === 'document'
-                    ? html`<${DocumentView} />`
-                    : activeView.value === 'chat'
-                      ? html`<${ChatListView} />`
-                      : isConversation
-                        ? html`<${ConversationView} />`
-                        : html`<${QuickCaptureView} />`
+                : activeView.value === 'agenda'
+                  ? html`<${AgendaView} />`
+                  : activeView.value === 'research'
+                    ? html`<${ResearchListView} />`
+                    : activeView.value === 'document'
+                      ? html`<${DocumentView} />`
+                      : activeView.value === 'chat'
+                        ? html`<${ChatListView} />`
+                        : isConversation
+                          ? html`<${ConversationView} />`
+                          : html`<${QuickCaptureView} />`
         }
       </main>
       ${
