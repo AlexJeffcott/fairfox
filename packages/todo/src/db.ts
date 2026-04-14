@@ -99,6 +99,44 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (conversation_id) REFERENCES conversations(id)
   );
+
+  CREATE TABLE IF NOT EXISTS agenda_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL CHECK (kind IN ('task', 'event')),
+    name TEXT NOT NULL,
+    room TEXT CHECK (room IS NULL OR room IN (
+      'kitchen', 'master_bedroom', 'leos_bedroom', 'music_room', 'music_room_balcony',
+      'utility_room', 'living_room', 'kitchen_balcony', 'guest_bathroom', 'main_bathroom',
+      'entrance_hall'
+    )),
+    points INTEGER NOT NULL DEFAULT 1 CHECK (points BETWEEN 1 AND 10),
+    time_of_day TEXT CHECK (
+      time_of_day IS NULL
+      OR time_of_day GLOB '[0-1][0-9]:[0-5][0-9]'
+      OR time_of_day GLOB '2[0-3]:[0-5][0-9]'
+    ),
+    recurrence TEXT NOT NULL CHECK (recurrence IN ('once', 'daily', 'weekdays', 'interval')),
+    recurrence_data TEXT NOT NULL DEFAULT '{}',
+    notes TEXT NOT NULL DEFAULT '',
+    archived_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_agenda_items_active
+    ON agenda_items(archived_at);
+
+  CREATE TABLE IF NOT EXISTS agenda_completions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id INTEGER NOT NULL,
+    done_by TEXT NOT NULL CHECK (done_by IN ('Leo', 'Elisa', 'Alex')),
+    done_at TEXT NOT NULL DEFAULT (datetime('now')),
+    kind TEXT NOT NULL DEFAULT 'done' CHECK (kind IN ('done', 'snooze_1d', 'snooze_3d', 'snooze_7d')),
+    FOREIGN KEY (item_id) REFERENCES agenda_items(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_agenda_completions_item
+    ON agenda_completions(item_id, done_at DESC);
 `);
 
 const nullTasks = db.query('SELECT rowid, * FROM tasks WHERE tid IS NULL').all() as any[];

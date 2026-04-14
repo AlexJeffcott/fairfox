@@ -1,6 +1,7 @@
 import type { WsData } from '@fairfox/shared/subapp';
 import type { ServerWebSocket } from 'bun';
 import './db.ts';
+import { agendaRoutes } from './routes/agenda.ts';
 import { backupRoutes } from './routes/backup.ts';
 import { chatRoutes } from './routes/chat.ts';
 import { cityHomeRoutes } from './routes/city-home.ts';
@@ -116,6 +117,7 @@ const internal = Bun.serve({
     ...backupRoutes,
     ...chatRoutes,
     ...documentRoutes,
+    ...agendaRoutes,
   },
   fetch(req) {
     const url = new URL(req.url);

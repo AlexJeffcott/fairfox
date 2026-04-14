@@ -12,6 +12,8 @@ export const backupRoutes = {
         directories: db.query('SELECT * FROM directories ORDER BY sort_order, dir').all(),
         quick_capture: db.query('SELECT * FROM quick_capture ORDER BY id').all(),
         documents: db.query('SELECT * FROM documents ORDER BY updated_at DESC').all(),
+        agenda_items: db.query('SELECT * FROM agenda_items ORDER BY id').all(),
+        agenda_completions: db.query('SELECT * FROM agenda_completions ORDER BY id').all(),
       };
       return Response.json(backup);
     },
