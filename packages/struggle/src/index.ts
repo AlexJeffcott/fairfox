@@ -553,14 +553,20 @@ const app = new Elysia()
     '/',
     () =>
       new Response(indexHtml, {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store, must-revalidate',
+        },
       })
   )
   .get(
     '/library.html',
     () =>
       new Response(libraryHtml, {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store, must-revalidate',
+        },
       })
   )
   .use(
