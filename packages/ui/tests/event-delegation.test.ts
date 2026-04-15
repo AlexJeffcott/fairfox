@@ -5,7 +5,6 @@
 // pure functions — parseActionData and resolveAction — can be tested
 // against synthetic DOM nodes built with happy-dom's globalThis.
 
-import './setup-dom.ts';
 import { describe, expect, test } from 'bun:test';
 import { parseActionData, resolveAction } from '../src/event-delegation.ts';
 

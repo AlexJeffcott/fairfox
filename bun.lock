@@ -6,6 +6,7 @@
       "name": "fairfox",
       "devDependencies": {
         "@biomejs/biome": "catalog:",
+        "@happy-dom/global-registrator": "catalog:",
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
         "typescript": "catalog:",

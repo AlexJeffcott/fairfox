@@ -1,0 +1,133 @@
+/* Button primitive — see Button.tsx for the component and ADR 0005 for the rationale.
+ *
+ * This module contains no flex or grid properties. Any internal row layout
+ * (icon + label, for example) is done via a nested <Layout> inside the button.
+ * The rule is enforced by scripts/check-layout-ban.ts.
+ */
+
+.btn {
+  display: inline-block;
+  padding: 0.5em 1em;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  box-sizing: border-box;
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    color 150ms;
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* Tiers — hierarchy and importance. */
+.tierPrimary {
+  background-color: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+
+.tierPrimary:hover:not(:disabled) {
+  background-color: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.tierSecondary {
+  background-color: #f3f4f6;
+  color: #111827;
+  border-color: #d1d5db;
+}
+
+.tierSecondary:hover:not(:disabled) {
+  background-color: #e5e7eb;
+}
+
+.tierTertiary {
+  background-color: transparent;
+  color: #111827;
+  border-color: transparent;
+}
+
+.tierTertiary:hover:not(:disabled) {
+  background-color: #f3f4f6;
+}
+
+/* Semantic colours — applied on top of the tier. */
+.colorInfo {
+  --btn-accent: #2563eb;
+}
+
+.colorSuccess {
+  --btn-accent: #16a34a;
+}
+
+.colorWarning {
+  --btn-accent: #ca8a04;
+}
+
+.colorError {
+  --btn-accent: #dc2626;
+}
+
+.tierPrimary.colorInfo,
+.tierPrimary.colorSuccess,
+.tierPrimary.colorWarning,
+.tierPrimary.colorError {
+  background-color: var(--btn-accent);
+  border-color: var(--btn-accent);
+  color: #fff;
+}
+
+.tierSecondary.colorInfo,
+.tierSecondary.colorSuccess,
+.tierSecondary.colorWarning,
+.tierSecondary.colorError {
+  color: var(--btn-accent);
+  border-color: var(--btn-accent);
+}
+
+.tierTertiary.colorInfo,
+.tierTertiary.colorSuccess,
+.tierTertiary.colorWarning,
+.tierTertiary.colorError {
+  color: var(--btn-accent);
+}
+
+/* Sizes. */
+.btnSmall {
+  padding: 0.25em 0.75em;
+  font-size: 0.875rem;
+}
+
+.btnLarge {
+  padding: 0.75em 1.5em;
+  font-size: 1.125rem;
+}
+
+/* Modifiers. */
+.btnCircle {
+  border-radius: 50%;
+  padding: 0;
+  aspect-ratio: 1;
+  width: 2.5em;
+}
+
+.btnFullWidth {
+  width: 100%;
+}

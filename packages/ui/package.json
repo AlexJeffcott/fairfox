@@ -14,7 +14,7 @@
     "#src/*": "./src/*"
   },
   "scripts": {
-    "typecheck": "bun run css:types && tsc --noEmit",
+    "typecheck": "bun run css:types && tsc --noEmit && bun run ../../scripts/check-layout-ban.ts",
     "css:types": "tcm -p 'src/**/*.module.css' -s"
   },
   "dependencies": {

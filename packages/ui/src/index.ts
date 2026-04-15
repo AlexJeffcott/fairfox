@@ -9,6 +9,15 @@
 // Exports grow as each phase of T291 lands. Phase A: utils. Phase B: event
 // delegation. Phase C: Button. Phase D: Input.
 
+export type {
+  ButtonColor,
+  ButtonProps,
+  ButtonSize,
+  ButtonTier,
+} from './components/Button/index.ts';
+export { Button } from './components/Button/index.ts';
+export type { LayoutAlign, LayoutJustify, LayoutProps } from './components/Layout/index.ts';
+export { Layout } from './components/Layout/index.ts';
 export type { ActionDispatch } from './event-delegation.ts';
 export {
   ACTION_EVENT_TYPES,
