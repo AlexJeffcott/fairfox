@@ -9,5 +9,14 @@
 // Exports grow as each phase of T291 lands. Phase A: utils. Phase B: event
 // delegation. Phase C: Button. Phase D: Input.
 
+export type { ActionDispatch } from './event-delegation.ts';
+export {
+  ACTION_EVENT_TYPES,
+  closeTopOverlay,
+  INTERACTIVE_TAGS,
+  installEventDelegation,
+  parseActionData,
+  resolveAction,
+} from './event-delegation.ts';
 export type { HTMLPassthroughProps } from './utils/html-attrs.ts';
 export { collectHTMLAttrs } from './utils/html-attrs.ts';
