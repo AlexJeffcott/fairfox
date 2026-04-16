@@ -1,0 +1,29 @@
+{
+  "name": "@fairfox/the-struggle",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/server/server.ts",
+  "imports": {
+    "#src/*": "./src/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "dev": "bun --hot src/server/server.ts"
+  },
+  "dependencies": {
+    "@automerge/automerge-repo": "catalog:",
+    "@fairfox/polly": "catalog:",
+    "@fairfox/shared": "workspace:*",
+    "@fairfox/ui": "workspace:*",
+    "@preact/signals": "catalog:",
+    "elysia": "catalog:",
+    "preact": "catalog:",
+    "tweetnacl": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

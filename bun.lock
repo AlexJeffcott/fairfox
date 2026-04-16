@@ -58,6 +58,25 @@
         "typescript": "catalog:",
       },
     },
+    "packages/library": {
+      "name": "@fairfox/library",
+      "version": "0.0.0",
+      "dependencies": {
+        "@automerge/automerge-repo": "catalog:",
+        "@fairfox/polly": "catalog:",
+        "@fairfox/shared": "workspace:*",
+        "@fairfox/ui": "workspace:*",
+        "@preact/signals": "catalog:",
+        "elysia": "catalog:",
+        "preact": "catalog:",
+        "tweetnacl": "catalog:",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/shared": {
       "name": "@fairfox/shared",
       "version": "0.0.0",
@@ -84,6 +103,25 @@
       },
       "devDependencies": {
         "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/the-struggle": {
+      "name": "@fairfox/the-struggle",
+      "version": "0.0.0",
+      "dependencies": {
+        "@automerge/automerge-repo": "catalog:",
+        "@fairfox/polly": "catalog:",
+        "@fairfox/shared": "workspace:*",
+        "@fairfox/ui": "workspace:*",
+        "@preact/signals": "catalog:",
+        "elysia": "catalog:",
+        "preact": "catalog:",
+        "tweetnacl": "catalog:",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -226,11 +264,15 @@
 
     "@fairfox/agenda": ["@fairfox/agenda@workspace:packages/agenda"],
 
+    "@fairfox/library": ["@fairfox/library@workspace:packages/library"],
+
     "@fairfox/polly": ["@fairfox/polly@0.23.0", "", { "dependencies": { "@preact/signals": "^2.8.2", "preact": "^10.29.0", "serialize-javascript": "^6.0.2", "ts-morph": "^21.0.1" }, "peerDependencies": { "@automerge/automerge-repo": ">= 2.5.0", "@automerge/automerge-repo-network-websocket": ">= 2.5.0", "@automerge/automerge-repo-storage-indexeddb": ">= 2.5.0", "@automerge/automerge-repo-storage-nodefs": ">= 2.5.0", "@elysiajs/eden": ">= 1.2.0", "elysia": ">= 1.4.0", "tweetnacl": ">= 1.0.0", "typescript": "^5.9.3", "ws": ">= 8.0.0" }, "optionalPeers": ["@automerge/automerge-repo", "@automerge/automerge-repo-network-websocket", "@automerge/automerge-repo-storage-indexeddb", "@automerge/automerge-repo-storage-nodefs", "@elysiajs/eden", "elysia", "tweetnacl", "ws"], "bin": { "polly": "dist/cli/polly.js" } }, "sha512-G9X9RWdeqsKOGdTYzei8plzLGaqGUTLI5cYJd/LPe9iwA3OB7Ud5KPqO211HJ7KYc9qWqvMu8lf4KG5tmFeQFw=="],
 
     "@fairfox/shared": ["@fairfox/shared@workspace:packages/shared"],
 
     "@fairfox/struggle": ["@fairfox/struggle@workspace:packages/struggle"],
+
+    "@fairfox/the-struggle": ["@fairfox/the-struggle@workspace:packages/the-struggle"],
 
     "@fairfox/todo": ["@fairfox/todo@workspace:packages/todo"],
 
