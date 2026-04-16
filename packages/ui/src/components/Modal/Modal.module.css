@@ -1,0 +1,65 @@
+/* Modal primitive — see Modal.tsx.
+ *
+ * Native <dialog> with ::backdrop styling. Internal layout handled
+ * by Layout component. No flex or grid here.
+ */
+
+.modal {
+  border: none;
+  border-radius: var(--radius-lg);
+  padding: 0;
+  background-color: var(--surface-primary);
+  color: var(--txt-primary);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-modal);
+  box-sizing: border-box;
+  max-height: 85vh;
+  overflow: hidden;
+}
+
+.modal::backdrop {
+  background: var(--backdrop);
+}
+
+.small {
+  max-width: 400px;
+  width: 90vw;
+}
+
+.medium {
+  max-width: 600px;
+  width: 90vw;
+}
+
+.large {
+  max-width: 900px;
+  width: 90vw;
+}
+
+.inner {
+  padding: var(--space-xl);
+  overflow-y: auto;
+  max-height: 85vh;
+  box-sizing: border-box;
+}
+
+.header {
+  padding-bottom: var(--space-sm);
+  border-bottom: var(--border-width-default) solid var(--border-light);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--txt-primary);
+}
+
+.body {
+  overflow-y: auto;
+}
+
+.footer {
+  padding-top: var(--space-sm);
+  border-top: var(--border-width-default) solid var(--border-light);
+}

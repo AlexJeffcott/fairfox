@@ -9,6 +9,8 @@
 // Exports grow as each phase of T291 lands. Phase A: utils. Phase B: event
 // delegation. Phase C: Button. Phase D: Input.
 
+export type { BadgeProps, BadgeVariant } from './components/Badge/index.ts';
+export { Badge } from './components/Badge/index.ts';
 export type {
   ButtonColor,
   ButtonProps,
@@ -16,10 +18,28 @@ export type {
   ButtonTier,
 } from './components/Button/index.ts';
 export { Button } from './components/Button/index.ts';
+export type { CheckboxProps } from './components/Checkbox/index.ts';
+export { Checkbox } from './components/Checkbox/index.ts';
+export type { CollapsibleProps } from './components/Collapsible/index.ts';
+export { Collapsible } from './components/Collapsible/index.ts';
+export type { DropdownProps } from './components/Dropdown/index.ts';
+export { Dropdown } from './components/Dropdown/index.ts';
 export type { InputProps, InputSaveOn, InputVariant } from './components/Input/index.ts';
 export { Input } from './components/Input/index.ts';
 export type { LayoutAlign, LayoutJustify, LayoutProps } from './components/Layout/index.ts';
 export { Layout } from './components/Layout/index.ts';
+export type { ModalProps, ModalSize } from './components/Modal/index.ts';
+export { Modal } from './components/Modal/index.ts';
+export type { SelectOption, SelectProps } from './components/Select/index.ts';
+export { Select } from './components/Select/index.ts';
+export type { SkeletonProps, SkeletonVariant } from './components/Skeleton/index.ts';
+export { Skeleton } from './components/Skeleton/index.ts';
+export type { Tab, TabsProps } from './components/Tabs/index.ts';
+export { Tabs } from './components/Tabs/index.ts';
+export type { ToastProps, ToastVariant } from './components/Toast/index.ts';
+export { Toast } from './components/Toast/index.ts';
+export type { ToggleProps } from './components/Toggle/index.ts';
+export { Toggle } from './components/Toggle/index.ts';
 export type { DispatchFn } from './context.ts';
 export { DispatchContext } from './context.ts';
 export type { ActionDispatch } from './event-delegation.ts';

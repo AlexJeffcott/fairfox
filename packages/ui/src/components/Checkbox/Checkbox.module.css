@@ -1,0 +1,31 @@
+/* Checkbox primitive — see Checkbox.tsx.
+ *
+ * No flex or grid; the label and input sit in natural inline flow.
+ * Accent color comes from tokens.
+ */
+
+.checkbox {
+  display: inline-block;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--font-base);
+  color: var(--txt-primary);
+  user-select: none;
+}
+
+.disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+.input {
+  accent-color: var(--color-primary);
+  margin: 0;
+  vertical-align: middle;
+  cursor: inherit;
+}
+
+.label {
+  margin-left: var(--space-sm);
+  vertical-align: middle;
+}

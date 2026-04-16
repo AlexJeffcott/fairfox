@@ -5,32 +5,34 @@
  * element share identical box-model properties so switching between
  * them produces no layout shift — same font, same padding, same
  * line-height, same border width (the view border is transparent).
+ *
+ * All colors, spacing, and sizing reference tokens from tokens.css.
  */
 
 .input {
   display: block;
   width: 100%;
   box-sizing: border-box;
-  padding: 0.5em 0.75em;
-  border: 1px solid transparent;
-  border-radius: 0.25rem;
+  padding: var(--space-sm) var(--space-md);
+  border: var(--border-width-default) solid transparent;
+  border-radius: var(--radius-sm);
   font-family: inherit;
-  font-size: 1rem;
+  font-size: var(--font-base);
   line-height: 1.5;
-  color: #111827;
+  color: var(--txt-primary);
   background-color: transparent;
   margin: 0;
-  min-height: calc(1.5em + 1em + 2px);
+  min-height: calc(1.5em + 2 * var(--space-sm) + 2 * var(--border-width-default));
 }
 
 .single {
-  min-height: calc(1.5em + 1em + 2px);
+  min-height: calc(1.5em + 2 * var(--space-sm) + 2 * var(--border-width-default));
 }
 
 .multi {
   field-sizing: content;
   resize: vertical;
-  min-height: calc(3em + 1em + 2px);
+  min-height: calc(3em + 2 * var(--space-sm) + 2 * var(--border-width-default));
 }
 
 .view {
@@ -40,8 +42,8 @@
 }
 
 .view:hover {
-  background-color: #f9fafb;
-  border-color: #e5e7eb;
+  background-color: var(--surface-hover);
+  border-color: var(--border-light);
 }
 
 .view > * {
@@ -49,18 +51,18 @@
 }
 
 .edit {
-  background-color: #fff;
-  border-color: #d1d5db;
+  background-color: var(--bg-primary);
+  border-color: var(--border-default);
   outline: none;
 }
 
 .edit:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgb(37 99 235 / 0.15);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .disabled {
-  opacity: 0.5;
+  opacity: var(--opacity-disabled);
   cursor: not-allowed;
 }
 
@@ -69,6 +71,6 @@
 }
 
 .placeholder {
-  color: #9ca3af;
+  color: var(--txt-placeholder);
   font-style: italic;
 }

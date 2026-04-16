@@ -3,16 +3,18 @@
  * This module contains no flex or grid properties. Any internal row layout
  * (icon + label, for example) is done via a nested <Layout> inside the button.
  * The rule is enforced by scripts/check-layout-ban.ts.
+ *
+ * All colors, spacing, and sizing reference tokens from tokens.css.
  */
 
 .btn {
   display: inline-block;
-  padding: 0.5em 1em;
-  border: 1px solid transparent;
-  border-radius: 0.25rem;
+  padding: var(--space-sm) var(--space-lg);
+  border: var(--border-width-default) solid transparent;
+  border-radius: var(--radius-sm);
   font-family: inherit;
-  font-size: 1rem;
-  font-weight: 500;
+  font-size: var(--font-base);
+  font-weight: var(--weight-medium);
   line-height: 1.2;
   text-align: center;
   text-decoration: none;
@@ -20,69 +22,73 @@
   user-select: none;
   box-sizing: border-box;
   transition:
-    background-color 150ms,
-    border-color 150ms,
-    color 150ms;
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .btn:disabled,
 .btn[aria-disabled="true"] {
-  opacity: 0.5;
+  opacity: var(--opacity-disabled);
   cursor: not-allowed;
 }
 
 .btn:focus-visible {
-  outline: 2px solid currentColor;
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
 
 /* Tiers — hierarchy and importance. */
 .tierPrimary {
-  background-color: #2563eb;
-  color: #fff;
-  border-color: #2563eb;
+  background-color: var(--color-primary);
+  color: var(--color-primary-text);
+  border-color: var(--color-primary);
 }
 
 .tierPrimary:hover:not(:disabled) {
-  background-color: #1d4ed8;
-  border-color: #1d4ed8;
+  background-color: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
 }
 
 .tierSecondary {
-  background-color: #f3f4f6;
-  color: #111827;
-  border-color: #d1d5db;
+  background-color: var(--surface-secondary);
+  color: var(--txt-primary);
+  border-color: var(--border-default);
 }
 
 .tierSecondary:hover:not(:disabled) {
-  background-color: #e5e7eb;
+  background-color: var(--surface-tertiary);
 }
 
 .tierTertiary {
   background-color: transparent;
-  color: #111827;
+  color: var(--txt-primary);
   border-color: transparent;
 }
 
 .tierTertiary:hover:not(:disabled) {
-  background-color: #f3f4f6;
+  background-color: var(--surface-secondary);
 }
 
 /* Semantic colours — applied on top of the tier. */
 .colorInfo {
-  --btn-accent: #2563eb;
+  --btn-accent: var(--color-primary);
+  --btn-accent-text: var(--color-primary-text);
 }
 
 .colorSuccess {
-  --btn-accent: #16a34a;
+  --btn-accent: var(--color-success);
+  --btn-accent-text: var(--color-success-text);
 }
 
 .colorWarning {
-  --btn-accent: #ca8a04;
+  --btn-accent: var(--color-warning);
+  --btn-accent-text: var(--color-warning-text);
 }
 
 .colorError {
-  --btn-accent: #dc2626;
+  --btn-accent: var(--color-error);
+  --btn-accent-text: var(--color-error-text);
 }
 
 .tierPrimary.colorInfo,
@@ -91,7 +97,7 @@
 .tierPrimary.colorError {
   background-color: var(--btn-accent);
   border-color: var(--btn-accent);
-  color: #fff;
+  color: var(--btn-accent-text);
 }
 
 .tierSecondary.colorInfo,
@@ -111,21 +117,21 @@
 
 /* Sizes. */
 .btnSmall {
-  padding: 0.25em 0.75em;
-  font-size: 0.875rem;
+  padding: var(--space-xs) var(--space-md);
+  font-size: var(--font-sm);
 }
 
 .btnLarge {
-  padding: 0.75em 1.5em;
-  font-size: 1.125rem;
+  padding: var(--space-md) var(--space-2xl);
+  font-size: var(--font-lg);
 }
 
 /* Modifiers. */
 .btnCircle {
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   padding: 0;
   aspect-ratio: 1;
-  width: 2.5em;
+  width: var(--control-height-md);
 }
 
 .btnFullWidth {
