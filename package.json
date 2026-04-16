@@ -23,15 +23,29 @@
     "elysia": "^1.4.28",
     "@elysiajs/static": "^1.4.7",
     "@fairfox/polly": "0.23.0",
+    "@automerge/automerge-repo": "^2.5.0",
+    "@automerge/automerge-repo-storage-indexeddb": "^2.5.0",
+    "@automerge/automerge-repo-storage-nodefs": "^2.5.0",
+    "@automerge/automerge-repo-network-websocket": "^2.5.0",
+    "tweetnacl": "^1.0.3",
+    "ws": "^8.18.0",
+    "qrcode": "^1.5.4",
     "@biomejs/biome": "2.4.8"
   },
   "devDependencies": {
+    "@automerge/automerge-repo": "catalog:",
+    "@automerge/automerge-repo-network-websocket": "catalog:",
+    "@automerge/automerge-repo-storage-indexeddb": "catalog:",
+    "@automerge/automerge-repo-storage-nodefs": "catalog:",
     "@biomejs/biome": "catalog:",
     "@fairfox/polly": "catalog:",
     "@happy-dom/global-registrator": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "typescript": "catalog:"
+    "qrcode": "catalog:",
+    "tweetnacl": "catalog:",
+    "typescript": "catalog:",
+    "ws": "catalog:"
   },
   "scripts": {
     "dev": "bun --hot packages/web/src/server.ts",
