@@ -1,7 +1,10 @@
 // Action registry for the Todo sub-app.
 
+import { migrateFromLegacy } from '#src/client/migrate.ts';
 import type { Project, QuickCapture, Task, TaskPriority } from '#src/client/state.ts';
 import { capturesState, projectsState, tasksState } from '#src/client/state.ts';
+
+let migrationInFlight = false;
 
 interface HandlerContext {
   data: Record<string, string>;
@@ -168,5 +171,27 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
   // --- Navigation ---
   'todo.tab': () => {
     // Tab changes handled by local signal in App — no CRDT mutation.
+  },
+
+  // --- One-shot migration from the legacy todo REST API. Writes
+  // directly into $meshState so the migrated records propagate to
+  // every paired device. Idempotent — running it twice overwrites.
+  'migrate.from-legacy': () => {
+    if (migrationInFlight) {
+      return;
+    }
+    migrationInFlight = true;
+    (async () => {
+      try {
+        const result = await migrateFromLegacy();
+        console.log(
+          `[migrate] ok — ${result.projects} projects, ${result.tasks} tasks, ${result.captures} captures`
+        );
+      } catch (err) {
+        console.error('[migrate] failed:', err);
+      } finally {
+        migrationInFlight = false;
+      }
+    })();
   },
 };

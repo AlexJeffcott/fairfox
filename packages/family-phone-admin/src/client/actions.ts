@@ -6,6 +6,9 @@
 // human and device metadata once pairing completes; the cryptographic
 // trust flows through the keyring, not this CRDT.
 
+import { loadOrCreateKeyring } from '@fairfox/shared/keyring';
+import { completePairing, initiatePairing } from '@fairfox/shared/pairing';
+import { issuedToken, pairingError, pairingMode, scanInput } from '#src/client/pairing-state.ts';
 import type { Device, DeviceKind, Human } from '#src/client/state.ts';
 import { directoryState } from '#src/client/state.ts';
 
@@ -103,5 +106,55 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
 
   'directory.tab': () => {
     // Tab changes handled by local signal in App — no CRDT mutation.
+  },
+
+  // --- Pairing flow ---
+
+  'pairing.issue': () => {
+    pairingMode.value = 'issuing';
+    pairingError.value = null;
+    (async () => {
+      try {
+        const keyring = await loadOrCreateKeyring();
+        const peerId = Array.from(keyring.identity.publicKey.slice(0, 8))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+        issuedToken.value = initiatePairing(keyring, peerId);
+      } catch (err) {
+        pairingError.value = err instanceof Error ? err.message : String(err);
+        pairingMode.value = 'idle';
+      }
+    })();
+  },
+
+  'pairing.scan': () => {
+    pairingMode.value = 'scanning';
+    scanInput.value = '';
+    pairingError.value = null;
+  },
+
+  'pairing.submit-scan': (ctx) => {
+    const encoded = ctx.data.value;
+    if (!encoded) {
+      return;
+    }
+    (async () => {
+      try {
+        const keyring = await loadOrCreateKeyring();
+        await completePairing(keyring, encoded);
+        pairingMode.value = 'idle';
+        issuedToken.value = null;
+        scanInput.value = '';
+      } catch (err) {
+        pairingError.value = err instanceof Error ? err.message : String(err);
+      }
+    })();
+  },
+
+  'pairing.cancel': () => {
+    pairingMode.value = 'idle';
+    issuedToken.value = null;
+    scanInput.value = '';
+    pairingError.value = null;
   },
 };
