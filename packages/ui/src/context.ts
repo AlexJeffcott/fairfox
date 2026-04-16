@@ -19,7 +19,7 @@
 // internal state machine.
 
 import { createContext } from 'preact';
-import type { ActionDispatch } from './event-delegation.ts';
+import type { ActionDispatch } from '#src/event-delegation.ts';
 
 export type DispatchFn = (dispatch: ActionDispatch) => void;
 

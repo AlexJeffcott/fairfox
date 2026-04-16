@@ -16,8 +16,8 @@
 
 import { clsx } from 'clsx';
 import type { ComponentChildren, VNode } from 'preact';
-import { collectHTMLAttrs, type HTMLPassthroughProps } from '../../utils/html-attrs.ts';
-import { Layout } from '../Layout/Layout.tsx';
+import { Layout } from '#src/components/Layout/Layout.tsx';
+import { collectHTMLAttrs, type HTMLPassthroughProps } from '#src/utils/html-attrs.ts';
 import classes from './Button.module.css';
 
 export type ButtonTier = 'primary' | 'secondary' | 'tertiary';

@@ -79,7 +79,9 @@ describe('Button', () => {
   test('sets the disabled attribute on the button form', () => {
     const el = renderInto(<Button label="Save" disabled={true} />);
     expect(el.tagName).toBe('BUTTON');
-    expect((el as HTMLButtonElement).disabled).toBe(true);
+    if (el instanceof HTMLButtonElement) {
+      expect(el.disabled).toBe(true);
+    }
   });
 
   test('forwards data-action to the rendered element', () => {

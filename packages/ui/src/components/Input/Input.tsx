@@ -38,8 +38,8 @@ import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import type { JSX } from 'preact';
 import { useContext, useRef } from 'preact/hooks';
-import { DispatchContext } from '../../context.ts';
-import { collectHTMLAttrs, type HTMLPassthroughProps } from '../../utils/html-attrs.ts';
+import { DispatchContext } from '#src/context.ts';
+import { collectHTMLAttrs, type HTMLPassthroughProps } from '#src/utils/html-attrs.ts';
 import classes from './Input.module.css';
 
 export type InputVariant = 'single' | 'multi';
@@ -67,8 +67,11 @@ function readValue(value: string | Signal<string>): string {
 }
 
 function renderMarkdown(value: string): string {
-  const html = marked.parse(value, { async: false }) as string;
-  return DOMPurify.sanitize(html);
+  const result = marked.parse(value, { async: false });
+  if (typeof result !== 'string') {
+    return '';
+  }
+  return DOMPurify.sanitize(result);
 }
 
 export function Input(props: InputProps) {
@@ -88,7 +91,8 @@ export function Input(props: InputProps) {
   const dispatch = useContext(DispatchContext);
   const isEditing = useSignal(false);
   const draftValue = useSignal(readValue(value));
-  const editRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useSignalEffect(() => {
     if (!isEditing.value) {
@@ -103,7 +107,8 @@ export function Input(props: InputProps) {
     draftValue.value = readValue(value);
     isEditing.value = true;
     queueMicrotask(() => {
-      editRef.current?.focus();
+      const el = variant === 'multi' ? textareaRef.current : inputRef.current;
+      el?.focus();
     });
   };
 
@@ -113,7 +118,7 @@ export function Input(props: InputProps) {
   };
 
   const commitEdit = (): void => {
-    const el = editRef.current;
+    const el = variant === 'multi' ? textareaRef.current : inputRef.current;
     if (!el || !dispatch) {
       isEditing.value = false;
       return;
@@ -189,7 +194,7 @@ export function Input(props: InputProps) {
         <textarea
           {...htmlAttrs}
           id={id}
-          ref={editRef as preact.RefObject<HTMLTextAreaElement>}
+          ref={textareaRef}
           className={editClass}
           value={draftValue.value}
           placeholder={placeholder}
@@ -205,7 +210,7 @@ export function Input(props: InputProps) {
       <input
         {...htmlAttrs}
         id={id}
-        ref={editRef as preact.RefObject<HTMLInputElement>}
+        ref={inputRef}
         type="text"
         className={editClass}
         value={draftValue.value}

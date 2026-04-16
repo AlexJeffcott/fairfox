@@ -19,7 +19,7 @@
 
 import { clsx } from 'clsx';
 import type { ComponentChildren } from 'preact';
-import { collectHTMLAttrs, type HTMLPassthroughProps } from '../../utils/html-attrs.ts';
+import { collectHTMLAttrs, type HTMLPassthroughProps } from '#src/utils/html-attrs.ts';
 import classes from './Layout.module.css';
 
 export type LayoutAlign = 'start' | 'center' | 'end' | 'stretch';
