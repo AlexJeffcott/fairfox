@@ -102,6 +102,25 @@
         "typescript": "catalog:",
       },
     },
+    "packages/todo-v2": {
+      "name": "@fairfox/todo-v2",
+      "version": "0.0.0",
+      "dependencies": {
+        "@automerge/automerge-repo": "catalog:",
+        "@fairfox/polly": "catalog:",
+        "@fairfox/shared": "workspace:*",
+        "@fairfox/ui": "workspace:*",
+        "@preact/signals": "catalog:",
+        "elysia": "catalog:",
+        "preact": "catalog:",
+        "tweetnacl": "catalog:",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/ui": {
       "name": "@fairfox/ui",
       "version": "0.0.0",
@@ -214,6 +233,8 @@
     "@fairfox/struggle": ["@fairfox/struggle@workspace:packages/struggle"],
 
     "@fairfox/todo": ["@fairfox/todo@workspace:packages/todo"],
+
+    "@fairfox/todo-v2": ["@fairfox/todo-v2@workspace:packages/todo-v2"],
 
     "@fairfox/ui": ["@fairfox/ui@workspace:packages/ui"],
 
