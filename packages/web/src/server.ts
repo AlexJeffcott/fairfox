@@ -16,10 +16,24 @@ import { loadEnv } from '@fairfox/shared/env';
 import { SIGNALING_PATH } from '@fairfox/shared/signaling';
 import type { SubApp, WsData, WsSubApp } from '@fairfox/shared/subapp';
 import type { ServerWebSocket, WebSocketHandler } from 'bun';
+import { buildAllSubApps } from './bundle-subapp.ts';
 import { parseWsRole } from './parseWsRole.ts';
 import { strip } from './strip.ts';
 
 const env = loadEnv();
+
+// --- Mesh sub-app bundles built at startup ---
+
+const MESH_SUBAPPS = [
+  'agenda',
+  'todo-v2',
+  'the-struggle',
+  'library',
+  'speakwell',
+  'family-phone-admin',
+] as const;
+
+const bundles = await buildAllSubApps(MESH_SUBAPPS);
 
 // --- Legacy sub-app dispatch (remove in Phase 7) ---
 
@@ -176,6 +190,37 @@ const server = Bun.serve<WsData>({
         status: upstream.status,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+
+    // Mesh sub-app dispatch — serves the bundled client for any sub-app
+    // registered in MESH_SUBAPPS. The HTML shell is served for the root
+    // path of each sub-app; built artefacts (JS, CSS, source maps) are
+    // served under the sub-app prefix from the in-memory bundle manifest.
+    for (const name of MESH_SUBAPPS) {
+      const prefix = `/${name}`;
+      if (p === prefix || p === `${prefix}/`) {
+        const bundle = bundles.get(name);
+        if (!bundle) {
+          return new Response(`${name} bundle not available`, { status: 503 });
+        }
+        return new Response(bundle.html, {
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        });
+      }
+      if (p.startsWith(`${prefix}/`)) {
+        const bundle = bundles.get(name);
+        if (!bundle) {
+          return new Response('Not Found', { status: 404 });
+        }
+        const artefactPath = p.slice(prefix.length);
+        const artefact = bundle.artefacts.get(artefactPath);
+        if (!artefact) {
+          return new Response('Not Found', { status: 404 });
+        }
+        return new Response(artefact.body, {
+          headers: { 'Content-Type': artefact.contentType },
+        });
+      }
     }
 
     // Legacy sub-app dispatch (remove in Phase 7)
