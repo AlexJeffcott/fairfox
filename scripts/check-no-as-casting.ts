@@ -11,7 +11,10 @@
 // Everything else is a violation. Use type guards, validation, or fix
 // the types at the source instead. See ADR 0001 for the rationale.
 //
-// Adapted from Lingua's scripts/check-no-as-casting.ts.
+// Note: @fairfox/polly ships a quality CLI (polly check) that does the
+// same scan, but without per-package exclusions. Once the legacy
+// packages (struggle, todo, web, shared) are retired or brought into
+// conformance, this script can be replaced with the polly CLI.
 
 import { readdir } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
