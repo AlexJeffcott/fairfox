@@ -25,7 +25,7 @@ import { join, relative, resolve } from 'node:path';
 const scriptDir = new URL('.', import.meta.url).pathname;
 const repoRoot = resolve(scriptDir, '..');
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'tests']);
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'tests', 'scripts']);
 const EXCLUDED_PACKAGES = new Set(['struggle', 'todo', 'web', 'shared']);
 
 const RELATIVE_IMPORT = /(?:from\s+['"]|import\s+['"])(\.\.\/.+?|\.\/[^.].+?)['"]/;

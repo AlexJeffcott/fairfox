@@ -150,6 +150,34 @@ const server = Bun.serve<WsData>({
       return new Response('Upgrade failed', { status: 400 });
     }
 
+    // LLM proxy — forwards Claude API calls for Speakwell and the
+    // family-phone agent. The server holds the ANTHROPIC_API_KEY so
+    // client devices never see it. Authentication is by signed
+    // request from a paired device (wired up when the agent lands).
+    if (p.startsWith('/api/llm/')) {
+      if (req.method !== 'POST') {
+        return new Response('Method Not Allowed', { status: 405 });
+      }
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        return Response.json({ error: 'LLM not configured' }, { status: 503 });
+      }
+      const body = await req.text();
+      const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body,
+      });
+      return new Response(upstream.body, {
+        status: upstream.status,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     // Legacy sub-app dispatch (remove in Phase 7)
     if (p === '/todo/ws') {
       const role = parseWsRole(new URL(req.url));

@@ -17,6 +17,10 @@ function isTaskPriority(s: string): s is TaskPriority {
   return s === 'high' || s === 'med' || s === 'low';
 }
 
+function isProjectStatus(s: string): s is Project['status'] {
+  return s === 'active' || s === 'paused' || s === 'done' || s === 'archived';
+}
+
 export const registry: Record<string, (ctx: HandlerContext) => void> = {
   // --- Projects ---
   'project.create': (ctx) => {
@@ -45,14 +49,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
   'project.update-status': (ctx) => {
     const pid = ctx.data.pid;
     const status = ctx.data.status;
-    if (!pid || !status) {
+    if (!pid || !status || !isProjectStatus(status)) {
       return;
     }
     projectsState.value = {
       ...projectsState.value,
-      projects: projectsState.value.projects.map((p) =>
-        p.pid === pid ? { ...p, status: status as Project['status'] } : p
-      ),
+      projects: projectsState.value.projects.map((p) => (p.pid === pid ? { ...p, status } : p)),
     };
   },
 
