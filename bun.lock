@@ -102,7 +102,9 @@
       "dependencies": {
         "@automerge/automerge-repo": "catalog:",
         "@fairfox/polly": "catalog:",
+        "@preact/signals": "catalog:",
         "elysia": "catalog:",
+        "preact": "catalog:",
         "tweetnacl": "catalog:",
       },
       "devDependencies": {

@@ -4,6 +4,7 @@
 // History (review past sessions). Full voice I/O comes in a later
 // iteration; the current UI is a text-first stepping stone.
 
+import { PairingBanner } from '@fairfox/shared/pairing-banner';
 import { Badge, Button, Input, Layout, Tabs } from '@fairfox/ui';
 import { useSignal } from '@preact/signals';
 import type { Format, Language } from '#src/client/state.ts';
@@ -121,7 +122,8 @@ export function App() {
   const activeTab = useSignal<ViewId>('start');
 
   return (
-    <Layout rows="auto 1fr" gap="var(--space-lg)" padding="var(--space-lg)">
+    <Layout rows="auto auto 1fr" gap="var(--space-lg)" padding="var(--space-lg)">
+      <PairingBanner />
       <Layout rows="auto" gap="var(--space-md)">
         <h1>Speakwell</h1>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="speakwell.tab" />

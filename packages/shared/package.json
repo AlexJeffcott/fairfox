@@ -9,6 +9,7 @@
     "./openDb": "./src/openDb.ts",
     "./keyring": "./src/keyring.ts",
     "./pairing": "./src/pairing.ts",
+    "./pairing-banner": "./src/pairing-banner.tsx",
     "./mesh": "./src/mesh.ts",
     "./signaling": "./src/signaling.ts"
   },
@@ -21,7 +22,9 @@
   "dependencies": {
     "@automerge/automerge-repo": "catalog:",
     "@fairfox/polly": "catalog:",
+    "@preact/signals": "catalog:",
     "elysia": "catalog:",
+    "preact": "catalog:",
     "tweetnacl": "catalog:"
   },
   "devDependencies": {

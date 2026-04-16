@@ -2,6 +2,7 @@
 // Todo sub-app — project tracker with tasks and quick capture.
 // Three views: Projects, Tasks, Capture. All state from $meshState.
 
+import { PairingBanner } from '@fairfox/shared/pairing-banner';
 import { Badge, Button, Checkbox, Input, Layout, Tabs } from '@fairfox/ui';
 import { useSignal } from '@preact/signals';
 import { capturesState, projectsState, tasksState } from '#src/client/state.ts';
@@ -237,7 +238,8 @@ export function App() {
   const activeTab = useSignal<ViewId>('tasks');
 
   return (
-    <Layout rows="auto 1fr" gap="var(--space-lg)" padding="var(--space-lg)">
+    <Layout rows="auto auto 1fr" gap="var(--space-lg)" padding="var(--space-lg)">
+      <PairingBanner />
       <Layout rows="auto" gap="var(--space-md)">
         <h1>Todo</h1>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="todo.tab" />

@@ -4,6 +4,7 @@
 // flow. The pairing token QR display itself is issued by
 // @fairfox/shared/pairing and wired up in a later iteration.
 
+import { PairingBanner } from '@fairfox/shared/pairing-banner';
 import { Badge, Button, Input, Layout, Tabs } from '@fairfox/ui';
 import { useSignal } from '@preact/signals';
 import { issuedToken, pairingError, pairingMode, scanInput } from '#src/client/pairing-state.ts';
@@ -168,7 +169,8 @@ export function App() {
   const activeTab = useSignal<ViewId>('humans');
 
   return (
-    <Layout rows="auto auto 1fr" gap="var(--space-lg)" padding="var(--space-lg)">
+    <Layout rows="auto auto auto 1fr" gap="var(--space-lg)" padding="var(--space-lg)">
+      <PairingBanner />
       <Layout rows="auto" gap="var(--space-md)">
         <h1>Family Phone — Admin</h1>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="directory.tab" />
