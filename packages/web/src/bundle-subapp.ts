@@ -19,18 +19,18 @@ export interface SubAppBundle {
 
 const REPO_ROOT = resolve(import.meta.dir, '..', '..', '..');
 
-function htmlShell(name: string, entryPath: string): string {
+function htmlShell(name: string, entryJs: string, entryCss: string | null): string {
+  const cssLink = entryCss ? `    <link rel="stylesheet" href="/${name}${entryCss}" />\n` : '';
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>fairfox · ${name}</title>
-    <link rel="stylesheet" href="/${name}${entryPath.replace(/\.js$/, '.css')}" />
-  </head>
+${cssLink}  </head>
   <body>
     <div id="app"></div>
-    <script type="module" src="/${name}${entryPath}"></script>
+    <script type="module" src="/${name}${entryJs}"></script>
   </body>
 </html>
 `;
@@ -54,17 +54,23 @@ export async function buildSubApp(name: string): Promise<SubAppBundle> {
   }
 
   const artefacts = new Map<string, { body: Blob; contentType: string }>();
-  let entryPath = '';
+  let entryJs = '';
+  let entryCss: string | null = null;
   for (const output of result.outputs) {
     const path = output.path.startsWith('./') ? output.path.slice(1) : `/${output.path}`;
     const publicPath = path.startsWith('/') ? path : `/${path}`;
     artefacts.set(publicPath, { body: output, contentType: output.type });
     if (output.kind === 'entry-point') {
-      entryPath = publicPath;
+      entryJs = publicPath;
+    }
+    // Bun.build emits CSS collected from CSS module imports as an asset
+    // with a .css extension. Pick it up so the HTML shell can <link> it.
+    if (output.kind === 'asset' && publicPath.endsWith('.css')) {
+      entryCss = publicPath;
     }
   }
 
-  const html = htmlShell(name, entryPath);
+  const html = htmlShell(name, entryJs, entryCss);
   return { name, html, artefacts };
 }
 
