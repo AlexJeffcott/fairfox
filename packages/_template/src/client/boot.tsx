@@ -27,10 +27,10 @@ async function boot(): Promise<void> {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const signalingUrl = `${proto}//${window.location.host}/polly/signaling`;
 
-  // The mesh connection must stay alive for the duration of the app.
-  // Storing on globalThis prevents GC and makes it accessible for
-  // disconnect on page unload if needed.
-  (globalThis as Record<string, unknown>).__fairfoxMesh = createMeshConnection({
+  // The mesh connection stays alive via its internal signaling client
+  // and WebRTC adapter state. The Repo it configures is global via
+  // configureMeshState, so $meshState calls in state.ts resolve against it.
+  createMeshConnection({
     keyring,
     peerId,
     signalingUrl,

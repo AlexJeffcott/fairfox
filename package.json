@@ -50,7 +50,7 @@
   "scripts": {
     "dev": "bun --hot packages/web/src/server.ts",
     "start": "bun packages/web/src/server.ts",
-    "check": "biome check --write . && bun scripts/check-no-as-casting.ts && bun scripts/check-no-inline-handlers.ts && bun scripts/check-shared-components.ts && bun scripts/check-no-relative-imports.ts",
+    "check": "biome check --write . && bun scripts/check-no-as-casting.ts && bun scripts/check-no-inline-handlers.ts && bun scripts/check-shared-components.ts && bun scripts/check-no-relative-imports.ts && bun scripts/check-mesh-state.ts && bun scripts/check-no-server-state.ts",
     "typecheck": "bun --filter='@fairfox/*' run typecheck",
     "test": "bun test",
     "backup": "mkdir -p backups && curl -fsSL ${FAIRFOX_URL:-https://fairfox-production-8273.up.railway.app}/todo/api/backup > backups/todo-$(date +%F).json && curl -fsSL ${FAIRFOX_URL:-https://fairfox-production-8273.up.railway.app}/struggle/api/backup/full > backups/struggle-$(date +%F).json",
