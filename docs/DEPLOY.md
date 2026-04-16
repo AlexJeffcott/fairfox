@@ -99,11 +99,11 @@ The Railway service stays the same — only the monorepo shrinks.
 
 ## Follow-up tasks before the first real deploy is useful
 
-These are the concrete pieces of work that stand between "code merged" and "a family member can use agenda on their phone":
+Status at 2026-04-16:
 
-1. **Bundle and serve mesh sub-apps from the main server.** Each sub-app's `boot.tsx` needs to be bundled via `Bun.build()` at startup (same pattern as the legacy `packages/todo/src/index.ts`), and the main server needs routes that serve the HTML shell + bundled JS + CSS under `/<name>/`.
-2. **Wire the pairing modal in family-phone-admin.** The admin UI currently lists humans and devices but doesn't trigger `initiatePairing()` or `completePairing()`. Add a Modal with QR display and scan input.
-3. **Convert the migration script to a browser page.** Move `packages/todo-v2/scripts/migrate-from-legacy.ts` into a route or page in the todo-v2 client that runs with the paired device's mesh connection active.
-4. **Wire the pairing modal into every sub-app's boot flow.** New devices need a way to initiate pairing before they can sync; right now they silently create a lonely keyring.
+1. **Bundle and serve mesh sub-apps from the main server** ✓ — `packages/web/src/bundle-subapp.ts` runs `Bun.build()` at startup for each sub-app and the server serves the HTML shell + hashed JS + CSS under `/<name>/`. All six mesh sub-apps are reachable via their subpath after deploy.
+2. **Wire the pairing modal in family-phone-admin** ✓ — the admin UI now has Issue-token and Scan-token flows backed by `@fairfox/shared/pairing`. Tokens are displayed as base64 for out-of-band transfer.
+3. **Convert the migration script to a browser page** ✓ — `packages/todo-v2/src/client/migrate.ts` plus the "Migrate from legacy" button in the Capture view. Runs inside a paired session so writes reach the mesh.
+4. **Wire pairing into every sub-app's boot flow** — new devices currently create a lonely keyring on first load and have no path to pairing unless they happen to open family-phone-admin first. A consistent "you're unpaired, scan a token to join" banner across every sub-app would fix that. Not blocking the first deploy.
 
-None of these require architectural changes — they are UI and wiring work that fits cleanly on top of the foundation this branch lays down.
+The first three are done and committed on `fairfox-P32-T292`. The fourth is nice-to-have for polish but the deploy is functional without it — the family-phone-admin UI is accessible at `/family-phone-admin` from any new device and is the natural landing spot for pairing.
