@@ -1,0 +1,74 @@
+/* Input primitive — see Input.tsx for the component and ADR 0005 for the rationale.
+ *
+ * No flex or grid properties are allowed here; that rule is enforced by
+ * scripts/check-layout-ban.ts. The rendered view element and the edit
+ * element share identical box-model properties so switching between
+ * them produces no layout shift — same font, same padding, same
+ * line-height, same border width (the view border is transparent).
+ */
+
+.input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5em 0.75em;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: #111827;
+  background-color: transparent;
+  margin: 0;
+  min-height: calc(1.5em + 1em + 2px);
+}
+
+.single {
+  min-height: calc(1.5em + 1em + 2px);
+}
+
+.multi {
+  field-sizing: content;
+  resize: vertical;
+  min-height: calc(3em + 1em + 2px);
+}
+
+.view {
+  cursor: text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.view:hover {
+  background-color: #f9fafb;
+  border-color: #e5e7eb;
+}
+
+.view > * {
+  margin: 0;
+}
+
+.edit {
+  background-color: #fff;
+  border-color: #d1d5db;
+  outline: none;
+}
+
+.edit:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 0.15);
+}
+
+.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.readonly {
+  cursor: default;
+}
+
+.placeholder {
+  color: #9ca3af;
+  font-style: italic;
+}

@@ -16,8 +16,12 @@ export type {
   ButtonTier,
 } from './components/Button/index.ts';
 export { Button } from './components/Button/index.ts';
+export type { InputProps, InputSaveOn, InputVariant } from './components/Input/index.ts';
+export { Input } from './components/Input/index.ts';
 export type { LayoutAlign, LayoutJustify, LayoutProps } from './components/Layout/index.ts';
 export { Layout } from './components/Layout/index.ts';
+export type { DispatchFn } from './context.ts';
+export { DispatchContext } from './context.ts';
 export type { ActionDispatch } from './event-delegation.ts';
 export {
   ACTION_EVENT_TYPES,
