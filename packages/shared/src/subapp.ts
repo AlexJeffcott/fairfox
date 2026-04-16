@@ -1,7 +1,7 @@
 import type { ServerWebSocket } from 'bun';
 
 export interface WsData {
-  readonly role: 'phone' | 'relay' | 'client';
+  readonly role: 'phone' | 'relay' | 'client' | 'signaling';
 }
 
 export interface SubApp {

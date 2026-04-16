@@ -1,0 +1,30 @@
+/* Layout primitive — the only place in @fairfox/ui where flex and grid
+ * properties are allowed. Every other component that needs to arrange
+ * children in a row, column, or grid wraps them in a <Layout>.
+ *
+ * Rule enforced by scripts/check-layout-ban.ts. See ADR 0005.
+ */
+
+.layout {
+  display: grid;
+  grid-template-rows: var(--l-rows, none);
+  grid-template-columns: var(--l-cols, none);
+  gap: var(--l-gap, 0);
+  padding: var(--l-padding, 0);
+  align-items: var(--l-align, stretch);
+  justify-items: var(--l-justify-items, stretch);
+  justify-content: var(--l-justify, start);
+  box-sizing: border-box;
+}
+
+.inline {
+  display: inline-grid;
+}
+
+.fullHeight {
+  height: 100%;
+}
+
+.fullWidth {
+  width: 100%;
+}

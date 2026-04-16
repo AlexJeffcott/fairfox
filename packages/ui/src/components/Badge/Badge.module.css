@@ -1,0 +1,39 @@
+/* Badge primitive — see Badge.tsx.
+ *
+ * Simple inline label with status-colour variants from tokens.
+ * No flex or grid.
+ */
+
+.badge {
+  display: inline-block;
+  height: var(--control-height-badge);
+  line-height: var(--control-height-badge);
+  padding: 0 var(--space-sm);
+  border-radius: var(--radius-full);
+  font-family: inherit;
+  font-size: var(--font-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  background-color: var(--surface-secondary);
+  color: var(--txt-secondary);
+}
+
+.info {
+  background-color: var(--status-info-bg);
+  color: var(--status-info-text);
+}
+
+.success {
+  background-color: var(--status-success-bg);
+  color: var(--status-success-text);
+}
+
+.warning {
+  background-color: var(--status-warning-bg);
+  color: var(--status-warning-text);
+}
+
+.error {
+  background-color: var(--status-error-bg);
+  color: var(--status-error-text);
+}

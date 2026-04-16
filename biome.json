@@ -132,7 +132,16 @@
   },
   "overrides": [
     {
-      "includes": ["**/*.test.ts", "**/tests/**/*.ts"],
+      "includes": ["**/*.module.css.d.ts"],
+      "linter": {
+        "enabled": false
+      },
+      "formatter": {
+        "enabled": false
+      }
+    },
+    {
+      "includes": ["**/*.test.ts", "**/*.test.tsx", "**/tests/**/*.ts", "**/tests/**/*.tsx"],
       "linter": {
         "rules": {
           "suspicious": {

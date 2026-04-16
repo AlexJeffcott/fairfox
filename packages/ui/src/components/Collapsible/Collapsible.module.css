@@ -1,0 +1,48 @@
+/* Collapsible primitive — see Collapsible.tsx.
+ *
+ * Native <details>/<summary> with a custom rotation arrow.
+ * No flex or grid. Colors from tokens.
+ */
+
+.collapsible {
+  border: var(--border-width-default) solid var(--border-light);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.summary {
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--font-base);
+  font-weight: var(--weight-medium);
+  color: var(--txt-primary);
+  background-color: var(--surface-secondary);
+  user-select: none;
+  list-style: none;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary::before {
+  content: "\25B6";
+  display: inline-block;
+  margin-right: var(--space-sm);
+  font-size: var(--font-xs);
+  transition: transform var(--transition-fast);
+}
+
+.collapsible[open] > .summary::before {
+  transform: rotate(90deg);
+}
+
+.summary:hover {
+  background-color: var(--surface-tertiary);
+}
+
+.content {
+  padding: var(--space-md);
+  color: var(--txt-primary);
+}

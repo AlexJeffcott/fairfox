@@ -1,0 +1,76 @@
+/* Input primitive — see Input.tsx for the component and ADR 0005 for the rationale.
+ *
+ * No flex or grid properties are allowed here; that rule is enforced by
+ * scripts/check-layout-ban.ts. The rendered view element and the edit
+ * element share identical box-model properties so switching between
+ * them produces no layout shift — same font, same padding, same
+ * line-height, same border width (the view border is transparent).
+ *
+ * All colors, spacing, and sizing reference tokens from tokens.css.
+ */
+
+.input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-sm) var(--space-md);
+  border: var(--border-width-default) solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: var(--font-base);
+  line-height: 1.5;
+  color: var(--txt-primary);
+  background-color: transparent;
+  margin: 0;
+  min-height: calc(1.5em + 2 * var(--space-sm) + 2 * var(--border-width-default));
+}
+
+.single {
+  min-height: calc(1.5em + 2 * var(--space-sm) + 2 * var(--border-width-default));
+}
+
+.multi {
+  field-sizing: content;
+  resize: vertical;
+  min-height: calc(3em + 2 * var(--space-sm) + 2 * var(--border-width-default));
+}
+
+.view {
+  cursor: text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.view:hover {
+  background-color: var(--surface-hover);
+  border-color: var(--border-light);
+}
+
+.view > * {
+  margin: 0;
+}
+
+.edit {
+  background-color: var(--bg-primary);
+  border-color: var(--border-default);
+  outline: none;
+}
+
+.edit:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+.readonly {
+  cursor: default;
+}
+
+.placeholder {
+  color: var(--txt-placeholder);
+  font-style: italic;
+}

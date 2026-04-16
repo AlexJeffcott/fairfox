@@ -6,7 +6,12 @@
   "exports": {
     "./subapp": "./src/subapp.ts",
     "./env": "./src/env.ts",
-    "./openDb": "./src/openDb.ts"
+    "./openDb": "./src/openDb.ts",
+    "./keyring": "./src/keyring.ts",
+    "./pairing": "./src/pairing.ts",
+    "./pairing-banner": "./src/pairing-banner.tsx",
+    "./mesh": "./src/mesh.ts",
+    "./signaling": "./src/signaling.ts"
   },
   "imports": {
     "#src/*": "./src/*"
@@ -14,7 +19,14 @@
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@automerge/automerge-repo": "catalog:",
+    "@fairfox/polly": "catalog:",
+    "@preact/signals": "catalog:",
+    "elysia": "catalog:",
+    "preact": "catalog:",
+    "tweetnacl": "catalog:"
+  },
   "devDependencies": {
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
