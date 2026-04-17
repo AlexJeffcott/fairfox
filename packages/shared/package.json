@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@automerge/automerge-repo": "catalog:",
+    "@automerge/automerge-repo-storage-indexeddb": "catalog:",
     "@fairfox/polly": "catalog:",
     "@fairfox/ui": "workspace:*",
     "@preact/signals": "catalog:",

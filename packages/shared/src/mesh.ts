@@ -6,6 +6,7 @@
 // (peerId + signalingUrl rather than the polly option tree) and so lifecycle
 // is exposed as a synchronous `disconnect` side-effect.
 
+import { IndexedDBStorageAdapter } from '@automerge/automerge-repo-storage-indexeddb';
 import type { MeshClient, MeshKeyring } from '@fairfox/polly/mesh';
 import { createMeshClient } from '@fairfox/polly/mesh';
 
@@ -27,6 +28,7 @@ export async function createMeshConnection(
   const client = await createMeshClient({
     signaling: { url: options.signalingUrl, peerId: options.peerId },
     keyring: options.keyring,
+    repoStorage: new IndexedDBStorageAdapter('fairfox-mesh'),
   });
   return {
     repo: client.repo,
