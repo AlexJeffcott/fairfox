@@ -33,7 +33,7 @@ A Bun monorepo that gathers small web projects into a single Railway service. Ea
 
 ## Scripts
 
-- `bun dev` — hot-reload the web server (requires `DATA_DIR`, `RAILWAY_ENVIRONMENT` in env)
+- `bun dev` — run the web server locally (sets `DATA_DIR=./data` inline; `bun --hot` currently breaks mesh-subapp bundling so dev runs without it)
 - `bun check` — biome format + lint
 - `bun typecheck` — tsc across all packages
 - `bun test` — run tests (once they exist)
