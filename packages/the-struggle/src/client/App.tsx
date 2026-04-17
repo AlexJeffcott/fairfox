@@ -4,6 +4,7 @@
 
 import { ActionInput, Button, Layout, Tabs } from '@fairfox/polly/ui';
 import { renderMarkdown } from '@fairfox/polly/ui/markdown';
+import { MeshControls } from '@fairfox/shared/mesh-controls';
 import { useSignal } from '@preact/signals';
 import type { Passage } from '#src/client/state.ts';
 import { progressState, storyState } from '#src/client/state.ts';
@@ -118,7 +119,10 @@ export function App() {
   return (
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout rows="auto" gap="var(--polly-space-md)">
-        <h1>The Struggle</h1>
+        <Layout columns="1fr auto" gap="var(--polly-space-sm)">
+          <h1 style={{ margin: 0 }}>The Struggle</h1>
+          <MeshControls />
+        </Layout>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="game.tab" />
       </Layout>
       <div>

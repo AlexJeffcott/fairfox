@@ -4,6 +4,7 @@
 // the global delegator via data-action attributes.
 
 import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
+import { MeshControls } from '@fairfox/shared/mesh-controls';
 import { useSignal } from '@preact/signals';
 import type { AgendaItem, Completion } from '#src/client/state.ts';
 import { agenda } from '#src/client/state.ts';
@@ -178,7 +179,10 @@ export function App() {
   return (
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout rows="auto" gap="var(--polly-space-md)">
-        <h1>Agenda</h1>
+        <Layout columns="1fr auto" gap="var(--polly-space-sm)">
+          <h1 style={{ margin: 0 }}>Agenda</h1>
+          <MeshControls />
+        </Layout>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="agenda.tab" />
       </Layout>
       <div>
