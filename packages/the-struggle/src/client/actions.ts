@@ -3,6 +3,7 @@
 // Handlers mutate the storyState and progressState $meshState documents.
 // The CRDT sync layer propagates changes to every connected peer.
 
+import { pairingActions } from '@fairfox/shared/pairing-actions';
 import type { Choice, GameProgress } from '#src/client/state.ts';
 import { progressState, storyState } from '#src/client/state.ts';
 
@@ -35,6 +36,8 @@ function findChoice(choiceId: string): Choice | undefined {
 }
 
 export const registry: Record<string, (ctx: HandlerContext) => void> = {
+  ...pairingActions,
+
   'game.init': () => {
     const firstChapter = storyState.value.chapters[0];
     if (!firstChapter) {

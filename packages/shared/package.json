@@ -12,6 +12,8 @@
     "./pairing-banner": "./src/pairing-banner.tsx",
     "./mesh": "./src/mesh.ts",
     "./ensure-mesh": "./src/ensure-mesh.ts",
+    "./pairing-state": "./src/pairing-state.ts",
+    "./pairing-actions": "./src/pairing-actions.ts",
     "./signaling": "./src/signaling.ts"
   },
   "imports": {
@@ -23,6 +25,7 @@
   "dependencies": {
     "@automerge/automerge-repo": "catalog:",
     "@fairfox/polly": "catalog:",
+    "@fairfox/ui": "workspace:*",
     "@preact/signals": "catalog:",
     "elysia": "catalog:",
     "preact": "catalog:",

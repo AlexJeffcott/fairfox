@@ -102,6 +102,7 @@
       "dependencies": {
         "@automerge/automerge-repo": "catalog:",
         "@fairfox/polly": "catalog:",
+        "@fairfox/ui": "workspace:*",
         "@preact/signals": "catalog:",
         "elysia": "catalog:",
         "preact": "catalog:",

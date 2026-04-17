@@ -1,13 +1,11 @@
 /** @jsxImportSource preact */
-// Family-phone admin UI — two views: Humans and Devices. Humans are
-// added first; each device registers against a human via a pairing
-// flow. The pairing token QR display itself is issued by
-// @fairfox/shared/pairing and wired up in a later iteration.
+// Family-phone admin UI — two views: Humans and Devices. The pairing
+// flow lives in @fairfox/shared/pairing-banner so the same surface
+// appears in every sub-app, not only here.
 
 import { PairingBanner } from '@fairfox/shared/pairing-banner';
 import { Badge, Button, Input, Layout, Tabs } from '@fairfox/ui';
 import { useSignal } from '@preact/signals';
-import { issuedToken, pairingError, pairingMode, scanInput } from '#src/client/pairing-state.ts';
 import { directoryState } from '#src/client/state.ts';
 
 type ViewId = 'humans' | 'devices';
@@ -107,75 +105,16 @@ function DevicesView() {
   );
 }
 
-function PairingPanel() {
-  if (pairingMode.value === 'idle') {
-    return (
-      <Layout columns="auto auto" gap="var(--space-sm)">
-        <Button label="Issue pairing token" tier="primary" data-action="pairing.issue" />
-        <Button label="Scan a token" tier="secondary" data-action="pairing.scan" />
-      </Layout>
-    );
-  }
-  if (pairingMode.value === 'issuing' && issuedToken.value) {
-    return (
-      <Layout rows="auto" gap="var(--space-sm)">
-        <p>
-          <strong>Show this token to the new device.</strong> It expires in ten minutes.
-        </p>
-        <code
-          style={{
-            wordBreak: 'break-all',
-            padding: 'var(--space-sm)',
-            background: 'var(--surface-secondary)',
-            borderRadius: 'var(--radius-sm)',
-            fontSize: 'var(--font-xs)',
-          }}
-        >
-          {issuedToken.value}
-        </code>
-        <Button label="Done" tier="tertiary" data-action="pairing.cancel" />
-      </Layout>
-    );
-  }
-  if (pairingMode.value === 'scanning') {
-    return (
-      <Layout rows="auto" gap="var(--space-sm)">
-        <p>Paste the pairing token from the trusted device.</p>
-        <Input
-          value={scanInput.value}
-          variant="multi"
-          action="pairing.submit-scan"
-          saveOn="explicit"
-          placeholder="Paste token here..."
-          markdown={false}
-        />
-        <Layout columns="auto auto" gap="var(--space-sm)">
-          <Button
-            label="Apply"
-            tier="primary"
-            data-action="pairing.submit-scan"
-            data-action-value={scanInput.value}
-          />
-          <Button label="Cancel" tier="tertiary" data-action="pairing.cancel" />
-        </Layout>
-        {pairingError.value && <p style={{ color: 'var(--color-error)' }}>{pairingError.value}</p>}
-      </Layout>
-    );
-  }
-  return null;
-}
-
 export function App() {
   const activeTab = useSignal<ViewId>('humans');
 
   return (
-    <Layout rows="auto auto auto 1fr" gap="var(--space-lg)" padding="var(--space-lg)">
+    <Layout rows="auto auto 1fr" gap="var(--space-lg)" padding="var(--space-lg)">
       <PairingBanner />
       <Layout rows="auto" gap="var(--space-md)">
         <h1>Family Phone — Admin</h1>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="directory.tab" />
       </Layout>
-      <PairingPanel />
       <div>
         {activeTab.value === 'humans' && <HumansView />}
         {activeTab.value === 'devices' && <DevicesView />}

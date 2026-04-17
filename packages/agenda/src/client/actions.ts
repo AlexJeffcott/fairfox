@@ -3,6 +3,7 @@
 // Handlers mutate the $meshState agenda document. Changes propagate
 // automatically to every connected peer via the CRDT sync layer.
 
+import { pairingActions } from '@fairfox/shared/pairing-actions';
 import type { AgendaItem, Completion, SnoozeKind } from '#src/client/state.ts';
 import { agenda } from '#src/client/state.ts';
 
@@ -23,6 +24,8 @@ function isSnoozeKind(s: string): s is SnoozeKind {
 }
 
 export const registry: Record<string, (ctx: HandlerContext) => void> = {
+  ...pairingActions,
+
   'item.create': (ctx) => {
     const name = ctx.data.value ?? ctx.data.name;
     const kind = ctx.data.kind === 'event' ? 'event' : 'chore';
