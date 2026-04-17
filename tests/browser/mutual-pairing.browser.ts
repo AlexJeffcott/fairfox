@@ -10,14 +10,8 @@
 // asserts the protocol-level requirement that backs that UX.
 
 import { describe, done, expect, test } from '@fairfox/polly/test/browser';
-import {
-  createKeyring,
-  loadOrCreateKeyring,
-} from '../../packages/shared/src/keyring.ts';
-import {
-  completePairing,
-  initiatePairing,
-} from '../../packages/shared/src/pairing.ts';
+import { createKeyring, loadOrCreateKeyring } from '../../packages/shared/src/keyring.ts';
+import { completePairing, initiatePairing } from '../../packages/shared/src/pairing.ts';
 
 function peerIdFrom(keyring: ReturnType<typeof createKeyring>): string {
   return Array.from(keyring.identity.publicKey.slice(0, 8))

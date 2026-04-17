@@ -29,10 +29,11 @@ async function run(envOverrides: Record<string, string | undefined>): Promise<Ru
 }
 
 describe('loadEnv', () => {
-  test('unset DATA_DIR exits 1', async () => {
+  test('unset DATA_DIR returns null DATA_DIR (optional under mesh architecture)', async () => {
     const r = await run({ DATA_DIR: undefined, RAILWAY_ENVIRONMENT: undefined });
-    expect(r.code).toBe(1);
-    expect(r.stderr).toContain('DATA_DIR is not set');
+    expect(r.code).toBe(0);
+    const parsed = JSON.parse(r.stdout);
+    expect(parsed.DATA_DIR).toBeNull();
   });
 
   test('non-existent DATA_DIR exits 1', async () => {
