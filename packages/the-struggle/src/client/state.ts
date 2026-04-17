@@ -2,6 +2,7 @@
 // The game engine reads this CRDT to determine what the player sees and
 // writes to it when the player makes choices or inspects the world.
 
+import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
 
 export interface PassageContent {

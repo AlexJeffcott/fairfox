@@ -3,6 +3,7 @@
 // Three $meshState documents keep each entity type in its own CRDT
 // so that large task lists don't bloat the project metadata document.
 
+import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
 
 export type ProjectStatus = 'active' | 'paused' | 'done' | 'archived';

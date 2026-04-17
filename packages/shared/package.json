@@ -11,6 +11,7 @@
     "./pairing": "./src/pairing.ts",
     "./pairing-banner": "./src/pairing-banner.tsx",
     "./mesh": "./src/mesh.ts",
+    "./ensure-mesh": "./src/ensure-mesh.ts",
     "./signaling": "./src/signaling.ts"
   },
   "imports": {

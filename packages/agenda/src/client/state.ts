@@ -2,6 +2,7 @@
 // completions. All state is a single $meshState CRDT document synced
 // across every paired device. See ADR 0002 and ADR 0004.
 
+import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
 
 export type AgendaItemKind = 'event' | 'chore';

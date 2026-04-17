@@ -5,6 +5,7 @@
 // project notes for the broader system: this sub-app is the Phase 4
 // admin UI, not the handset firmware itself.
 
+import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
 
 export type DeviceKind = 'phone' | 'laptop' | 'desktop' | 'tablet' | 'handset' | 'other';

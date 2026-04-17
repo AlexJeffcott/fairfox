@@ -1,5 +1,6 @@
 // Library state — references and docs for The Struggle's world bible.
 
+import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
 
 export type RefForm = 'prose' | 'poem';

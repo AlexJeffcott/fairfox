@@ -10,6 +10,7 @@
 // the local Automerge Repo. Await it before reading `.value` to avoid
 // seeing the initial value when the real data is about to arrive.
 
+import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
 
 export interface AppDoc {

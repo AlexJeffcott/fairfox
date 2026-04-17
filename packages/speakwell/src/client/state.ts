@@ -4,6 +4,7 @@
 // devices via $meshState so they can pick up a coaching thread on any
 // device. See the project note on culturally-tuned per-locale coaching.
 
+import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
 
 export type Format = 'yarn' | 'pitch' | 'summary';
