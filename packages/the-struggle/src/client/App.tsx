@@ -2,8 +2,9 @@
 // The Struggle — interactive reader UI.
 // Two views: Story (current passage + choices) and Memory (litanies + places).
 
+import { ActionInput, Button, Layout, Tabs } from '@fairfox/polly/ui';
+import { renderMarkdown } from '@fairfox/polly/ui/markdown';
 import { PairingBanner } from '@fairfox/shared/pairing-banner';
-import { Button, Input, Layout, Tabs } from '@fairfox/ui';
 import { useSignal } from '@preact/signals';
 import type { Passage } from '#src/client/state.ts';
 import { progressState, storyState } from '#src/client/state.ts';
@@ -35,7 +36,7 @@ function StoryView() {
 
   if (!progress || !passage) {
     return (
-      <Layout rows="auto" gap="var(--space-md)">
+      <Layout rows="auto" gap="var(--polly-space-md)">
         <p>No game in progress.</p>
         <Button label="Begin" tier="primary" data-action="game.init" />
       </Layout>
@@ -43,28 +44,28 @@ function StoryView() {
   }
 
   return (
-    <Layout rows="auto" gap="var(--space-md)">
+    <Layout rows="auto" gap="var(--polly-space-md)">
       <h2>{passage.title}</h2>
-      <Input
+      <ActionInput
         value={passage.content.body}
         variant="multi"
         action="noop"
-        readonly={true}
-        markdown={true}
+        disabled={true}
+        renderView={renderMarkdown}
       />
       {passage.content.preamble && (
-        <p style={{ fontStyle: 'italic', color: 'var(--txt-secondary)' }}>
+        <p style={{ fontStyle: 'italic', color: 'var(--polly-text-muted)' }}>
           {passage.content.preamble}
         </p>
       )}
       {passage.isDeath && (
-        <Layout rows="auto" gap="var(--space-sm)">
-          <p style={{ color: 'var(--txt-error)' }}>You have reached a dead end.</p>
-          <Button label="Start over" tier="secondary" color="error" data-action="game.reset" />
+        <Layout rows="auto" gap="var(--polly-space-sm)">
+          <p style={{ color: 'var(--polly-danger)' }}>You have reached a dead end.</p>
+          <Button label="Start over" tier="secondary" color="danger" data-action="game.reset" />
         </Layout>
       )}
       {!passage.isDeath && passage.choices.length > 0 && (
-        <Layout rows="auto" gap="var(--space-sm)">
+        <Layout rows="auto" gap="var(--polly-space-sm)">
           {passage.choices.map((choice) => (
             <Button
               key={choice.id}
@@ -84,13 +85,13 @@ function MemoryView() {
   const progress = progressState.value.progress;
 
   if (!progress) {
-    return <p style={{ color: 'var(--txt-secondary)' }}>No memories yet.</p>;
+    return <p style={{ color: 'var(--polly-text-muted)' }}>No memories yet.</p>;
   }
 
   return (
-    <Layout rows="auto" gap="var(--space-md)">
+    <Layout rows="auto" gap="var(--polly-space-md)">
       {progress.litanies.length > 0 && (
-        <Layout rows="auto" gap="var(--space-sm)">
+        <Layout rows="auto" gap="var(--polly-space-sm)">
           <h3>Litanies</h3>
           {progress.litanies.map((litany) => (
             <p key={litany}>{litany}</p>
@@ -98,7 +99,7 @@ function MemoryView() {
         </Layout>
       )}
       {progress.placeNames.length > 0 && (
-        <Layout rows="auto" gap="var(--space-sm)">
+        <Layout rows="auto" gap="var(--polly-space-sm)">
           <h3>Places</h3>
           {progress.placeNames.map((place) => (
             <p key={place}>{place}</p>
@@ -106,7 +107,7 @@ function MemoryView() {
         </Layout>
       )}
       {progress.litanies.length === 0 && progress.placeNames.length === 0 && (
-        <p style={{ color: 'var(--txt-secondary)' }}>No memories collected.</p>
+        <p style={{ color: 'var(--polly-text-muted)' }}>No memories collected.</p>
       )}
     </Layout>
   );
@@ -116,9 +117,9 @@ export function App() {
   const activeTab = useSignal<ViewId>('story');
 
   return (
-    <Layout rows="auto auto 1fr" gap="var(--space-lg)" padding="var(--space-lg)">
+    <Layout rows="auto auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <PairingBanner />
-      <Layout rows="auto" gap="var(--space-md)">
+      <Layout rows="auto" gap="var(--polly-space-md)">
         <h1>The Struggle</h1>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="game.tab" />
       </Layout>

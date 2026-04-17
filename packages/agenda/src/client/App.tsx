@@ -3,8 +3,8 @@
 // All state from the $meshState agenda document. Actions dispatch through
 // the global delegator via data-action attributes.
 
+import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
 import { PairingBanner } from '@fairfox/shared/pairing-banner';
-import { Badge, Button, Input, Layout, Tabs } from '@fairfox/ui';
 import { useSignal } from '@preact/signals';
 import type { AgendaItem, Completion } from '#src/client/state.ts';
 import { agenda } from '#src/client/state.ts';
@@ -61,12 +61,12 @@ function TodayView() {
   const chores = items.filter((i) => i.kind === 'chore');
 
   return (
-    <Layout rows="auto" gap="var(--space-md)">
+    <Layout rows="auto" gap="var(--polly-space-md)">
       {events.length > 0 && (
-        <Layout rows="auto" gap="var(--space-sm)">
+        <Layout rows="auto" gap="var(--polly-space-sm)">
           <h3>Events</h3>
           {events.map((e) => (
-            <Layout key={e.id} columns="auto 1fr" gap="var(--space-sm)" align="center">
+            <Layout key={e.id} columns="auto 1fr" gap="var(--polly-space-sm)" alignItems="center">
               {e.time !== undefined && <Badge variant="info">{e.time}</Badge>}
               <span>{e.name}</span>
             </Layout>
@@ -74,10 +74,15 @@ function TodayView() {
         </Layout>
       )}
       {chores.length > 0 && (
-        <Layout rows="auto" gap="var(--space-sm)">
+        <Layout rows="auto" gap="var(--polly-space-sm)">
           <h3>Chores</h3>
           {chores.map((c) => (
-            <Layout key={c.id} columns="1fr auto auto auto" gap="var(--space-xs)" align="center">
+            <Layout
+              key={c.id}
+              columns="1fr auto auto auto"
+              gap="var(--polly-space-xs)"
+              alignItems="center"
+            >
               <span>{c.name}</span>
               {PEOPLE.map((person) => (
                 <Button
@@ -101,24 +106,28 @@ function TodayView() {
 
 function ItemsView() {
   return (
-    <Layout rows="auto" gap="var(--space-md)">
-      <Input
+    <Layout rows="auto" gap="var(--polly-space-md)">
+      <ActionInput
         value=""
         variant="single"
         action="item.create"
         saveOn="enter"
         placeholder="Add a chore..."
-        markdown={false}
       />
       {agenda.value.items.map((item) => (
-        <Layout key={item.id} columns="auto 1fr auto" gap="var(--space-sm)" align="center">
+        <Layout
+          key={item.id}
+          columns="auto 1fr auto"
+          gap="var(--polly-space-sm)"
+          alignItems="center"
+        >
           <Badge variant={item.kind === 'event' ? 'info' : 'default'}>{item.kind}</Badge>
           <span>{item.name}</span>
           <Button
             label="Delete"
             size="small"
             tier="tertiary"
-            color="error"
+            color="danger"
             data-action="item.delete"
             data-action-id={item.id}
           />
@@ -142,13 +151,18 @@ function FairnessView() {
   const totalPoints = Array.from(totals.values()).reduce((a, b) => a + b, 0);
 
   return (
-    <Layout rows="auto" gap="var(--space-md)">
+    <Layout rows="auto" gap="var(--polly-space-md)">
       <h3>Last 30 days</h3>
       {PEOPLE.map((person) => {
         const pts = totals.get(person) ?? 0;
         const pct = totalPoints > 0 ? Math.round((pts / totalPoints) * 100) : 0;
         return (
-          <Layout key={person} columns="6rem 1fr auto" gap="var(--space-sm)" align="center">
+          <Layout
+            key={person}
+            columns="6rem 1fr auto"
+            gap="var(--polly-space-sm)"
+            alignItems="center"
+          >
             <strong>{person}</strong>
             <span>{pts} points</span>
             <Badge variant={pct >= 30 ? 'success' : 'warning'}>{pct}%</Badge>
@@ -163,9 +177,9 @@ export function App() {
   const activeTab = useSignal<ViewId>('today');
 
   return (
-    <Layout rows="auto auto 1fr" gap="var(--space-lg)" padding="var(--space-lg)">
+    <Layout rows="auto auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <PairingBanner />
-      <Layout rows="auto" gap="var(--space-md)">
+      <Layout rows="auto" gap="var(--polly-space-md)">
         <h1>Agenda</h1>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="agenda.tab" />
       </Layout>

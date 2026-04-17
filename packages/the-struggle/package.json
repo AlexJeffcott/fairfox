@@ -15,9 +15,10 @@
     "@automerge/automerge-repo": "catalog:",
     "@fairfox/polly": "catalog:",
     "@fairfox/shared": "workspace:*",
-    "@fairfox/ui": "workspace:*",
     "@preact/signals": "catalog:",
+    "dompurify": "catalog:",
     "elysia": "catalog:",
+    "marked": "catalog:",
     "preact": "catalog:",
     "tweetnacl": "catalog:"
   },

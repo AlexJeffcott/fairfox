@@ -4,8 +4,8 @@
 // History (review past sessions). Full voice I/O comes in a later
 // iteration; the current UI is a text-first stepping stone.
 
+import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
 import { PairingBanner } from '@fairfox/shared/pairing-banner';
-import { Badge, Button, Input, Layout, Tabs } from '@fairfox/ui';
 import { useSignal } from '@preact/signals';
 import type { Format, Language } from '#src/client/state.ts';
 import { sessionsState } from '#src/client/state.ts';
@@ -35,11 +35,11 @@ function StartView() {
   const topic = useSignal('');
 
   return (
-    <Layout rows="auto" gap="var(--space-lg)">
+    <Layout rows="auto" gap="var(--polly-space-lg)">
       <h2>New session</h2>
-      <Layout rows="auto" gap="var(--space-sm)">
+      <Layout rows="auto" gap="var(--polly-space-sm)">
         <strong>Format</strong>
-        <Layout columns="auto auto auto" gap="var(--space-sm)">
+        <Layout columns="auto auto auto" gap="var(--polly-space-sm)">
           {(['yarn', 'pitch', 'summary'] as const).map((f) => (
             <Button
               key={f}
@@ -52,9 +52,9 @@ function StartView() {
           ))}
         </Layout>
       </Layout>
-      <Layout rows="auto" gap="var(--space-sm)">
+      <Layout rows="auto" gap="var(--polly-space-sm)">
         <strong>Language</strong>
-        <Layout columns="auto auto auto" gap="var(--space-sm)">
+        <Layout columns="auto auto auto" gap="var(--polly-space-sm)">
           {(['en-GB', 'it-IT', 'de-DE'] as const).map((l) => (
             <Button
               key={l}
@@ -67,13 +67,12 @@ function StartView() {
           ))}
         </Layout>
       </Layout>
-      <Input
+      <ActionInput
         value={topic.value}
         variant="single"
         action="speakwell.set-topic"
         saveOn="blur"
         placeholder="Topic or prompt (optional)"
-        markdown={false}
       />
       <Button
         label="Begin"
@@ -94,22 +93,27 @@ function HistoryView() {
   );
 
   if (sessions.length === 0) {
-    return <p style={{ color: 'var(--txt-secondary)' }}>No sessions yet.</p>;
+    return <p style={{ color: 'var(--polly-text-muted)' }}>No sessions yet.</p>;
   }
 
   return (
-    <Layout rows="auto" gap="var(--space-md)">
+    <Layout rows="auto" gap="var(--polly-space-md)">
       {sessions.map((s) => (
-        <Layout key={s.id} columns="auto 1fr auto auto" gap="var(--space-sm)" align="center">
+        <Layout
+          key={s.id}
+          columns="auto 1fr auto auto"
+          gap="var(--polly-space-sm)"
+          alignItems="center"
+        >
           <Badge variant="info">{FORMAT_LABELS[s.format]}</Badge>
           <Layout rows="auto" gap="0">
             <strong>{s.topic || 'Untitled'}</strong>
-            <span style={{ fontSize: 'var(--font-xs)', color: 'var(--txt-tertiary)' }}>
+            <span style={{ fontSize: 'var(--polly-text-xs)', color: 'var(--polly-text-muted)' }}>
               {s.speaker} · {LANGUAGE_LABELS[s.language]} · {s.turns.length} turns
             </span>
           </Layout>
           {s.rating !== null && <Badge variant="success">{s.rating}/5</Badge>}
-          <span style={{ fontSize: 'var(--font-xs)', color: 'var(--txt-secondary)' }}>
+          <span style={{ fontSize: 'var(--polly-text-xs)', color: 'var(--polly-text-muted)' }}>
             {new Date(s.startedAt).toLocaleDateString()}
           </span>
         </Layout>
@@ -122,9 +126,9 @@ export function App() {
   const activeTab = useSignal<ViewId>('start');
 
   return (
-    <Layout rows="auto auto 1fr" gap="var(--space-lg)" padding="var(--space-lg)">
+    <Layout rows="auto auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <PairingBanner />
-      <Layout rows="auto" gap="var(--space-md)">
+      <Layout rows="auto" gap="var(--polly-space-md)">
         <h1>Speakwell</h1>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="speakwell.tab" />
       </Layout>
