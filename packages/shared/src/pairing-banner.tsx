@@ -71,22 +71,18 @@ function IssuingPanel(): preact.JSX.Element {
 function ScanningPanel(): preact.JSX.Element {
   return (
     <div style={{ marginTop: '0.5rem', textAlign: 'left' }}>
-      <p style={{ margin: '0 0 0.5rem' }}>Paste the pairing token from the trusted device.</p>
+      <p style={{ margin: '0 0 0.5rem' }}>
+        Paste the pairing token from the trusted device, then press Enter.
+      </p>
       <Input
         value={scanInput.value}
-        variant="multi"
+        variant="single"
         action="pairing.submit-scan"
-        saveOn="explicit"
+        saveOn="enter"
         placeholder="Paste token here..."
         markdown={false}
       />
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-        <Button
-          label="Apply"
-          tier="primary"
-          data-action="pairing.submit-scan"
-          data-action-value={scanInput.value}
-        />
         <Button label="Cancel" tier="tertiary" data-action="pairing.cancel" />
       </div>
       {pairingError.value && (
