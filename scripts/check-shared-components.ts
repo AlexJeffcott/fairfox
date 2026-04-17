@@ -2,13 +2,12 @@
 // Ban raw native interactive HTML elements in sub-app source.
 //
 // The platform rule (ADR 0005) is that sub-apps use the shared
-// primitives from @fairfox/ui (Button, Input, Layout, etc.) rather
-// than writing raw <button>, <input>, <select>, <textarea>, or <form>
-// elements. The primitives enforce data-action delegation, typed
-// CSS modules, accessibility attributes, and the layout ban.
+// primitives from @fairfox/polly/ui (Button, ActionInput, Layout, etc.)
+// rather than writing raw <button>, <input>, <select>, <textarea>, or
+// <form> elements. The primitives enforce data-action delegation,
+// typed CSS modules, accessibility attributes, and the layout ban.
 //
 // Exemptions:
-//   - packages/ui/src — the primitives themselves wrap native elements.
 //   - packages/struggle, packages/todo — legacy, exempted per ADR 0006.
 //   - Test files — test setup code may create native elements.
 //
@@ -21,14 +20,18 @@ const scriptDir = new URL('.', import.meta.url).pathname;
 const repoRoot = resolve(scriptDir, '..');
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'tests']);
-const EXEMPT_PACKAGES = new Set(['ui', 'struggle', 'todo']);
+const EXEMPT_PACKAGES = new Set(['struggle', 'todo']);
 
 const ELEMENT_RULES = [
   { pattern: /<button[\s>]/, element: '<button>', replacement: '<Button>' },
-  { pattern: /<input[\s>/]/, element: '<input>', replacement: '<Input>' },
-  { pattern: /<textarea[\s>]/, element: '<textarea>', replacement: '<Input variant="multi">' },
+  { pattern: /<input[\s>/]/, element: '<input>', replacement: '<ActionInput> or <TextInput>' },
+  {
+    pattern: /<textarea[\s>]/,
+    element: '<textarea>',
+    replacement: '<ActionInput variant="multi">',
+  },
   { pattern: /<select[\s>]/, element: '<select>', replacement: '<Select>' },
-  { pattern: /<form[\s>]/, element: '<form>', replacement: '<form data-action="...">' },
+  { pattern: /<form[\s>]/, element: '<form>', replacement: '<ActionForm>' },
 ];
 
 interface Violation {
@@ -108,7 +111,9 @@ if (violations.length === 0) {
     console.error(`  ${v.file}:${v.line} — ${v.element} → use ${v.replacement}`);
     console.error(`    ${v.content}\n`);
   }
-  console.error('[shared-components] Use @fairfox/ui primitives instead of native HTML elements.');
-  console.error('[shared-components] See ADR 0005 and packages/ui/src/components/.');
+  console.error(
+    '[shared-components] Use @fairfox/polly/ui primitives instead of native HTML elements.'
+  );
+  console.error('[shared-components] See ADR 0005 and @fairfox/polly/ui/index.ts.');
   process.exit(1);
 }
