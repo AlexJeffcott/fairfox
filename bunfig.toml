@@ -9,6 +9,3 @@ lockfile = true
 [loader]
 ".sql" = "text"
 ".css" = "css"
-
-[test]
-preload = "./scripts/bun-test-setup.ts"

@@ -25,7 +25,6 @@
     "dompurify": "catalog:"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "typed-css-modules": "catalog:",
