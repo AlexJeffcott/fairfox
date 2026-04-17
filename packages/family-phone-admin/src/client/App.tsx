@@ -1,10 +1,9 @@
 /** @jsxImportSource preact */
-// Family-phone admin UI — two views: Humans and Devices. The pairing
-// flow lives in @fairfox/shared/pairing-banner so the same surface
-// appears in every sub-app, not only here.
+// Family-phone admin UI — two views: Humans and Devices. Pairing is
+// gated by @fairfox/shared/mesh-gate at boot, so this file never has
+// to render the login surface itself.
 
 import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
-import { PairingBanner } from '@fairfox/shared/pairing-banner';
 import { useSignal } from '@preact/signals';
 import { directoryState } from '#src/client/state.ts';
 
@@ -120,8 +119,7 @@ export function App() {
   const activeTab = useSignal<ViewId>('humans');
 
   return (
-    <Layout rows="auto auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
-      <PairingBanner />
+    <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout rows="auto" gap="var(--polly-space-md)">
         <h1>Family Phone — Admin</h1>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="directory.tab" />

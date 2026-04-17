@@ -5,7 +5,6 @@
 // iteration; the current UI is a text-first stepping stone.
 
 import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
-import { PairingBanner } from '@fairfox/shared/pairing-banner';
 import { useSignal } from '@preact/signals';
 import type { Format, Language } from '#src/client/state.ts';
 import { sessionsState } from '#src/client/state.ts';
@@ -126,8 +125,7 @@ export function App() {
   const activeTab = useSignal<ViewId>('start');
 
   return (
-    <Layout rows="auto auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
-      <PairingBanner />
+    <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout rows="auto" gap="var(--polly-space-md)">
         <h1>Speakwell</h1>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="speakwell.tab" />

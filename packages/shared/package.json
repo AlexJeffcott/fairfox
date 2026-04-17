@@ -9,8 +9,9 @@
     "./openDb": "./src/openDb.ts",
     "./keyring": "./src/keyring.ts",
     "./pairing": "./src/pairing.ts",
-    "./pairing-banner": "./src/pairing-banner.tsx",
     "./mesh": "./src/mesh.ts",
+    "./mesh-gate": "./src/mesh-gate.tsx",
+    "./login-page": "./src/login-page.tsx",
     "./ensure-mesh": "./src/ensure-mesh.ts",
     "./pairing-state": "./src/pairing-state.ts",
     "./pairing-actions": "./src/pairing-actions.ts",
@@ -29,11 +30,13 @@
     "@preact/signals": "catalog:",
     "elysia": "catalog:",
     "preact": "catalog:",
+    "qrcode": "catalog:",
     "tweetnacl": "catalog:"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
+    "@types/qrcode": "catalog:",
     "typescript": "catalog:"
   }
 }
