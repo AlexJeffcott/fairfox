@@ -11,7 +11,7 @@
 // the keyring gains a peer, knownPeerCount rises above zero, and the
 // banner hides.
 
-import { Button, Input } from '@fairfox/ui';
+import { ActionInput, Button } from '@fairfox/polly/ui';
 import { useSignalEffect } from '@preact/signals';
 import { loadOrCreateKeyring } from '#src/keyring.ts';
 import {
@@ -85,13 +85,12 @@ function ScanPanel(): preact.JSX.Element {
       <p style={{ margin: '0 0 0.5rem' }}>
         <strong>Step 2 of 2.</strong> Paste the token from the other device and press Enter.
       </p>
-      <Input
+      <ActionInput
         value={scanInput.value}
         variant="single"
         action="pairing.submit-scan"
         saveOn="enter"
         placeholder="Paste token here..."
-        markdown={false}
       />
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
         <Button label="Cancel" tier="tertiary" data-action="pairing.cancel" />

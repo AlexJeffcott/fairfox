@@ -3,8 +3,8 @@
 // flow lives in @fairfox/shared/pairing-banner so the same surface
 // appears in every sub-app, not only here.
 
+import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
 import { PairingBanner } from '@fairfox/shared/pairing-banner';
-import { Badge, Button, Input, Layout, Tabs } from '@fairfox/ui';
 import { useSignal } from '@preact/signals';
 import { directoryState } from '#src/client/state.ts';
 
@@ -20,26 +20,30 @@ function HumansView() {
   const devices = directoryState.value.devices;
 
   return (
-    <Layout rows="auto" gap="var(--space-md)">
-      <Input
+    <Layout rows="auto" gap="var(--polly-space-md)">
+      <ActionInput
         value=""
         variant="single"
         action="human.add"
         saveOn="enter"
         placeholder="Add a family member..."
-        markdown={false}
       />
       {humans.map((h) => {
         const deviceCount = devices.filter((d) => d.humanId === h.id && !d.revokedAt).length;
         return (
-          <Layout key={h.id} columns="1fr auto auto" gap="var(--space-sm)" align="center">
+          <Layout
+            key={h.id}
+            columns="1fr auto auto"
+            gap="var(--polly-space-sm)"
+            alignItems="center"
+          >
             <strong>{h.name}</strong>
             <Badge variant="default">{deviceCount} devices</Badge>
             <Button
               label="Remove"
               size="small"
               tier="tertiary"
-              color="error"
+              color="danger"
               data-action="human.remove"
               data-action-id={h.id}
             />
@@ -47,7 +51,7 @@ function HumansView() {
         );
       })}
       {humans.length === 0 && (
-        <p style={{ color: 'var(--txt-secondary)' }}>No family members yet.</p>
+        <p style={{ color: 'var(--polly-text-muted)' }}>No family members yet.</p>
       )}
     </Layout>
   );
@@ -59,16 +63,23 @@ function DevicesView() {
   const humansById = new Map(directoryState.value.humans.map((h) => [h.id, h.name]));
 
   return (
-    <Layout rows="auto" gap="var(--space-md)">
+    <Layout rows="auto" gap="var(--polly-space-md)">
       {active.length > 0 && (
-        <Layout rows="auto" gap="var(--space-sm)">
+        <Layout rows="auto" gap="var(--polly-space-sm)">
           <h3>Active ({active.length})</h3>
           {active.map((d) => (
-            <Layout key={d.id} columns="auto 1fr auto auto" gap="var(--space-sm)" align="center">
+            <Layout
+              key={d.id}
+              columns="auto 1fr auto auto"
+              gap="var(--polly-space-sm)"
+              alignItems="center"
+            >
               <Badge variant="info">{d.kind}</Badge>
               <Layout rows="auto" gap="0">
                 <strong>{d.name}</strong>
-                <span style={{ fontSize: 'var(--font-xs)', color: 'var(--txt-tertiary)' }}>
+                <span
+                  style={{ fontSize: 'var(--polly-text-xs)', color: 'var(--polly-text-muted)' }}
+                >
                   {humansById.get(d.humanId) ?? 'unknown'} · paired{' '}
                   {new Date(d.pairedAt).toLocaleDateString()}
                 </span>
@@ -77,7 +88,7 @@ function DevicesView() {
                 label="Revoke"
                 size="small"
                 tier="tertiary"
-                color="error"
+                color="danger"
                 data-action="device.revoke"
                 data-action-id={d.id}
               />
@@ -86,20 +97,20 @@ function DevicesView() {
         </Layout>
       )}
       {revoked.length > 0 && (
-        <Layout rows="auto" gap="var(--space-sm)">
+        <Layout rows="auto" gap="var(--polly-space-sm)">
           <h3>Revoked ({revoked.length})</h3>
           {revoked.map((d) => (
-            <Layout key={d.id} columns="1fr auto" gap="var(--space-sm)" align="center">
-              <span style={{ color: 'var(--txt-tertiary)' }}>
+            <Layout key={d.id} columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
+              <span style={{ color: 'var(--polly-text-muted)' }}>
                 {d.name} · {humansById.get(d.humanId) ?? 'unknown'}
               </span>
-              <Badge variant="error">revoked</Badge>
+              <Badge variant="danger">revoked</Badge>
             </Layout>
           ))}
         </Layout>
       )}
       {directoryState.value.devices.length === 0 && (
-        <p style={{ color: 'var(--txt-secondary)' }}>No devices yet.</p>
+        <p style={{ color: 'var(--polly-text-muted)' }}>No devices yet.</p>
       )}
     </Layout>
   );
@@ -109,9 +120,9 @@ export function App() {
   const activeTab = useSignal<ViewId>('humans');
 
   return (
-    <Layout rows="auto auto 1fr" gap="var(--space-lg)" padding="var(--space-lg)">
+    <Layout rows="auto auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <PairingBanner />
-      <Layout rows="auto" gap="var(--space-md)">
+      <Layout rows="auto" gap="var(--polly-space-md)">
         <h1>Family Phone — Admin</h1>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="directory.tab" />
       </Layout>

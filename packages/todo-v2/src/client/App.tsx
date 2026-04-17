@@ -2,8 +2,8 @@
 // Todo sub-app — project tracker with tasks and quick capture.
 // Three views: Projects, Tasks, Capture. All state from $meshState.
 
+import { ActionInput, Badge, Button, Checkbox, Layout, Tabs } from '@fairfox/polly/ui';
 import { PairingBanner } from '@fairfox/shared/pairing-banner';
-import { Badge, Button, Checkbox, Input, Layout, Tabs } from '@fairfox/ui';
 import { useSignal } from '@preact/signals';
 import { capturesState, projectsState, tasksState } from '#src/client/state.ts';
 
@@ -16,7 +16,7 @@ const TAB_LIST = [
 ];
 
 const PRIORITY_COLORS = {
-  high: 'error',
+  high: 'danger',
   med: 'warning',
   low: 'info',
 } as const;
@@ -26,28 +26,34 @@ function ProjectsView() {
   const pausedProjects = projectsState.value.projects.filter((p) => p.status === 'paused');
 
   return (
-    <Layout rows="auto" gap="var(--space-md)">
-      <Input
+    <Layout rows="auto" gap="var(--polly-space-md)">
+      <ActionInput
         value=""
         variant="single"
         action="project.create"
         saveOn="enter"
         placeholder="New project..."
-        markdown={false}
       />
       {activeProjects.length > 0 && (
-        <Layout rows="auto" gap="var(--space-sm)">
+        <Layout rows="auto" gap="var(--polly-space-sm)">
           <h3>Active ({activeProjects.length})</h3>
           {activeProjects.map((p) => {
             const taskCount = tasksState.value.tasks.filter(
               (t) => t.project === p.name && !t.done
             ).length;
             return (
-              <Layout key={p.pid} columns="1fr auto auto" gap="var(--space-sm)" align="center">
+              <Layout
+                key={p.pid}
+                columns="1fr auto auto"
+                gap="var(--polly-space-sm)"
+                alignItems="center"
+              >
                 <Layout rows="auto" gap="0">
                   <strong>{p.name}</strong>
                   {p.notes && (
-                    <span style={{ fontSize: 'var(--font-sm)', color: 'var(--txt-secondary)' }}>
+                    <span
+                      style={{ fontSize: 'var(--polly-text-sm)', color: 'var(--polly-text-muted)' }}
+                    >
                       {p.notes.slice(0, 80)}
                     </span>
                   )}
@@ -67,11 +73,11 @@ function ProjectsView() {
         </Layout>
       )}
       {pausedProjects.length > 0 && (
-        <Layout rows="auto" gap="var(--space-sm)">
+        <Layout rows="auto" gap="var(--polly-space-sm)">
           <h3>Paused ({pausedProjects.length})</h3>
           {pausedProjects.map((p) => (
-            <Layout key={p.pid} columns="1fr auto" gap="var(--space-sm)" align="center">
-              <span style={{ color: 'var(--txt-secondary)' }}>{p.name}</span>
+            <Layout key={p.pid} columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
+              <span style={{ color: 'var(--polly-text-muted)' }}>{p.name}</span>
               <Button
                 label="Resume"
                 size="small"
@@ -111,14 +117,13 @@ function TasksView() {
   };
 
   return (
-    <Layout rows="auto" gap="var(--space-md)">
-      <Input
+    <Layout rows="auto" gap="var(--polly-space-md)">
+      <ActionInput
         value=""
         variant="single"
         action="task.create"
         saveOn="enter"
         placeholder="New task..."
-        markdown={false}
       />
       {(['high', 'med', 'low'] as const).map((prio) => {
         const group = byPriority[prio];
@@ -126,17 +131,24 @@ function TasksView() {
           return null;
         }
         return (
-          <Layout key={prio} rows="auto" gap="var(--space-xs)">
+          <Layout key={prio} rows="auto" gap="var(--polly-space-xs)">
             <h3>
               <Badge variant={PRIORITY_COLORS[prio]}>{prio}</Badge> ({group.length})
             </h3>
             {group.map((t) => (
-              <Layout key={t.tid} columns="auto 1fr auto auto" gap="var(--space-sm)" align="center">
+              <Layout
+                key={t.tid}
+                columns="auto 1fr auto auto"
+                gap="var(--polly-space-sm)"
+                alignItems="center"
+              >
                 <Checkbox checked={t.done} data-action="task.toggle-done" data-action-tid={t.tid} />
                 <Layout rows="auto" gap="0">
                   <span>{t.description}</span>
                   {t.project && (
-                    <span style={{ fontSize: 'var(--font-xs)', color: 'var(--txt-tertiary)' }}>
+                    <span
+                      style={{ fontSize: 'var(--polly-text-xs)', color: 'var(--polly-text-muted)' }}
+                    >
                       {t.project}
                     </span>
                   )}
@@ -146,7 +158,7 @@ function TasksView() {
                   label="×"
                   size="small"
                   tier="tertiary"
-                  color="error"
+                  color="danger"
                   data-action="task.delete"
                   data-action-tid={t.tid}
                 />
@@ -156,19 +168,24 @@ function TasksView() {
         );
       })}
       {byPriority.done.length > 0 && (
-        <Layout rows="auto" gap="var(--space-xs)">
+        <Layout rows="auto" gap="var(--polly-space-xs)">
           <h3>Done ({byPriority.done.length})</h3>
           {byPriority.done.map((t) => (
-            <Layout key={t.tid} columns="auto 1fr auto" gap="var(--space-sm)" align="center">
+            <Layout
+              key={t.tid}
+              columns="auto 1fr auto"
+              gap="var(--polly-space-sm)"
+              alignItems="center"
+            >
               <Checkbox checked={t.done} data-action="task.toggle-done" data-action-tid={t.tid} />
-              <span style={{ textDecoration: 'line-through', color: 'var(--txt-tertiary)' }}>
+              <span style={{ textDecoration: 'line-through', color: 'var(--polly-text-muted)' }}>
                 {t.description}
               </span>
               <Button
                 label="×"
                 size="small"
                 tier="tertiary"
-                color="error"
+                color="danger"
                 data-action="task.delete"
                 data-action-tid={t.tid}
               />
@@ -182,20 +199,19 @@ function TasksView() {
 
 function CaptureView() {
   return (
-    <Layout rows="auto" gap="var(--space-md)">
-      <Input
+    <Layout rows="auto" gap="var(--polly-space-md)">
+      <ActionInput
         value=""
         variant="single"
         action="capture.add"
         saveOn="enter"
         placeholder="Quick thought..."
-        markdown={false}
       />
       {capturesState.value.captures.map((c) => (
-        <Layout key={c.id} columns="1fr auto auto" gap="var(--space-sm)" align="center">
+        <Layout key={c.id} columns="1fr auto auto" gap="var(--polly-space-sm)" alignItems="center">
           <Layout rows="auto" gap="0">
             <span>{c.text}</span>
-            <span style={{ fontSize: 'var(--font-xs)', color: 'var(--txt-tertiary)' }}>
+            <span style={{ fontSize: 'var(--polly-text-xs)', color: 'var(--polly-text-muted)' }}>
               {new Date(c.createdAt).toLocaleDateString()}
             </span>
           </Layout>
@@ -210,17 +226,17 @@ function CaptureView() {
             label="×"
             size="small"
             tier="tertiary"
-            color="error"
+            color="danger"
             data-action="capture.delete"
             data-action-id={c.id}
           />
         </Layout>
       ))}
       {capturesState.value.captures.length === 0 && (
-        <p style={{ color: 'var(--txt-secondary)' }}>No captures yet.</p>
+        <p style={{ color: 'var(--polly-text-muted)' }}>No captures yet.</p>
       )}
-      <Layout rows="auto" gap="var(--space-sm)" padding="var(--space-md) 0 0 0">
-        <p style={{ fontSize: 'var(--font-sm)', color: 'var(--txt-secondary)' }}>
+      <Layout rows="auto" gap="var(--polly-space-sm)" padding="var(--polly-space-md) 0 0 0">
+        <p style={{ fontSize: 'var(--polly-text-sm)', color: 'var(--polly-text-muted)' }}>
           One-shot legacy import — pulls from the old /todo API into this mesh.
         </p>
         <Button
@@ -238,9 +254,9 @@ export function App() {
   const activeTab = useSignal<ViewId>('tasks');
 
   return (
-    <Layout rows="auto auto 1fr" gap="var(--space-lg)" padding="var(--space-lg)">
+    <Layout rows="auto auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <PairingBanner />
-      <Layout rows="auto" gap="var(--space-md)">
+      <Layout rows="auto" gap="var(--polly-space-md)">
         <h1>Todo</h1>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="todo.tab" />
       </Layout>

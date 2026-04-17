@@ -2,8 +2,9 @@
 // Library sub-app — two views: Refs and Docs.
 // All state from the $meshState library document.
 
+import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
+import { renderMarkdown } from '@fairfox/polly/ui/markdown';
 import { PairingBanner } from '@fairfox/shared/pairing-banner';
-import { Badge, Button, Input, Layout, Tabs } from '@fairfox/ui';
 import { useSignal } from '@preact/signals';
 import type { Doc, DocCategory } from '#src/client/state.ts';
 import { libraryState } from '#src/client/state.ts';
@@ -32,21 +33,25 @@ function RefsView() {
   const selected = refs.find((r) => r.id === selectedId.value);
 
   return (
-    <Layout rows="auto" gap="var(--space-md)">
-      <Input
+    <Layout rows="auto" gap="var(--polly-space-md)">
+      <ActionInput
         value=""
         variant="single"
         action="ref.create"
         saveOn="enter"
         placeholder="Add a reference..."
-        markdown={false}
       />
       {refs.map((ref) => (
-        <Layout key={ref.id} columns="1fr auto auto auto" gap="var(--space-sm)" align="center">
+        <Layout
+          key={ref.id}
+          columns="1fr auto auto auto"
+          gap="var(--polly-space-sm)"
+          alignItems="center"
+        >
           <Layout rows="auto" gap="0">
             <strong>{ref.title}</strong>
             {ref.author && (
-              <span style={{ fontSize: 'var(--font-sm)', color: 'var(--txt-secondary)' }}>
+              <span style={{ fontSize: 'var(--polly-text-sm)', color: 'var(--polly-text-muted)' }}>
                 {ref.author}
               </span>
             )}
@@ -63,25 +68,25 @@ function RefsView() {
             label="Delete"
             size="small"
             tier="tertiary"
-            color="error"
+            color="danger"
             data-action="ref.delete"
             data-action-id={ref.id}
           />
         </Layout>
       ))}
       {selected && (
-        <Layout rows="auto" gap="var(--space-sm)">
+        <Layout rows="auto" gap="var(--polly-space-sm)">
           <h3>{selected.title}</h3>
-          <Input
+          <ActionInput
             value={selected.body}
             variant="multi"
             action="noop"
-            readonly={true}
-            markdown={true}
+            disabled={true}
+            renderView={renderMarkdown}
           />
         </Layout>
       )}
-      {refs.length === 0 && <p style={{ color: 'var(--txt-secondary)' }}>No references yet.</p>}
+      {refs.length === 0 && <p style={{ color: 'var(--polly-text-muted)' }}>No references yet.</p>}
     </Layout>
   );
 }
@@ -98,14 +103,13 @@ function DocsView() {
   };
 
   return (
-    <Layout rows="auto" gap="var(--space-md)">
-      <Input
+    <Layout rows="auto" gap="var(--polly-space-md)">
+      <ActionInput
         value=""
         variant="single"
         action="doc.create"
         saveOn="enter"
         placeholder="Add a document..."
-        markdown={false}
       />
       {(['world', 'structure', 'interface'] as const).map((category) => {
         const group = grouped[category];
@@ -113,18 +117,23 @@ function DocsView() {
           return null;
         }
         return (
-          <Layout key={category} rows="auto" gap="var(--space-xs)">
+          <Layout key={category} rows="auto" gap="var(--polly-space-xs)">
             <h3>
               {CATEGORY_LABELS[category]} ({group.length})
             </h3>
             {group.map((doc) => (
-              <Layout key={doc.id} columns="1fr auto" gap="var(--space-sm)" align="center">
+              <Layout
+                key={doc.id}
+                columns="1fr auto"
+                gap="var(--polly-space-sm)"
+                alignItems="center"
+              >
                 <span>{doc.title}</span>
                 <Button
                   label="Delete"
                   size="small"
                   tier="tertiary"
-                  color="error"
+                  color="danger"
                   data-action="doc.delete"
                   data-action-id={doc.id}
                 />
@@ -134,18 +143,18 @@ function DocsView() {
         );
       })}
       {selected && (
-        <Layout rows="auto" gap="var(--space-sm)">
+        <Layout rows="auto" gap="var(--polly-space-sm)">
           <h3>{selected.title}</h3>
-          <Input
+          <ActionInput
             value={selected.content}
             variant="multi"
             action="noop"
-            readonly={true}
-            markdown={true}
+            disabled={true}
+            renderView={renderMarkdown}
           />
         </Layout>
       )}
-      {docs.length === 0 && <p style={{ color: 'var(--txt-secondary)' }}>No documents yet.</p>}
+      {docs.length === 0 && <p style={{ color: 'var(--polly-text-muted)' }}>No documents yet.</p>}
     </Layout>
   );
 }
@@ -154,9 +163,9 @@ export function App() {
   const activeTab = useSignal<ViewId>('refs');
 
   return (
-    <Layout rows="auto auto 1fr" gap="var(--space-lg)" padding="var(--space-lg)">
+    <Layout rows="auto auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <PairingBanner />
-      <Layout rows="auto" gap="var(--space-md)">
+      <Layout rows="auto" gap="var(--polly-space-md)">
         <h1>Library</h1>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="library.tab" />
       </Layout>
