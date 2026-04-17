@@ -1,12 +1,23 @@
 // Pairing action handlers — a registry fragment every sub-app spreads
-// into its own action registry. Because pairing is a cross-cutting mesh
-// concern (every sub-app uses the same keyring and peer set), the same
-// handlers run whether the user kicks off pairing from a todo-v2 banner,
-// the agenda banner, or the family-phone-admin panel.
+// into its own action registry. Pairing is a mesh-wide concern (every
+// sub-app shares the same keyring and peer set), so the same handlers
+// run whether the user kicks off pairing from a todo-v2 banner, the
+// agenda banner, or family-phone-admin.
+//
+// The wizard moves through two steps: issue this device's token, then
+// scan the other device's token. Polly's pairing is asymmetric — each
+// token only carries the issuer's identity — so both devices complete
+// both halves to reach mutual trust.
 
 import { loadOrCreateKeyring } from '#src/keyring.ts';
 import { completePairing, initiatePairing } from '#src/pairing.ts';
-import { issuedToken, pairingError, pairingMode, scanInput } from '#src/pairing-state.ts';
+import {
+  issuedToken,
+  knownPeerCount,
+  pairingError,
+  pairingMode,
+  scanInput,
+} from '#src/pairing-state.ts';
 
 interface PairingHandlerContext {
   data: Record<string, string>;
@@ -15,9 +26,10 @@ interface PairingHandlerContext {
 }
 
 export const pairingActions: Record<string, (ctx: PairingHandlerContext) => void> = {
-  'pairing.issue': () => {
-    pairingMode.value = 'issuing';
+  'pairing.start': () => {
+    pairingMode.value = 'wizard-issue';
     pairingError.value = null;
+    issuedToken.value = null;
     (async () => {
       try {
         const keyring = await loadOrCreateKeyring();
@@ -32,8 +44,8 @@ export const pairingActions: Record<string, (ctx: PairingHandlerContext) => void
     })();
   },
 
-  'pairing.scan': () => {
-    pairingMode.value = 'scanning';
+  'pairing.next': () => {
+    pairingMode.value = 'wizard-scan';
     scanInput.value = '';
     pairingError.value = null;
   },
@@ -47,6 +59,7 @@ export const pairingActions: Record<string, (ctx: PairingHandlerContext) => void
       try {
         const keyring = await loadOrCreateKeyring();
         await completePairing(keyring, encoded);
+        knownPeerCount.value = keyring.knownPeers.size;
         pairingMode.value = 'idle';
         issuedToken.value = null;
         scanInput.value = '';
