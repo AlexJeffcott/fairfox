@@ -1,6 +1,6 @@
 # 0005 — Shared UI primitives in @fairfox/ui
 
-**Status:** Accepted
+**Status:** Superseded by [0007](0007-consolidate-ui-primitives-into-polly.md)
 **Date:** 2026-04-15
 
 ## Context and problem statement
