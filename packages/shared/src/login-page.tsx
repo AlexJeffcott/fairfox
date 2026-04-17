@@ -14,13 +14,10 @@
 // scanned token.
 
 import { ActionInput, Button, Layout } from '@fairfox/polly/ui';
-import { useSignalEffect } from '@preact/signals';
-import { consumePairingHash } from '#src/pairing-actions.ts';
 import {
   issuedQr,
   issuedShareUrl,
   issuedToken,
-  knownPeerCount,
   pairingError,
   pairingMode,
   pairingStepsRemaining,
@@ -184,12 +181,6 @@ function ScanView(): preact.JSX.Element {
 }
 
 export function LoginPage(): preact.JSX.Element {
-  useSignalEffect(() => {
-    if (knownPeerCount.value === 0 && pairingMode.value === 'idle') {
-      void consumePairingHash();
-    }
-  });
-
   return (
     <div style={PAGE_STYLE}>
       <div style={CARD_STYLE}>
