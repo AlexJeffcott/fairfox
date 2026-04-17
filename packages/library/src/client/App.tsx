@@ -4,7 +4,6 @@
 
 import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
 import { renderMarkdown } from '@fairfox/polly/ui/markdown';
-import { PairingBanner } from '@fairfox/shared/pairing-banner';
 import { useSignal } from '@preact/signals';
 import type { Doc, DocCategory } from '#src/client/state.ts';
 import { libraryState } from '#src/client/state.ts';
@@ -163,8 +162,7 @@ export function App() {
   const activeTab = useSignal<ViewId>('refs');
 
   return (
-    <Layout rows="auto auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
-      <PairingBanner />
+    <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout rows="auto" gap="var(--polly-space-md)">
         <h1>Library</h1>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="library.tab" />

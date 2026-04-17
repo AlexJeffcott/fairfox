@@ -31,6 +31,7 @@
     "tweetnacl": "^1.0.3",
     "ws": "^8.18.0",
     "qrcode": "^1.5.4",
+    "@types/qrcode": "^1.5.5",
     "@biomejs/biome": "2.4.8"
   },
   "devDependencies": {

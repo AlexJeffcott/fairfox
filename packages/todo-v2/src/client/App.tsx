@@ -3,7 +3,6 @@
 // Three views: Projects, Tasks, Capture. All state from $meshState.
 
 import { ActionInput, Badge, Button, Checkbox, Layout, Tabs } from '@fairfox/polly/ui';
-import { PairingBanner } from '@fairfox/shared/pairing-banner';
 import { useSignal } from '@preact/signals';
 import { capturesState, projectsState, tasksState } from '#src/client/state.ts';
 
@@ -254,8 +253,7 @@ export function App() {
   const activeTab = useSignal<ViewId>('tasks');
 
   return (
-    <Layout rows="auto auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
-      <PairingBanner />
+    <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout rows="auto" gap="var(--polly-space-md)">
         <h1>Todo</h1>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="todo.tab" />

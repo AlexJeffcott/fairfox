@@ -4,7 +4,6 @@
 // the global delegator via data-action attributes.
 
 import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
-import { PairingBanner } from '@fairfox/shared/pairing-banner';
 import { useSignal } from '@preact/signals';
 import type { AgendaItem, Completion } from '#src/client/state.ts';
 import { agenda } from '#src/client/state.ts';
@@ -177,8 +176,7 @@ export function App() {
   const activeTab = useSignal<ViewId>('today');
 
   return (
-    <Layout rows="auto auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
-      <PairingBanner />
+    <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout rows="auto" gap="var(--polly-space-md)">
         <h1>Agenda</h1>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="agenda.tab" />
