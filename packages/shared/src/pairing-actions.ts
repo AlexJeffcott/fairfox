@@ -90,6 +90,16 @@ function advanceAfter(step: PairingStep): void {
     issuedQr.value = null;
     issuedShareUrl.value = null;
     scanInput.value = '';
+    // The MeshClient constructed at module load captured the keyring's
+    // knownPeerIds as they stood then — empty on a first visit, stale on
+    // a rejoin. Now that the ceremony has populated the keyring with a
+    // new peer, the adapter has no path to discover it short of a fresh
+    // module load. A full-page reload is the smallest correct fix: it
+    // reconstructs the mesh stack with the new keyring and the
+    // peers-present / peer-joined notifications do the rest.
+    if (typeof window !== 'undefined') {
+      window.location.reload();
+    }
     return;
   }
   if (remaining.has('issue')) {

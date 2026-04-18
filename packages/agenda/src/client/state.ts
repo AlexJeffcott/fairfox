@@ -4,6 +4,14 @@
 
 import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
+import { signal } from '@preact/signals';
+
+export type AgendaView = 'today' | 'items' | 'fairness';
+
+/** Which tab the App component is rendering. Lifted out of a local
+ * useSignal so the `agenda.tab` action handler can mutate it through
+ * the same signal the component reads. */
+export const activeTab = signal<AgendaView>('today');
 
 export type AgendaItemKind = 'event' | 'chore';
 export type RecurrenceType = 'once' | 'daily' | 'weekdays' | 'interval';

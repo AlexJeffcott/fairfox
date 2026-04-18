@@ -22,7 +22,7 @@
     "puppeteer": "^24.18.0",
     "elysia": "^1.4.28",
     "@elysiajs/static": "^1.4.7",
-    "@fairfox/polly": "0.27.0",
+    "@fairfox/polly": "0.27.1",
     "@automerge/automerge": "^3.2.0",
     "@automerge/automerge-repo": "^2.5.0",
     "@automerge/automerge-repo-storage-indexeddb": "^2.5.0",

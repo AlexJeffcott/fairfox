@@ -5,7 +5,7 @@
 
 import { pairingActions } from '@fairfox/shared/pairing-actions';
 import type { AgendaItem, Completion, SnoozeKind } from '#src/client/state.ts';
-import { agenda } from '#src/client/state.ts';
+import { activeTab, agenda } from '#src/client/state.ts';
 
 interface HandlerContext {
   data: Record<string, string>;
@@ -111,9 +111,10 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     };
   },
 
-  'agenda.tab': () => {
-    // Tab changes are handled by the App component's local signal;
-    // no CRDT mutation needed. The delegator still dispatches the
-    // action, but the handler is intentionally empty.
+  'agenda.tab': (ctx) => {
+    const id = ctx.data.id;
+    if (id === 'today' || id === 'items' || id === 'fairness') {
+      activeTab.value = id;
+    }
   },
 };

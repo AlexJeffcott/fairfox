@@ -20,6 +20,7 @@
 
 import { useSignalEffect } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
+import { useEffect } from 'preact/hooks';
 import { loadOrCreateKeyring } from '#src/keyring.ts';
 import { LoginPage } from '#src/login-page.tsx';
 import { consumePairingHash } from '#src/pairing-actions.ts';
@@ -54,6 +55,23 @@ export function MeshGate({ children }: MeshGateProps): preact.JSX.Element | null
       hydrateSoloDeviceMode();
     }
   });
+
+  // A `#pair=…` URL pasted into an already-open tab changes only the
+  // hash, so Preact never re-mounts and the effect above never re-runs.
+  // Listen for the hashchange event directly so link consumption works
+  // regardless of how the user arrives at the fragment.
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+    const onHashChange = (): void => {
+      if (window.location.hash.startsWith('#pair=')) {
+        void consumePairingHash();
+      }
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   if (knownPeerCount.value === null) {
     return null;
