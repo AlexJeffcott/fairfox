@@ -2,25 +2,13 @@
 // the Node WebRTC implementation (werift), file-backed keyring storage
 // under ~/.fairfox/keyring.json, and the WebSocket global that Bun
 // already exposes. Shared by every subcommand that reaches into the mesh.
-//
-// The keyring-storage code is duplicated from polly rather than imported
-// because @fairfox/polly 0.27.1's published mesh-node bundle has its
-// node:fs/promises dependency erased by the browser-target bundler —
-// `var {readFile, rename, writeFile} = (() => ({}))` in the dist means
-// the real filesystem primitives are undefined at runtime. A polly fix
-// will restore the import site; until then, a local implementation
-// sidesteps the bug.
 
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { MeshClient, MeshKeyring } from '@fairfox/polly/mesh';
 import { createMeshClient } from '@fairfox/polly/mesh';
-import {
-  deserialiseKeyring,
-  type KeyringStorage,
-  serialiseKeyring,
-} from '@fairfox/polly/mesh/node';
+import { fileKeyringStorage, type KeyringStorage } from '@fairfox/polly/mesh/node';
 import { RTCPeerConnection } from 'werift';
 
 export const KEYRING_PATH = join(homedir(), '.fairfox', 'keyring.json');
@@ -32,30 +20,19 @@ export function defaultSignalingUrl(): string {
   return `${proto}://${host}/polly/signaling`;
 }
 
-// fileKeyringStorage re-implemented locally because polly 0.27.1's
-// published bundle erased its node:fs/promises imports under the
-// browser build target. The serialise / deserialise helpers still work
-// from polly so the wire format stays compatible.
 export function keyringStorage(): KeyringStorage {
-  const path = KEYRING_PATH;
+  // polly's fileKeyringStorage doesn't create the parent directory
+  // before its write-to-tmp-then-rename dance, so the first save on
+  // a fresh machine fails at `open(...tmp)` if the user's profile
+  // directory (e.g. ~/.fairfox/) doesn't exist yet. Wrap the save
+  // with an mkdir until polly picks up the guard upstream.
+  const inner = fileKeyringStorage(KEYRING_PATH);
+  const parent = dirname(KEYRING_PATH);
   return {
-    async load(): Promise<MeshKeyring | null> {
-      try {
-        const text = await readFile(path, 'utf-8');
-        return deserialiseKeyring(text);
-      } catch (err) {
-        if (err instanceof Error && 'code' in err && err.code === 'ENOENT') {
-          return null;
-        }
-        throw err;
-      }
-    },
-    async save(keyring: MeshKeyring): Promise<void> {
-      await mkdir(dirname(path), { recursive: true });
-      const text = serialiseKeyring(keyring);
-      const tmp = `${path}.tmp-${process.pid}`;
-      await writeFile(tmp, text, 'utf-8');
-      await rename(tmp, path);
+    load: inner.load.bind(inner),
+    save: async (keyring: MeshKeyring): Promise<void> => {
+      await mkdir(parent, { recursive: true });
+      return inner.save(keyring);
     },
   };
 }
