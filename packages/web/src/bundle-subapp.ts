@@ -19,13 +19,19 @@ export interface SubAppBundle {
 
 const REPO_ROOT = resolve(import.meta.dir, '..', '..', '..');
 
-function htmlShell(name: string, entryJs: string, entryCss: string | null): string {
+function htmlShell(
+  name: string,
+  entryJs: string,
+  entryCss: string | null,
+  buildHash: string
+): string {
   const cssLink = entryCss ? `    <link rel="stylesheet" href="/${name}${entryCss}" />\n` : '';
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="fairfox-build-hash" content="${buildHash}" />
     <title>fairfox · ${name}</title>
 ${cssLink}  </head>
   <body>
@@ -36,7 +42,7 @@ ${cssLink}  </head>
 `;
 }
 
-export async function buildSubApp(name: string): Promise<SubAppBundle> {
+export async function buildSubApp(name: string, buildHash: string): Promise<SubAppBundle> {
   const entry = resolve(REPO_ROOT, 'packages', name, 'src', 'client', 'boot.tsx');
   const result = await Bun.build({
     entrypoints: [entry],
@@ -70,17 +76,18 @@ export async function buildSubApp(name: string): Promise<SubAppBundle> {
     }
   }
 
-  const html = htmlShell(name, entryJs, entryCss);
+  const html = htmlShell(name, entryJs, entryCss, buildHash);
   return { name, html, artefacts };
 }
 
 export async function buildAllSubApps(
-  names: readonly string[]
+  names: readonly string[],
+  buildHash: string
 ): Promise<Map<string, SubAppBundle>> {
   const bundles = new Map<string, SubAppBundle>();
   for (const name of names) {
     try {
-      const bundle = await buildSubApp(name);
+      const bundle = await buildSubApp(name, buildHash);
       bundles.set(name, bundle);
       console.log(`[bundle-subapp] ${name}: ${bundle.artefacts.size} artefact(s) ready`);
     } catch (err) {

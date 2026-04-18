@@ -22,6 +22,45 @@ import { strip } from './strip.ts';
 
 const env = loadEnv();
 
+// --- Build-hash freshness ---
+//
+// Every open tab caches the JS bundle and CSS chunks it loaded from
+// the previous deploy. A Railway push replaces both without the tab's
+// knowing, and a user can go weeks running old code that still appears
+// to work — until a protocol change (action handler rename, $meshState
+// key change, anything) diverges the local app from the server it talks
+// to. The symptom the user reported: "seems like it gets stale and
+// disconnected until I refresh."
+//
+// The fix is two-sided. Server exposes a stable build identifier both
+// as a meta tag in every sub-app HTML shell and as a `/build-hash`
+// JSON endpoint. Client reads the meta on load, polls the endpoint on
+// an interval, and when the hash diverges prompts the user to reload
+// through a small banner.
+//
+// Hash sources, in priority order:
+//   1. RAILWAY_GIT_COMMIT_SHA — set automatically by Railway per deploy.
+//   2. FAIRFOX_BUILD_HASH — escape hatch for other hosting providers
+//      (DigitalOcean, Fly.io) and for local e2e tests that need to
+//      simulate two different deploys back-to-back.
+//   3. A per-process fallback so the signal is always non-empty and
+//      local `bun dev` never spams the banner on itself.
+export const BUILD_HASH =
+  process.env.RAILWAY_GIT_COMMIT_SHA ??
+  process.env.FAIRFOX_BUILD_HASH ??
+  `dev-${process.pid}-${Date.now()}`;
+
+function injectBuildHashMeta(html: string, hash: string): string {
+  const meta = `<meta name="fairfox-build-hash" content="${hash}" />`;
+  // Prefer to place the meta tag in <head>. If the document lacks a
+  // head tag the meta slots in right after <html> so the client can
+  // still find it through `document.querySelector`.
+  if (html.includes('</head>')) {
+    return html.replace('</head>', `    ${meta}\n  </head>`);
+  }
+  return html.replace('<html', `<html>\n  ${meta}\n<html`).replace('<html>\n', '<html');
+}
+
 // --- Mesh sub-app bundles built at startup ---
 
 const MESH_SUBAPPS = [
@@ -33,7 +72,7 @@ const MESH_SUBAPPS = [
   'family-phone-admin',
 ] as const;
 
-const bundles = await buildAllSubApps(MESH_SUBAPPS);
+const bundles = await buildAllSubApps(MESH_SUBAPPS, BUILD_HASH);
 
 // --- Legacy sub-app dispatch (remove in Phase 7) ---
 
@@ -177,7 +216,10 @@ function handleSignalingClose(ws: ServerWebSocket<WsData>): void {
 
 // --- Static assets ---
 
-const LANDING = Bun.file(`${import.meta.dir}/../public/index.html`);
+const LANDING_HTML = injectBuildHashMeta(
+  await Bun.file(`${import.meta.dir}/../public/index.html`).text(),
+  BUILD_HASH
+);
 const CLI_BUNDLE = Bun.file(`${import.meta.dir}/../../cli/dist/fairfox.js`);
 
 // --- CLI installer ---
@@ -266,9 +308,16 @@ const server = Bun.serve<WsData>({
     }
 
     if (p === '/' || p === '/index.html') {
-      return new Response(LANDING, {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      return new Response(LANDING_HTML, {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+        },
       });
+    }
+
+    if (p === '/build-hash') {
+      return Response.json({ hash: BUILD_HASH }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
     // CLI distribution.

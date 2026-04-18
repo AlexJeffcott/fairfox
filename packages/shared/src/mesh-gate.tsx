@@ -21,6 +21,7 @@
 import { useSignalEffect } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { useEffect } from 'preact/hooks';
+import { BuildFreshnessBanner } from '#src/build-freshness.tsx';
 import { loadOrCreateKeyring } from '#src/keyring.ts';
 import { LoginPage } from '#src/login-page.tsx';
 import { consumePairingHash } from '#src/pairing-actions.ts';
@@ -79,7 +80,17 @@ export function MeshGate({ children }: MeshGateProps): preact.JSX.Element | null
   const paired = knownPeerCount.value > 0 || soloDeviceMode.value;
   const idle = pairingMode.value === 'idle';
   if (paired && idle) {
-    return <>{children}</>;
+    return (
+      <>
+        {children}
+        <BuildFreshnessBanner />
+      </>
+    );
   }
-  return <LoginPage />;
+  return (
+    <>
+      <LoginPage />
+      <BuildFreshnessBanner />
+    </>
+  );
 }
