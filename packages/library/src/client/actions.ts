@@ -3,6 +3,7 @@
 // Handlers mutate the libraryState $meshState document. Changes propagate
 // automatically to every connected peer via the CRDT sync layer.
 
+import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
 import type { Doc, Ref } from '#src/client/state.ts';
 import { libraryState } from '#src/client/state.ts';
@@ -19,6 +20,7 @@ function generateId(prefix: string): string {
 
 export const registry: Record<string, (ctx: HandlerContext) => void> = {
   ...pairingActions,
+  ...buildFreshnessActions,
 
   'ref.create': (ctx) => {
     const title = ctx.data.value;

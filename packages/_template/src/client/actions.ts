@@ -9,6 +9,7 @@
 // Add new handlers here as the sub-app grows. The registry is a plain
 // object — no runtime registration, no indirection.
 
+import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
 import { appState } from '#src/client/state.ts';
 
@@ -20,6 +21,7 @@ interface HandlerContext {
 
 export const registry: Record<string, (ctx: HandlerContext) => void> = {
   ...pairingActions,
+  ...buildFreshnessActions,
 
   'item.add': (ctx) => {
     const text = ctx.data.value;

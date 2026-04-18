@@ -12,6 +12,7 @@
     "./mesh": "./src/mesh.ts",
     "./mesh-gate": "./src/mesh-gate.tsx",
     "./mesh-controls": "./src/mesh-controls.tsx",
+    "./build-freshness": "./src/build-freshness.tsx",
     "./login-page": "./src/login-page.tsx",
     "./ensure-mesh": "./src/ensure-mesh.ts",
     "./pairing-state": "./src/pairing-state.ts",

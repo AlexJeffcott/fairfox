@@ -5,6 +5,7 @@
 // back. This handler dispatches the fetch but writes the result
 // into $meshState so every paired device sees the same transcript.
 
+import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
 import type { Format, Language, Session, Turn } from '#src/client/state.ts';
 import { sessionsState } from '#src/client/state.ts';
@@ -39,6 +40,7 @@ function updateSession(id: string, mutator: (s: Session) => Session): void {
 
 export const registry: Record<string, (ctx: HandlerContext) => void> = {
   ...pairingActions,
+  ...buildFreshnessActions,
 
   'session.start': (ctx) => {
     const format = ctx.data.format;

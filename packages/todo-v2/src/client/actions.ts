@@ -1,5 +1,6 @@
 // Action registry for the Todo sub-app.
 
+import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
 import { migrateFromLegacy } from '#src/client/migrate.ts';
 import type { Project, QuickCapture, Task, TaskPriority } from '#src/client/state.ts';
@@ -27,6 +28,7 @@ function isProjectStatus(s: string): s is Project['status'] {
 
 export const registry: Record<string, (ctx: HandlerContext) => void> = {
   ...pairingActions,
+  ...buildFreshnessActions,
 
   // --- Projects ---
   'project.create': (ctx) => {

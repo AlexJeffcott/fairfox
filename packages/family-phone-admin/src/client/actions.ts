@@ -6,6 +6,7 @@
 // human and device metadata once pairing completes; the cryptographic
 // trust flows through the keyring, not this CRDT.
 
+import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
 import type { Device, DeviceKind, Human } from '#src/client/state.ts';
 import { directoryState } from '#src/client/state.ts';
@@ -28,6 +29,7 @@ function generateId(prefix: string): string {
 
 export const registry: Record<string, (ctx: HandlerContext) => void> = {
   ...pairingActions,
+  ...buildFreshnessActions,
 
   'human.add': (ctx) => {
     const name = ctx.data.value ?? ctx.data.name;
