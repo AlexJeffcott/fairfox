@@ -43,3 +43,37 @@ A Bun monorepo that gathers small web projects into a single Railway service. Ea
 
 - `railway up` in the repo root. Single-stage Dockerfile. No Litestream (v1).
 - Old todo-remote and the_struggle Railway services stay running for seven days after each migration as rollback insurance, then are deleted.
+
+## Mesh sync verification
+
+Any change that touches the pairing flow, the keyring, the mesh client,
+the signalling relay, or `$meshState` must pass
+`scripts/e2e-two-device-sync.ts` before being considered done. The
+script launches two headless Chrome profiles, walks both through the
+full pairing ceremony, types a chore on one device, and confirms it
+reaches the other through real WebRTC. Screenshots land in
+`scripts/artifacts/` (gitignored). Non-zero exit on any convergence
+failure.
+
+```sh
+bun scripts/e2e-two-device-sync.ts                                    # prod
+TARGET_URL=http://localhost:3000/agenda bun scripts/e2e-two-device-sync.ts
+HEADLESS=false bun scripts/e2e-two-device-sync.ts                     # watch it
+```
+
+`bun check`, `bun typecheck`, `bun test`, and `bun test:browser` all
+green means the code compiles and each unit and the protocol layer
+behaves. None of them prove two devices actually sync. This script
+does. The mesh-sync bug that shipped under 0.27.0 passed every tier
+of automated test because the polly browser tests wired the stack by
+hand and silently compensated for a gap in the `createMeshClient`
+factory; the only signal that it was broken was trying to use the
+feature from two Chrome profiles. The e2e script exists so that
+signal is one `bun scripts/…` command away, not a day of
+investigation after the next user report.
+
+For other user-facing workflows that cross boundaries the unit suite
+doesn't (any change to real-time behaviour, any new cross-sub-app
+protocol, any authentication flow): build the equivalent before
+declaring the work done, commit it under `scripts/`, run it from a
+cold state.
