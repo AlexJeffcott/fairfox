@@ -178,6 +178,53 @@ function handleSignalingClose(ws: ServerWebSocket<WsData>): void {
 // --- Static assets ---
 
 const LANDING = Bun.file(`${import.meta.dir}/../public/index.html`);
+const CLI_BUNDLE = Bun.file(`${import.meta.dir}/../../cli/dist/fairfox.js`);
+
+// --- CLI installer ---
+//
+// Pipe-to-bash script served from /cli/install. Takes an optional
+// pairing token so a single copy-paste both installs and pairs.
+
+function renderInstallScript(origin: string, token: string): string {
+  const safeToken = token.replace(/[^A-Za-z0-9%._~-]/g, '');
+  const bundleUrl = `${origin}/cli/fairfox.js`;
+  return `#!/bin/sh
+# fairfox CLI installer. Drops the fairfox binary at
+# $HOME/.local/bin/fairfox and, if a pairing token was handed to the
+# installer URL, applies it to a fresh keyring at $HOME/.fairfox.
+set -e
+
+BIN_DIR="$HOME/.local/bin"
+SCRIPT_PATH="$HOME/.fairfox/fairfox.js"
+BIN_PATH="$BIN_DIR/fairfox"
+TOKEN=${JSON.stringify(safeToken)}
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "fairfox install: bun is required. Install it first:" >&2
+  echo "  curl -fsSL https://bun.sh/install | bash" >&2
+  exit 1
+fi
+
+mkdir -p "$BIN_DIR" "$HOME/.fairfox"
+echo "Fetching CLI bundle…"
+curl -fsSL ${JSON.stringify(bundleUrl)} -o "$SCRIPT_PATH"
+cat > "$BIN_PATH" <<'WRAPPER'
+#!/bin/sh
+exec bun "$HOME/.fairfox/fairfox.js" "$@"
+WRAPPER
+chmod +x "$BIN_PATH"
+
+echo "Installed fairfox → $BIN_PATH"
+case ":$PATH:" in
+  *:"$BIN_DIR":*) ;;
+  *) echo "note: $BIN_DIR is not on your \\$PATH — add it or run \\"\\$BIN_DIR/fairfox\\" directly." ;;
+esac
+
+if [ -n "$TOKEN" ]; then
+  "$BIN_PATH" pair "$TOKEN"
+fi
+`;
+}
 
 // --- WebSocket handler: signaling + legacy todo ---
 
@@ -221,6 +268,34 @@ const server = Bun.serve<WsData>({
     if (p === '/' || p === '/index.html') {
       return new Response(LANDING, {
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      });
+    }
+
+    // CLI distribution.
+    //
+    // The CLI bundle ships in the same Docker image as the server, so
+    // the version a user installs is always the version the server
+    // speaks. The installer script takes an optional `token` query
+    // parameter and appends `fairfox pair <token>` on a fresh install,
+    // which lets the browser's "Pair a CLI" reveal hand a user one
+    // command that both downloads and pairs in a single step.
+    if (p === '/cli/fairfox.js') {
+      return new Response(CLI_BUNDLE, {
+        headers: {
+          'Content-Type': 'application/javascript; charset=utf-8',
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+    if (p === '/cli/install.sh' || p === '/cli/install') {
+      const token = new URL(req.url).searchParams.get('token') ?? '';
+      const origin = `${new URL(req.url).protocol}//${new URL(req.url).host}`;
+      const script = renderInstallScript(origin, token);
+      return new Response(script, {
+        headers: {
+          'Content-Type': 'text/x-shellscript; charset=utf-8',
+          'Cache-Control': 'no-store',
+        },
       });
     }
 

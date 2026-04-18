@@ -43,6 +43,38 @@ const CARD_STYLE = {
   boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06)',
 };
 
+function CliPairReveal({ token }: { token: string }): preact.JSX.Element | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  const installUrl = `${window.location.origin}/cli/install?token=${encodeURIComponent(token)}`;
+  const command = `curl -fsSL "${installUrl}" | sh`;
+  return (
+    <details style={{ marginTop: 'var(--polly-space-sm, 0.5rem)' }}>
+      <summary style={{ cursor: 'pointer', fontSize: '0.8rem' }}>
+        Pair a CLI instead of a browser
+      </summary>
+      <p style={{ margin: '0.25rem 0', fontSize: '0.75rem' }}>
+        Paste this command into a terminal on the machine you want to pair. The installer drops
+        fairfox at <code>~/.local/bin/fairfox</code> and applies the pair token in one step.
+      </p>
+      <code
+        style={{
+          display: 'block',
+          wordBreak: 'break-all',
+          padding: '0.5rem',
+          background: 'rgba(0, 0, 0, 0.06)',
+          borderRadius: '4px',
+          fontSize: '0.75rem',
+          marginTop: '0.25rem',
+        }}
+      >
+        {command}
+      </code>
+    </details>
+  );
+}
+
 function Header(): preact.JSX.Element {
   return (
     <div style={{ textAlign: 'center', marginBottom: 'var(--polly-space-md, 1rem)' }}>
@@ -126,6 +158,7 @@ function IssueView(): preact.JSX.Element {
           </code>
         </details>
       )}
+      {issuedToken.value && <CliPairReveal token={issuedToken.value} />}
       <Layout
         columns="1fr 1fr"
         gap="var(--polly-space-sm, 0.5rem)"
