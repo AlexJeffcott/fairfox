@@ -67,6 +67,22 @@ async function getTodo(): Promise<WsSubApp> {
 
 // --- Signaling relay (Bun WebSocket, not Elysia, because the main
 // server uses Bun.serve directly for legacy sub-app compat) ---
+//
+// The wire protocol matches @fairfox/polly/elysia's signalingServer
+// plugin so paired devices can discover each other reactively rather
+// than relying on a one-shot startup sweep:
+//
+//   Client → server:   `join`, `signal`
+//   Server → newcomer: `peers-present` on each join
+//   Server → incumbents: `peer-joined` on each join, `peer-left` on each close
+//   Server → sender:   `error` on unknown-target / not-joined / malformed
+//
+// Adopting the polly reference plugin wholesale would mean threading
+// Elysia into the existing Bun.serve; for now we mirror the frames
+// here and keep the legacy-todo dispatch untouched. The signalling
+// server is stateless — no persistent queue, no routing across
+// instances — which keeps the single-process Railway deployment
+// correct without extra infrastructure.
 
 // Signaling state: peer id → WebSocket
 const signalingPeers = new Map<string, ServerWebSocket<WsData>>();
@@ -75,7 +91,7 @@ function handleSignalingMessage(ws: ServerWebSocket<WsData>, msg: string): void 
   try {
     const parsed = JSON.parse(msg);
     if (parsed.type === 'join' && typeof parsed.peerId === 'string') {
-      signalingPeers.set(parsed.peerId, ws);
+      handleJoin(ws, parsed.peerId);
       return;
     }
     if (
@@ -83,21 +99,79 @@ function handleSignalingMessage(ws: ServerWebSocket<WsData>, msg: string): void 
       typeof parsed.peerId === 'string' &&
       typeof parsed.targetPeerId === 'string'
     ) {
-      const target = signalingPeers.get(parsed.targetPeerId);
-      if (target) {
-        target.send(msg);
-      } else {
-        ws.send(
-          JSON.stringify({
-            type: 'error',
-            reason: 'unknown-target',
-            targetPeerId: parsed.targetPeerId,
-          })
-        );
-      }
+      handleSignal(ws, msg, parsed.targetPeerId);
     }
   } catch {
     // Malformed messages are silently dropped.
+  }
+}
+
+function handleJoin(ws: ServerWebSocket<WsData>, peerId: string): void {
+  // Snapshot the incumbents before inserting the newcomer so we can
+  // tell the newcomer who is already present and tell each of them
+  // about the newcomer. A rejoin with the same peerId replaces the
+  // prior entry but is otherwise treated as a fresh arrival.
+  const incumbents: Array<{ peerId: string; socket: ServerWebSocket<WsData> }> = [];
+  for (const [existingPeerId, existingSocket] of signalingPeers) {
+    if (existingPeerId === peerId) {
+      continue;
+    }
+    incumbents.push({ peerId: existingPeerId, socket: existingSocket });
+  }
+  signalingPeers.set(peerId, ws);
+  (ws.data as WsData).peerId = peerId;
+
+  ws.send(
+    JSON.stringify({
+      type: 'peers-present',
+      peerIds: incumbents.map((i) => i.peerId),
+    })
+  );
+
+  const notice = JSON.stringify({ type: 'peer-joined', peerId });
+  for (const incumbent of incumbents) {
+    try {
+      incumbent.socket.send(notice);
+    } catch {
+      // The incumbent's own close handler will evict it.
+    }
+  }
+}
+
+function handleSignal(ws: ServerWebSocket<WsData>, raw: string, targetPeerId: string): void {
+  const target = signalingPeers.get(targetPeerId);
+  if (!target) {
+    ws.send(
+      JSON.stringify({
+        type: 'error',
+        reason: 'unknown-target',
+        targetPeerId,
+      })
+    );
+    return;
+  }
+  target.send(raw);
+}
+
+function handleSignalingClose(ws: ServerWebSocket<WsData>): void {
+  const peerId = ws.data.peerId;
+  if (!peerId) {
+    return;
+  }
+  // Only evict if the map still points at *this* socket. A stale
+  // close after the same peerId rejoined on a new socket must not
+  // take the fresh entry with it.
+  if (signalingPeers.get(peerId) !== ws) {
+    return;
+  }
+  signalingPeers.delete(peerId);
+  const notice = JSON.stringify({ type: 'peer-left', peerId });
+  for (const [, incumbentSocket] of signalingPeers) {
+    try {
+      incumbentSocket.send(notice);
+    } catch {
+      // Incumbent's own close handler will tidy.
+    }
   }
 }
 
@@ -126,13 +200,7 @@ const websocket: WebSocketHandler<WsData> = {
   },
   close(ws) {
     if (ws.data.role === 'signaling') {
-      // Remove from signaling peers
-      for (const [peerId, peer] of signalingPeers) {
-        if (peer === ws) {
-          signalingPeers.delete(peerId);
-          break;
-        }
-      }
+      handleSignalingClose(ws);
     } else {
       todoApp?.close(ws);
     }
