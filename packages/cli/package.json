@@ -1,0 +1,33 @@
+{
+  "name": "@fairfox/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "fairfox": "./dist/fairfox.js"
+  },
+  "imports": {
+    "#src/*": "./src/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "bun run build.ts"
+  },
+  "dependencies": {
+    "@automerge/automerge": "catalog:",
+    "@automerge/automerge-repo": "catalog:",
+    "@automerge/automerge-repo-network-websocket": "catalog:",
+    "@automerge/automerge-repo-storage-nodefs": "catalog:",
+    "@fairfox/polly": "catalog:",
+    "@fairfox/shared": "workspace:*",
+    "tweetnacl": "catalog:",
+    "werift": "catalog:",
+    "ws": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@types/ws": "^8.5.10",
+    "typescript": "catalog:"
+  }
+}

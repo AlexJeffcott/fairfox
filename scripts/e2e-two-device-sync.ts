@@ -148,10 +148,15 @@ try {
   const chore = `e2e-sync-${Date.now()}`;
   TRACE('desktop', `add chore "${chore}"`);
   await desktop.page.click('[data-polly-action-input][data-state="empty"]');
-  await desktop.page.waitForSelector('input[data-polly-action-input], textarea[data-polly-action-input]', {
-    timeout: 5000,
-  });
-  const input = await desktop.page.$('input[data-polly-action-input], textarea[data-polly-action-input]');
+  await desktop.page.waitForSelector(
+    'input[data-polly-action-input], textarea[data-polly-action-input]',
+    {
+      timeout: 5000,
+    }
+  );
+  const input = await desktop.page.$(
+    'input[data-polly-action-input], textarea[data-polly-action-input]'
+  );
   if (!input) {
     throw new Error('no add-chore input on desktop');
   }
