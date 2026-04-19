@@ -22,6 +22,7 @@ import { parseArgs } from 'node:util';
 import { agendaAdd, agendaList } from '#src/commands/agenda.ts';
 import { deploy } from '#src/commands/deploy.ts';
 import { pair } from '#src/commands/pair.ts';
+import { todo } from '#src/commands/todo.ts';
 
 function printUsage(): void {
   process.stderr.write(
@@ -32,6 +33,12 @@ function printUsage(): void {
       '  fairfox pair <token-or-url>   Apply a pairing token; print our share URL.',
       '  fairfox agenda list           List chores and events in the agenda doc.',
       '  fairfox agenda add <name>     Add a chore (daily recurrence).',
+      '  fairfox todo tasks            List open tasks (add --done for all).',
+      '  fairfox todo task add <desc>  Add a task; --project P --priority high|med|low.',
+      '  fairfox todo task done <tid>  Mark a task done.',
+      '  fairfox todo projects         List projects (add --status ...).',
+      '  fairfox todo capture add <s>  Record a quick capture.',
+      '  fairfox todo help             Full list of todo subcommands.',
       '  fairfox deploy [push]         `railway up --detach` from the fairfox repo.',
       '  fairfox deploy status         List recent Railway deployments.',
       '  fairfox deploy logs           Tail Railway logs for the current service.',
@@ -81,6 +88,10 @@ function main(): Promise<number> {
 
   if (subcommand === 'deploy') {
     return deploy(rest);
+  }
+
+  if (subcommand === 'todo') {
+    return todo(rest);
   }
 
   process.stderr.write(`fairfox: unknown subcommand "${subcommand}".\n\n`);
