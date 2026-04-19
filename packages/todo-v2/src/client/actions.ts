@@ -2,10 +2,20 @@
 
 import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
-import { setActiveTab, setSelectedTaskId } from '#src/client/App.tsx';
+import { setActiveTab, setSelectedProjectId, setSelectedTaskId } from '#src/client/App.tsx';
 import { migrateFromLegacy } from '#src/client/migrate.ts';
-import type { Project, QuickCapture, Task, TaskPriority } from '#src/client/state.ts';
+import type {
+  Project,
+  ProjectCategory,
+  QuickCapture,
+  Task,
+  TaskPriority,
+} from '#src/client/state.ts';
 import { capturesState, projectsState, tasksState } from '#src/client/state.ts';
+
+function isProjectCategory(s: string): s is ProjectCategory {
+  return s === 'personal' || s === 'amboss';
+}
 
 let migrationInFlight = false;
 
@@ -75,6 +85,85 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     projectsState.value = {
       ...projectsState.value,
       projects: projectsState.value.projects.filter((p) => p.pid !== pid),
+    };
+  },
+
+  // --- Project detail navigation ---
+
+  'project.open': (ctx) => {
+    if (ctx.data.pid) {
+      setSelectedProjectId(ctx.data.pid);
+    }
+  },
+
+  'project.close': () => {
+    setSelectedProjectId(null);
+  },
+
+  'project.new': () => {
+    const project: Project = {
+      pid: generateId('P'),
+      name: '',
+      parent: null,
+      category: 'personal',
+      type: 'coding',
+      status: 'active',
+      dirs: '',
+      skills: '',
+      notes: '',
+      sortOrder: projectsState.value.projects.length,
+    };
+    projectsState.value = {
+      ...projectsState.value,
+      projects: [...projectsState.value.projects, project],
+    };
+    setSelectedProjectId(project.pid);
+  },
+
+  'project.delete-and-close': (ctx) => {
+    const pid = ctx.data.pid;
+    if (!pid) {
+      return;
+    }
+    projectsState.value = {
+      ...projectsState.value,
+      projects: projectsState.value.projects.filter((p) => p.pid !== pid),
+    };
+    setSelectedProjectId(null);
+  },
+
+  /**
+   * Mirror of `task.update`. The detail view fires this for every field on
+   * blur or on `<select>` change; the handler dispatches by `field` and
+   * validates the narrow enum fields (category, status) before writing.
+   * A blank `parent` collapses to null so the mesh doc stays clean.
+   */
+  'project.update': (ctx) => {
+    const pid = ctx.data.pid;
+    const field = ctx.data.field;
+    if (!pid || !field) {
+      return;
+    }
+    let value = ctx.data.value;
+    if (value === undefined) {
+      const target = ctx.event.target;
+      if (target instanceof HTMLSelectElement || target instanceof HTMLInputElement) {
+        value = target.value;
+      }
+    }
+    if (value === undefined) {
+      return;
+    }
+    if (field === 'category' && !isProjectCategory(value)) {
+      return;
+    }
+    if (field === 'status' && !isProjectStatus(value)) {
+      return;
+    }
+    const patch: Partial<Project> = { [field]: field === 'parent' && value === '' ? null : value };
+    projectsState.value = {
+      ...projectsState.value,
+      projects: projectsState.value.projects.map((p) => (p.pid === pid ? { ...p, ...patch } : p)),
     };
   },
 
@@ -248,6 +337,54 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       ...capturesState.value,
       captures: capturesState.value.captures.filter((c) => c.id !== id),
     };
+  },
+
+  'capture.update': (ctx) => {
+    const id = ctx.data.id;
+    const text = ctx.data.value;
+    if (!id || text === undefined) {
+      return;
+    }
+    capturesState.value = {
+      ...capturesState.value,
+      captures: capturesState.value.captures.map((c) => (c.id === id ? { ...c, text } : c)),
+    };
+  },
+
+  /**
+   * Promote a capture into a full task. The new task inherits the capture's
+   * text as its description, the capture is deleted (so the same thought
+   * doesn't linger in two places), and the UI navigates into the task
+   * detail pane so the user can fill in project, priority, and notes.
+   */
+  'capture.promote': (ctx) => {
+    const id = ctx.data.id;
+    if (!id) {
+      return;
+    }
+    const capture = capturesState.value.captures.find((c) => c.id === id);
+    if (!capture) {
+      return;
+    }
+    const task: Task = {
+      tid: generateId('T'),
+      done: false,
+      description: capture.text,
+      project: '',
+      priority: 'med',
+      links: '',
+      notes: '',
+    };
+    tasksState.value = {
+      ...tasksState.value,
+      tasks: [...tasksState.value.tasks, task],
+    };
+    capturesState.value = {
+      ...capturesState.value,
+      captures: capturesState.value.captures.filter((c) => c.id !== id),
+    };
+    setActiveTab('tasks');
+    setSelectedTaskId(task.tid);
   },
 
   // --- Navigation ---

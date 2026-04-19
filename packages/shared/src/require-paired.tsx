@@ -18,7 +18,13 @@ import { useSignalEffect } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { BuildFreshnessBanner } from '#src/build-freshness.tsx';
 import { loadOrCreateKeyring } from '#src/keyring.ts';
-import { hydrateSoloDeviceMode, knownPeerCount, soloDeviceMode } from '#src/pairing-state.ts';
+import { LoginPage } from '#src/login-page.tsx';
+import {
+  hydrateSoloDeviceMode,
+  knownPeerCount,
+  pairingMode,
+  soloDeviceMode,
+} from '#src/pairing-state.ts';
 
 async function refreshKeyringState(): Promise<void> {
   try {
@@ -52,6 +58,20 @@ export function RequirePaired({ children }: RequirePairedProps): preact.JSX.Elem
       window.location.replace('/');
     }
     return null;
+  }
+  // A paired device can still open the pairing wizard — the "Pair another
+  // device" control in every sub-app header does exactly that, flipping
+  // pairingMode out of 'idle'. While the wizard is active, render the
+  // LoginPage in place of the sub-app so the ceremony has somewhere to
+  // show its QR / paste box. Cancelling the ceremony returns pairingMode
+  // to 'idle' and the sub-app reappears.
+  if (pairingMode.value !== 'idle') {
+    return (
+      <>
+        <LoginPage />
+        <BuildFreshnessBanner />
+      </>
+    );
   }
   return (
     <>

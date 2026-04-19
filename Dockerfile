@@ -17,6 +17,24 @@ RUN bun run --cwd packages/cli build
 # packages/extension/dist/ which the server reads on demand.
 RUN bun run --cwd packages/extension build
 
+# Derive a deterministic build hash from the source. Railway's `up`
+# deploy doesn't set RAILWAY_GIT_COMMIT_SHA and the runtime fallback
+# of "dev-${pid}-${Date.now()}" shifts on every container restart —
+# every restart then trips BuildFreshnessBanner even though the code
+# hasn't changed. Hashing the file contents at image-build time pins
+# the hash to the image, so reload prompts fire only when the deploy
+# actually differs.
+RUN find packages -type f \
+      \( -name "*.ts" -o -name "*.tsx" -o -name "*.css" -o -name "*.html" -o -name "*.json" \) \
+      -not -path "*/node_modules/*" -not -path "*/dist/*" -print0 \
+    | sort -z \
+    | xargs -0 sha256sum \
+    | sha256sum \
+    | awk '{print $1}' \
+    > /app/.build-hash \
+    && head -c 12 /app/.build-hash > /app/.build-hash.short \
+    && mv /app/.build-hash.short /app/.build-hash
+
 ENV NODE_ENV=production
 ENV DATA_DIR=/data
 ENV PORT=3000

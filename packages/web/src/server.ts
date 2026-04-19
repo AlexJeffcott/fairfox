@@ -46,9 +46,23 @@ const env = loadEnv();
 //      simulate two different deploys back-to-back.
 //   3. A per-process fallback so the signal is always non-empty and
 //      local `bun dev` never spams the banner on itself.
+async function readBakedBuildHash(): Promise<string | null> {
+  try {
+    const file = Bun.file('/app/.build-hash');
+    if (await file.exists()) {
+      const text = (await file.text()).trim();
+      return text.length > 0 ? text : null;
+    }
+  } catch {
+    // File missing — local `bun dev` doesn't write it. Fall through.
+  }
+  return null;
+}
+
 export const BUILD_HASH =
   process.env.RAILWAY_GIT_COMMIT_SHA ??
   process.env.FAIRFOX_BUILD_HASH ??
+  (await readBakedBuildHash()) ??
   `dev-${process.pid}-${Date.now()}`;
 
 // --- Mesh sub-app bundles built at startup ---
@@ -526,8 +540,16 @@ const server = Bun.serve<WsData>({
         if (!bundle) {
           return new Response(`${name} bundle not available`, { status: 503 });
         }
+        // The HTML shell carries the build-hash meta, which must match
+        // what `/build-hash` reports. Without `no-store` Railway's Fastly
+        // edge caches the shell for minutes while the endpoint stays
+        // fresh, and the BuildFreshnessBanner treats the permanent
+        // disagreement as a pending reload.
         return new Response(bundle.html, {
-          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-store',
+          },
         });
       }
       if (p.startsWith(`${prefix}/`)) {
