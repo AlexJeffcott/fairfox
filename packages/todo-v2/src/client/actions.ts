@@ -2,6 +2,7 @@
 
 import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
+import { setActiveTab } from '#src/client/App.tsx';
 import { migrateFromLegacy } from '#src/client/migrate.ts';
 import type { Project, QuickCapture, Task, TaskPriority } from '#src/client/state.ts';
 import { capturesState, projectsState, tasksState } from '#src/client/state.ts';
@@ -174,8 +175,11 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
   },
 
   // --- Navigation ---
-  'todo.tab': () => {
-    // Tab changes handled by local signal in App — no CRDT mutation.
+  'todo.tab': (ctx) => {
+    const id = ctx.data.id;
+    if (id) {
+      setActiveTab(id);
+    }
   },
 
   // --- One-shot migration from the legacy todo REST API. Writes

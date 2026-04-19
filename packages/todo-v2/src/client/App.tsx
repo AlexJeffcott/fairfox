@@ -4,10 +4,22 @@
 
 import { ActionInput, Badge, Button, Checkbox, Layout, Tabs } from '@fairfox/polly/ui';
 import { MeshControls } from '@fairfox/shared/mesh-controls';
-import { useSignal } from '@preact/signals';
+import { signal, useSignal } from '@preact/signals';
 import { capturesState, projectsState, tasksState } from '#src/client/state.ts';
 
-type ViewId = 'projects' | 'tasks' | 'capture';
+export type ViewId = 'projects' | 'tasks' | 'capture';
+
+export const activeTab = signal<ViewId>('tasks');
+
+function isViewId(v: string): v is ViewId {
+  return v === 'projects' || v === 'tasks' || v === 'capture';
+}
+
+export function setActiveTab(v: string): void {
+  if (isViewId(v)) {
+    activeTab.value = v;
+  }
+}
 
 const TAB_LIST = [
   { id: 'projects', label: 'Projects' },
@@ -52,9 +64,14 @@ function ProjectsView() {
                   <strong>{p.name}</strong>
                   {p.notes && (
                     <span
-                      style={{ fontSize: 'var(--polly-text-sm)', color: 'var(--polly-text-muted)' }}
+                      data-polly-clamp={true}
+                      style={{
+                        fontSize: 'var(--polly-text-sm)',
+                        color: 'var(--polly-text-muted)',
+                        '--polly-clamp': 1,
+                      }}
                     >
-                      {p.notes.slice(0, 80)}
+                      {p.notes}
                     </span>
                   )}
                 </Layout>
@@ -143,17 +160,19 @@ function TasksView() {
                 alignItems="center"
               >
                 <Checkbox checked={t.done} data-action="task.toggle-done" data-action-tid={t.tid} />
-                <Layout rows="auto" gap="0">
-                  <span>{t.description}</span>
-                  {t.project && (
-                    <span
-                      style={{ fontSize: 'var(--polly-text-xs)', color: 'var(--polly-text-muted)' }}
-                    >
-                      {t.project}
-                    </span>
-                  )}
-                </Layout>
-                <Badge variant={PRIORITY_COLORS[t.priority]}>{t.priority}</Badge>
+                <span data-polly-truncate={true}>{t.description}</span>
+                {t.project ? (
+                  <span
+                    style={{
+                      fontSize: 'var(--polly-text-sm)',
+                      color: 'var(--polly-text-muted)',
+                    }}
+                  >
+                    {t.project}
+                  </span>
+                ) : (
+                  <span />
+                )}
                 <Button
                   label="×"
                   size="small"
@@ -251,10 +270,13 @@ function CaptureView() {
 }
 
 export function App() {
-  const activeTab = useSignal<ViewId>('tasks');
-
   return (
-    <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
+    <Layout
+      rows="auto 1fr"
+      gap="var(--polly-space-lg)"
+      padding="var(--polly-space-lg)"
+      maxInlineSize="var(--polly-measure-page)"
+    >
       <Layout rows="auto" gap="var(--polly-space-md)">
         <Layout columns="1fr auto" gap="var(--polly-space-sm)">
           <h1 style={{ margin: 0 }}>Todo</h1>

@@ -20,7 +20,7 @@ import type {
 } from '#src/client/state.ts';
 import { capturesState, projectsState, tasksState } from '#src/client/state.ts';
 
-const LEGACY_BASE = 'https://fairfox-production-8273.up.railway.app/todo';
+const LEGACY_BASE = typeof window === 'undefined' ? '/todo' : `${window.location.origin}/todo`;
 
 interface LegacyProject {
   pid: string;
