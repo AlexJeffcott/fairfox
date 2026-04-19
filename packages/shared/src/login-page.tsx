@@ -23,6 +23,7 @@ import {
   pairingStepsRemaining,
   scanInput,
 } from '#src/pairing-state.ts';
+import { PwaInstallPrompt } from '#src/pwa-install.tsx';
 
 const PAGE_STYLE = {
   minHeight: '100vh',
@@ -71,6 +72,42 @@ function CliPairReveal({ token }: { token: string }): preact.JSX.Element | null 
       >
         {command}
       </code>
+    </details>
+  );
+}
+
+function ExtensionPairReveal({ token }: { token: string }): preact.JSX.Element | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  const downloadUrl = `${window.location.origin}/extension/fairfox.zip?token=${encodeURIComponent(token)}`;
+  return (
+    <details style={{ marginTop: 'var(--polly-space-sm, 0.5rem)' }}>
+      <summary style={{ cursor: 'pointer', fontSize: '0.8rem' }}>
+        Pair a Chrome extension instead
+      </summary>
+      <p style={{ margin: '0.25rem 0', fontSize: '0.75rem' }}>
+        Download the fairfox side-panel extension with this pairing token already baked in. Unzip
+        it, open <code>chrome://extensions</code>, enable Developer mode, and load the unpacked
+        folder. The first time the side panel opens, fairfox pairs itself through the embedded
+        frame.
+      </p>
+      <a
+        href={downloadUrl}
+        download="fairfox-extension.zip"
+        style={{
+          display: 'inline-block',
+          marginTop: '0.25rem',
+          padding: '0.4rem 0.75rem',
+          borderRadius: '4px',
+          fontSize: '0.8rem',
+          background: 'rgba(0, 0, 0, 0.06)',
+          textDecoration: 'none',
+          color: 'inherit',
+        }}
+      >
+        Download extension .zip
+      </a>
     </details>
   );
 }
@@ -159,6 +196,7 @@ function IssueView(): preact.JSX.Element {
         </details>
       )}
       {issuedToken.value && <CliPairReveal token={issuedToken.value} />}
+      {issuedToken.value && <ExtensionPairReveal token={issuedToken.value} />}
       <Layout
         columns="1fr 1fr"
         gap="var(--polly-space-sm, 0.5rem)"
@@ -221,6 +259,7 @@ export function LoginPage(): preact.JSX.Element {
         {pairingMode.value === 'idle' && <IdleChoices />}
         {pairingMode.value === 'wizard-issue' && <IssueView />}
         {pairingMode.value === 'wizard-scan' && <ScanView />}
+        <PwaInstallPrompt />
       </div>
     </div>
   );

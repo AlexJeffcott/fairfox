@@ -6,6 +6,7 @@
 // the rhythm, tokens drive the colour.
 
 import { Layout } from '@fairfox/polly/ui';
+import { PwaInstallPrompt } from '@fairfox/shared/pwa-install';
 
 interface SubApp {
   readonly path: string;
@@ -38,6 +39,7 @@ export function Home() {
       <header>
         <h1>fairfox</h1>
         <p style={{ color: 'var(--polly-text-muted)' }}>A small monorepo of things.</p>
+        <PwaInstallPrompt />
       </header>
 
       <Layout rows="auto" gap="var(--polly-space-md)">

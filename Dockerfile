@@ -11,6 +11,12 @@ RUN bun install --frozen-lockfile
 # build so the served file always matches the server it talks to.
 RUN bun run --cwd packages/cli build
 
+# Pre-build the Chrome side-panel extension so the server can stream
+# per-request zips with a pairing token baked in, parallel to the CLI
+# installer path. The build writes an unpacked extension into
+# packages/extension/dist/ which the server reads on demand.
+RUN bun run --cwd packages/extension build
+
 ENV NODE_ENV=production
 ENV DATA_DIR=/data
 ENV PORT=3000

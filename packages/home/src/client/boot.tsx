@@ -17,6 +17,7 @@ import { type ActionDispatch, installEventDelegation } from '@fairfox/polly/acti
 import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import { MeshGate } from '@fairfox/shared/mesh-gate';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
+import { pwaInstallActions } from '@fairfox/shared/pwa-install';
 import { render } from 'preact';
 import { Home } from '#src/client/Home.tsx';
 
@@ -26,6 +27,7 @@ const registry: Record<
 > = {
   ...pairingActions,
   ...buildFreshnessActions,
+  ...pwaInstallActions,
 };
 
 installEventDelegation((d: ActionDispatch) => {

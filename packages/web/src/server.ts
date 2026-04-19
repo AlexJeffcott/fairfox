@@ -16,6 +16,7 @@ import { loadEnv } from '@fairfox/shared/env';
 import { SIGNALING_PATH } from '@fairfox/shared/signaling';
 import type { SubApp, WsData, WsSubApp } from '@fairfox/shared/subapp';
 import type { ServerWebSocket, WebSocketHandler } from 'bun';
+import { zipSync } from 'fflate';
 import { buildAllSubApps } from './bundle-subapp.ts';
 import { parseWsRole } from './parseWsRole.ts';
 import { strip } from './strip.ts';
@@ -208,6 +209,34 @@ function handleSignalingClose(ws: ServerWebSocket<WsData>): void {
 
 const CLI_BUNDLE = Bun.file(`${import.meta.dir}/../../cli/dist/fairfox.js`);
 
+// The Chrome side-panel extension is pre-built at image time
+// (`packages/extension/dist/`). The server reads every file of that
+// unpacked extension into memory at startup so the download endpoint can
+// stream a per-request zip with the pairing token baked into
+// `panel.html` — the same ergonomic as `/cli/install?token=`.
+const EXTENSION_DIR = `${import.meta.dir}/../../extension/dist`;
+const EXTENSION_FILES = [
+  'manifest.json',
+  'panel.html',
+  'background.js',
+  'icon16.png',
+  'icon48.png',
+  'icon128.png',
+] as const;
+const extensionBaseFiles = new Map<string, Uint8Array>();
+try {
+  for (const name of EXTENSION_FILES) {
+    const file = Bun.file(`${EXTENSION_DIR}/${name}`);
+    if (await file.exists()) {
+      extensionBaseFiles.set(name, new Uint8Array(await file.arrayBuffer()));
+    }
+  }
+} catch {
+  // Extension dist missing — the /extension route will 503 until the
+  // build step runs. Local `bun dev` users who haven't built the
+  // extension see the 503 and run `bun --cwd packages/extension build`.
+}
+
 // Static assets served from `packages/web/public/` at the site root so a
 // browser visiting `/manifest.webmanifest`, `/sw.js`, or `/icon.svg` reaches
 // them directly. Each one has a specific Content-Type and cache stance:
@@ -283,6 +312,42 @@ if [ -n "$TOKEN" ]; then
   "$BIN_PATH" pair "$TOKEN"
 fi
 `;
+}
+
+// --- Extension download ---
+//
+// Builds a per-request Chrome extension zip. The pre-built unpacked
+// extension from `packages/extension/dist/` is the base; the only file
+// that changes per download is `panel.html`, whose iframe `src` is
+// rewritten to include a `#pair=<token>` fragment. The fairfox app
+// inside the frame already consumes that fragment through `MeshGate`,
+// so loading the extension for the first time pairs the device without
+// the user touching a QR scanner.
+//
+// Serving from memory rather than a cached zip file keeps the download
+// single-use by construction: every token gets its own bytes, and the
+// server never stores a long-lived zip on disk.
+function renderExtensionPanelHtml(origin: string, token: string): string {
+  const panel = extensionBaseFiles.get('panel.html');
+  if (!panel) {
+    throw new Error('panel.html missing from extension dist');
+  }
+  const baseUrl = origin;
+  const pairedUrl = token ? `${baseUrl}/#pair=${encodeURIComponent(token)}` : baseUrl;
+  return new TextDecoder().decode(panel).replace(/src="[^"]*"/, `src="${pairedUrl}"`);
+}
+
+function buildExtensionZip(origin: string, token: string): Uint8Array {
+  const encoder = new TextEncoder();
+  const files: Record<string, Uint8Array> = {};
+  for (const [name, bytes] of extensionBaseFiles) {
+    if (name === 'panel.html') {
+      files[name] = encoder.encode(renderExtensionPanelHtml(origin, token));
+    } else {
+      files[name] = bytes;
+    }
+  }
+  return zipSync(files, { level: 6 });
 }
 
 // --- WebSocket handler: signaling + legacy todo ---
@@ -374,6 +439,27 @@ const server = Bun.serve<WsData>({
       return new Response(script, {
         headers: {
           'Content-Type': 'text/x-shellscript; charset=utf-8',
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+
+    if (p === '/extension/fairfox.zip') {
+      if (extensionBaseFiles.size === 0) {
+        return new Response(
+          'extension bundle not available — run `bun --cwd packages/extension build` first',
+          { status: 503 }
+        );
+      }
+      const token = new URL(req.url).searchParams.get('token') ?? '';
+      const origin = `${new URL(req.url).protocol}//${new URL(req.url).host}`;
+      const zip = buildExtensionZip(origin, token);
+      const buffer = new ArrayBuffer(zip.byteLength);
+      new Uint8Array(buffer).set(zip);
+      return new Response(buffer, {
+        headers: {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': 'attachment; filename="fairfox-extension.zip"',
           'Cache-Control': 'no-store',
         },
       });
