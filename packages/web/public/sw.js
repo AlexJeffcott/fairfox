@@ -18,7 +18,7 @@
 // No cross-origin requests are cached. Signalling WebSocket upgrades
 // and POSTs to the legacy todo/struggle APIs pass through untouched.
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `fairfox-${CACHE_VERSION}`;
 const PRECACHE = ['/', '/manifest.webmanifest', '/icon.svg', '/icon-maskable.svg'];
 
@@ -38,6 +38,18 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Fingerprinted-asset filter. `bundle-subapp` emits bundle artefacts
+// under `/<subapp>/[name]-[hash].[ext]` — the 8-plus-char hash fragment
+// is the content address, so anything matching the pattern is safe to
+// cache aggressively and irrelevant to cache too little. Everything
+// else — including `/build-hash`, `/api/*`, `/cli/*`, `/extension/*`,
+// and the navigation responses that carry the build-hash meta — goes
+// straight to the network. A stale /build-hash response in the SW
+// cache was what kept the BuildFreshnessBanner up permanently: the
+// meta tag refreshed on reload but the polled endpoint returned an
+// older hash from cache, and the two never agreed.
+const FINGERPRINT_PATTERN = /-[0-9a-z]{8,}\.(?:js|css|map|woff2?|png|jpg|jpeg|svg|webp|gif|ico)$/i;
+
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') {
@@ -51,7 +63,16 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(networkFirst(request));
     return;
   }
-  event.respondWith(cacheFirst(request));
+  if (
+    FINGERPRINT_PATTERN.test(url.pathname) ||
+    url.pathname === '/icon.svg' ||
+    url.pathname === '/icon-maskable.svg'
+  ) {
+    event.respondWith(cacheFirst(request));
+  }
+  // Everything else (build-hash, APIs, CLI download, extension zip, …)
+  // is left alone — the default browser fetch handles it with the
+  // server's own Cache-Control.
 });
 
 async function networkFirst(request) {
