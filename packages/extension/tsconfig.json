@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["chrome", "bun"]
+  },
+  "include": ["src/**/*", "build.ts"],
+  "exclude": ["node_modules", "dist"]
+}

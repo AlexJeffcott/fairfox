@@ -119,7 +119,7 @@
     }
   },
   "javascript": {
-    "globals": ["Bun", "Timer"],
+    "globals": ["Bun", "Timer", "chrome"],
     "formatter": {
       "quoteStyle": "single",
       "jsxQuoteStyle": "double",

@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "fairfox",
+  "version": "0.1.0",
+  "description": "fairfox — the collection of small web apps, in a side panel.",
+  "permissions": ["sidePanel"],
+  "side_panel": {
+    "default_path": "panel.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open fairfox",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

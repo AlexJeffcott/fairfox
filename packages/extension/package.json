@@ -1,0 +1,19 @@
+{
+  "name": "@fairfox/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#src/*": "./src/*"
+  },
+  "scripts": {
+    "build": "bun build.ts",
+    "build:zip": "bun build.ts --zip",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "@types/chrome": "^0.0.268",
+    "typescript": "catalog:"
+  }
+}
