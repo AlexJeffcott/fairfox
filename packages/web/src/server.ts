@@ -50,20 +50,10 @@ export const BUILD_HASH =
   process.env.FAIRFOX_BUILD_HASH ??
   `dev-${process.pid}-${Date.now()}`;
 
-function injectBuildHashMeta(html: string, hash: string): string {
-  const meta = `<meta name="fairfox-build-hash" content="${hash}" />`;
-  // Prefer to place the meta tag in <head>. If the document lacks a
-  // head tag the meta slots in right after <html> so the client can
-  // still find it through `document.querySelector`.
-  if (html.includes('</head>')) {
-    return html.replace('</head>', `    ${meta}\n  </head>`);
-  }
-  return html.replace('<html', `<html>\n  ${meta}\n<html`).replace('<html>\n', '<html');
-}
-
 // --- Mesh sub-app bundles built at startup ---
 
 const MESH_SUBAPPS = [
+  'home',
   'agenda',
   'todo-v2',
   'the-struggle',
@@ -216,10 +206,6 @@ function handleSignalingClose(ws: ServerWebSocket<WsData>): void {
 
 // --- Static assets ---
 
-const LANDING_HTML = injectBuildHashMeta(
-  await Bun.file(`${import.meta.dir}/../public/index.html`).text(),
-  BUILD_HASH
-);
 const CLI_BUNDLE = Bun.file(`${import.meta.dir}/../../cli/dist/fairfox.js`);
 
 // Static assets served from `packages/web/public/` at the site root so a
@@ -339,7 +325,11 @@ const server = Bun.serve<WsData>({
     }
 
     if (p === '/' || p === '/index.html') {
-      return new Response(LANDING_HTML, {
+      const homeBundle = bundles.get('home');
+      if (!homeBundle) {
+        return new Response('home bundle not available', { status: 503 });
+      }
+      return new Response(homeBundle.html, {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'no-store',

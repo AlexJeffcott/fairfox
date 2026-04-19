@@ -1,0 +1,22 @@
+{
+  "name": "@fairfox/home",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#src/*": "./src/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fairfox/polly": "catalog:",
+    "@fairfox/shared": "workspace:*",
+    "@preact/signals": "catalog:",
+    "preact": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}

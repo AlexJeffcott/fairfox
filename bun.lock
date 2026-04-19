@@ -99,6 +99,20 @@
         "typescript": "catalog:",
       },
     },
+    "packages/home": {
+      "name": "@fairfox/home",
+      "version": "0.0.0",
+      "dependencies": {
+        "@fairfox/polly": "catalog:",
+        "@fairfox/shared": "workspace:*",
+        "@preact/signals": "catalog:",
+        "preact": "catalog:",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/library": {
       "name": "@fairfox/library",
       "version": "0.0.0",
@@ -323,6 +337,8 @@
     "@fairfox/cli": ["@fairfox/cli@workspace:packages/cli"],
 
     "@fairfox/family-phone-admin": ["@fairfox/family-phone-admin@workspace:packages/family-phone-admin"],
+
+    "@fairfox/home": ["@fairfox/home@workspace:packages/home"],
 
     "@fairfox/library": ["@fairfox/library@workspace:packages/library"],
 
