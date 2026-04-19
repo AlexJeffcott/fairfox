@@ -20,6 +20,7 @@
 
 import { parseArgs } from 'node:util';
 import { agendaAdd, agendaList } from '#src/commands/agenda.ts';
+import { deploy } from '#src/commands/deploy.ts';
 import { pair } from '#src/commands/pair.ts';
 
 function printUsage(): void {
@@ -31,6 +32,9 @@ function printUsage(): void {
       '  fairfox pair <token-or-url>   Apply a pairing token; print our share URL.',
       '  fairfox agenda list           List chores and events in the agenda doc.',
       '  fairfox agenda add <name>     Add a chore (daily recurrence).',
+      '  fairfox deploy [push]         `railway up --detach` from the fairfox repo.',
+      '  fairfox deploy status         List recent Railway deployments.',
+      '  fairfox deploy logs           Tail Railway logs for the current service.',
       '',
       'The keyring is stored at ~/.fairfox/keyring.json and is created on',
       'first run. The signalling URL defaults to the fairfox production',
@@ -73,6 +77,10 @@ function main(): Promise<number> {
     }
     process.stderr.write(`fairfox agenda: unknown verb "${verb ?? ''}". Try "list" or "add".\n`);
     return Promise.resolve(1);
+  }
+
+  if (subcommand === 'deploy') {
+    return deploy(rest);
   }
 
   process.stderr.write(`fairfox: unknown subcommand "${subcommand}".\n\n`);
