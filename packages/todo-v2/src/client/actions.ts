@@ -2,7 +2,7 @@
 
 import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
-import { setActiveTab } from '#src/client/App.tsx';
+import { setActiveTab, setSelectedTaskId } from '#src/client/App.tsx';
 import { migrateFromLegacy } from '#src/client/migrate.ts';
 import type { Project, QuickCapture, Task, TaskPriority } from '#src/client/state.ts';
 import { capturesState, projectsState, tasksState } from '#src/client/state.ts';
@@ -143,6 +143,82 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     tasksState.value = {
       ...tasksState.value,
       tasks: tasksState.value.tasks.filter((t) => t.tid !== tid),
+    };
+  },
+
+  // --- Detail-view navigation ---
+
+  'task.open': (ctx) => {
+    if (ctx.data.tid) {
+      setSelectedTaskId(ctx.data.tid);
+    }
+  },
+
+  'task.close': () => {
+    setSelectedTaskId(null);
+  },
+
+  'task.new': () => {
+    const task: Task = {
+      tid: generateId('T'),
+      done: false,
+      description: '',
+      project: '',
+      priority: 'med',
+      links: '',
+      notes: '',
+    };
+    tasksState.value = {
+      ...tasksState.value,
+      tasks: [...tasksState.value.tasks, task],
+    };
+    setSelectedTaskId(task.tid);
+  },
+
+  'task.delete-and-close': (ctx) => {
+    const tid = ctx.data.tid;
+    if (!tid) {
+      return;
+    }
+    tasksState.value = {
+      ...tasksState.value,
+      tasks: tasksState.value.tasks.filter((t) => t.tid !== tid),
+    };
+    setSelectedTaskId(null);
+  },
+
+  /**
+   * `task.update` is the catch-all field editor used by the detail view.
+   * The source element carries `data-action-field` for the field name and
+   * `data-action-tid` for the target; the value comes from either
+   * `data-action-value` (ActionInput commits) or the event target's own
+   * `value` (a native <select> fires change with no data attribute).
+   * Unknown or blank fields are ignored so callers can hand-wave missing
+   * data without crashing the dispatcher.
+   */
+  'task.update': (ctx) => {
+    const tid = ctx.data.tid;
+    const field = ctx.data.field;
+    if (!tid || !field) {
+      return;
+    }
+    let value = ctx.data.value;
+    if (value === undefined) {
+      const target = ctx.event.target;
+      if (target instanceof HTMLSelectElement || target instanceof HTMLInputElement) {
+        value = target.value;
+      }
+    }
+    if (value === undefined) {
+      return;
+    }
+    if (field === 'priority' && !isTaskPriority(value)) {
+      return;
+    }
+    const patch: Partial<Task> = { [field]: value };
+    tasksState.value = {
+      ...tasksState.value,
+      tasks: tasksState.value.tasks.map((t) => (t.tid === tid ? { ...t, ...patch } : t)),
     };
   },
 

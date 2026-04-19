@@ -21,6 +21,18 @@ export function setActiveTab(v: string): void {
   }
 }
 
+/**
+ * Selected task id drives the Tasks pane. When null the pane shows the list;
+ * when set to a tid the pane shows the detail view for that task, whether it
+ * exists or was just created via `task.new`. Navigation back clears the
+ * signal; the detail view and the list never render simultaneously.
+ */
+export const selectedTaskId = signal<string | null>(null);
+
+export function setSelectedTaskId(v: string | null): void {
+  selectedTaskId.value = v;
+}
+
 const TAB_LIST = [
   { id: 'projects', label: 'Projects' },
   { id: 'tasks', label: 'Tasks' },
@@ -135,13 +147,12 @@ function TasksView() {
 
   return (
     <Layout rows="auto" gap="var(--polly-space-md)">
-      <ActionInput
-        value=""
-        variant="single"
-        action="task.create"
-        saveOn="enter"
-        placeholder="New task..."
-      />
+      <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
+        <span style={{ color: 'var(--polly-text-muted)' }}>
+          {tasks.length} task{tasks.length === 1 ? '' : 's'}
+        </span>
+        <Button label="+ New task" tier="primary" size="small" data-action="task.new" />
+      </Layout>
       {(['high', 'med', 'low'] as const).map((prio) => {
         const group = byPriority[prio];
         if (group.length === 0) {
@@ -160,7 +171,14 @@ function TasksView() {
                 alignItems="center"
               >
                 <Checkbox checked={t.done} data-action="task.toggle-done" data-action-tid={t.tid} />
-                <span data-polly-truncate={true}>{t.description}</span>
+                <span
+                  data-polly-truncate={true}
+                  data-action="task.open"
+                  data-action-tid={t.tid}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {t.description || '(untitled)'}
+                </span>
                 {t.project ? (
                   <span
                     style={{
@@ -197,8 +215,17 @@ function TasksView() {
               alignItems="center"
             >
               <Checkbox checked={t.done} data-action="task.toggle-done" data-action-tid={t.tid} />
-              <span style={{ textDecoration: 'line-through', color: 'var(--polly-text-muted)' }}>
-                {t.description}
+              <span
+                data-polly-truncate={true}
+                data-action="task.open"
+                data-action-tid={t.tid}
+                style={{
+                  textDecoration: 'line-through',
+                  color: 'var(--polly-text-muted)',
+                  cursor: 'pointer',
+                }}
+              >
+                {t.description || '(untitled)'}
               </span>
               <Button
                 label="×"
@@ -212,6 +239,148 @@ function TasksView() {
           ))}
         </Layout>
       )}
+    </Layout>
+  );
+}
+
+function TaskDetail({ tid }: { tid: string }) {
+  const task = tasksState.value.tasks.find((t) => t.tid === tid);
+  if (!task) {
+    return (
+      <Layout rows="auto" gap="var(--polly-space-md)">
+        <Button label="← Back" tier="tertiary" size="small" data-action="task.close" />
+        <p style={{ color: 'var(--polly-text-muted)' }}>Task not found.</p>
+      </Layout>
+    );
+  }
+  const projects = projectsState.value.projects;
+  return (
+    <Layout rows="auto" gap="var(--polly-space-md)">
+      <Layout columns="auto 1fr auto" gap="var(--polly-space-sm)" alignItems="center">
+        <Button label="← Back" tier="tertiary" size="small" data-action="task.close" />
+        <span style={{ color: 'var(--polly-text-muted)', fontFamily: 'var(--polly-font-mono)' }}>
+          {task.tid}
+        </span>
+        <Button
+          label="Delete"
+          tier="tertiary"
+          color="danger"
+          size="small"
+          data-action="task.delete-and-close"
+          data-action-tid={task.tid}
+        />
+      </Layout>
+
+      <Layout rows="auto" gap="var(--polly-space-xs)">
+        <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+          Description
+        </span>
+        <ActionInput
+          value={task.description}
+          variant="single"
+          action="task.update"
+          saveOn="blur"
+          placeholder="What needs doing?"
+          ariaLabel="Description"
+          actionData={{ field: 'description', tid: task.tid }}
+        />
+      </Layout>
+
+      <Layout columns="1fr 1fr" gap="var(--polly-space-md)">
+        <Layout rows="auto" gap="var(--polly-space-xs)">
+          <label
+            for={`project-${task.tid}`}
+            style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}
+          >
+            Project
+          </label>
+          <select
+            id={`project-${task.tid}`}
+            data-action="task.update"
+            data-action-field="project"
+            data-action-tid={task.tid}
+            value={task.project}
+            style={{
+              font: 'inherit',
+              padding: 'var(--polly-space-sm) var(--polly-space-md)',
+              border: '1px solid var(--polly-border)',
+              borderRadius: 'var(--polly-radius-md)',
+              background: 'var(--polly-surface)',
+              color: 'var(--polly-text)',
+            }}
+          >
+            <option value="">(none)</option>
+            {projects.map((p) => (
+              <option key={p.pid} value={p.name}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </Layout>
+
+        <Layout rows="auto" gap="var(--polly-space-xs)">
+          <label
+            for={`priority-${task.tid}`}
+            style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}
+          >
+            Priority
+          </label>
+          <select
+            id={`priority-${task.tid}`}
+            data-action="task.update"
+            data-action-field="priority"
+            data-action-tid={task.tid}
+            value={task.priority}
+            style={{
+              font: 'inherit',
+              padding: 'var(--polly-space-sm) var(--polly-space-md)',
+              border: '1px solid var(--polly-border)',
+              borderRadius: 'var(--polly-radius-md)',
+              background: 'var(--polly-surface)',
+              color: 'var(--polly-text)',
+            }}
+          >
+            <option value="high">high</option>
+            <option value="med">med</option>
+            <option value="low">low</option>
+          </select>
+        </Layout>
+      </Layout>
+
+      <Layout columns="auto 1fr" gap="var(--polly-space-sm)" alignItems="center">
+        <Checkbox checked={task.done} data-action="task.toggle-done" data-action-tid={task.tid} />
+        <span>Done</span>
+      </Layout>
+
+      <Layout rows="auto" gap="var(--polly-space-xs)">
+        <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+          Notes
+        </span>
+        <ActionInput
+          value={task.notes}
+          variant="multi"
+          action="task.update"
+          saveOn="blur"
+          placeholder="Context, references, decisions..."
+          ariaLabel="Notes"
+          actionData={{ field: 'notes', tid: task.tid }}
+        />
+      </Layout>
+
+      <Layout rows="auto" gap="var(--polly-space-xs)">
+        <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+          Links
+        </span>
+        <ActionInput
+          value={task.links}
+          variant="single"
+          action="task.update"
+          saveOn="blur"
+          placeholder="One or more URLs"
+          ariaLabel="Links"
+          actionData={{ field: 'links', tid: task.tid }}
+        />
+      </Layout>
     </Layout>
   );
 }
@@ -286,7 +455,12 @@ export function App() {
       </Layout>
       <div>
         {activeTab.value === 'projects' && <ProjectsView />}
-        {activeTab.value === 'tasks' && <TasksView />}
+        {activeTab.value === 'tasks' &&
+          (selectedTaskId.value === null ? (
+            <TasksView />
+          ) : (
+            <TaskDetail tid={selectedTaskId.value} />
+          ))}
         {activeTab.value === 'capture' && <CaptureView />}
       </div>
     </Layout>
