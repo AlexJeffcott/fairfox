@@ -5,7 +5,7 @@ import '@fairfox/polly/ui/styles.css';
 import '@fairfox/polly/ui/theme.css';
 
 import { type ActionDispatch, installEventDelegation } from '@fairfox/polly/actions';
-import { MeshGate } from '@fairfox/shared/mesh-gate';
+import { RequirePaired } from '@fairfox/shared/require-paired';
 import { render } from 'preact';
 import { App } from '#src/client/App.tsx';
 import { registry } from '#src/client/actions.ts';
@@ -24,9 +24,9 @@ async function boot(): Promise<void> {
   const root = document.getElementById('app');
   if (root) {
     render(
-      <MeshGate>
+      <RequirePaired>
         <App />
-      </MeshGate>,
+      </RequirePaired>,
       root
     );
   }
