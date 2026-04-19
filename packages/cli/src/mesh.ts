@@ -3,10 +3,9 @@
 // under ~/.fairfox/keyring.json, and the WebSocket global that Bun
 // already exposes. Shared by every subcommand that reaches into the mesh.
 
-import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
-import type { MeshClient, MeshKeyring } from '@fairfox/polly/mesh';
+import { join } from 'node:path';
+import type { MeshClient } from '@fairfox/polly/mesh';
 import { createMeshClient } from '@fairfox/polly/mesh';
 import { fileKeyringStorage, type KeyringStorage } from '@fairfox/polly/mesh/node';
 import { RTCPeerConnection } from 'werift';
@@ -21,20 +20,7 @@ export function defaultSignalingUrl(): string {
 }
 
 export function keyringStorage(): KeyringStorage {
-  // polly's fileKeyringStorage doesn't create the parent directory
-  // before its write-to-tmp-then-rename dance, so the first save on
-  // a fresh machine fails at `open(...tmp)` if the user's profile
-  // directory (e.g. ~/.fairfox/) doesn't exist yet. Wrap the save
-  // with an mkdir until polly picks up the guard upstream.
-  const inner = fileKeyringStorage(KEYRING_PATH);
-  const parent = dirname(KEYRING_PATH);
-  return {
-    load: inner.load.bind(inner),
-    save: async (keyring: MeshKeyring): Promise<void> => {
-      await mkdir(parent, { recursive: true });
-      return inner.save(keyring);
-    },
-  };
+  return fileKeyringStorage(KEYRING_PATH);
 }
 
 export function derivePeerId(publicKey: Uint8Array): string {
