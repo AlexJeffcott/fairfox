@@ -3,6 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#b24b1e" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
     <title>fairfox</title>
     <style>
       :root {
@@ -61,5 +65,15 @@
         Legacy: <a href="/todo">/todo</a>, <a href="/struggle">/struggle</a>
       </p>
     </main>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {
+            // Silent — the app still works without a worker, install
+            // prompts just stay hidden.
+          });
+        });
+      }
+    </script>
   </body>
 </html>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="fairfox">
+  <rect width="512" height="512" rx="96" fill="#f7f5ef" />
+  <g fill="#b24b1e">
+    <circle cx="256" cy="256" r="132" />
+    <path d="M256 92 L346 196 L256 260 L166 196 Z" opacity="0.85" />
+    <path d="M256 420 L346 316 L256 252 L166 316 Z" opacity="0.55" />
+  </g>
+  <text x="256" y="486" text-anchor="middle" font-family="ui-serif, Georgia, serif" font-size="48" fill="#222" opacity="0.55">fairfox</text>
+</svg>

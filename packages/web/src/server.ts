@@ -222,6 +222,37 @@ const LANDING_HTML = injectBuildHashMeta(
 );
 const CLI_BUNDLE = Bun.file(`${import.meta.dir}/../../cli/dist/fairfox.js`);
 
+// Static assets served from `packages/web/public/` at the site root so a
+// browser visiting `/manifest.webmanifest`, `/sw.js`, or `/icon.svg` reaches
+// them directly. Each one has a specific Content-Type and cache stance:
+// the manifest and icons are fingerprint-free but small enough to re-serve
+// on every navigation without pain, while the service worker must never be
+// cached past its current byte-for-byte contents (a stale worker locks out
+// new installs) so it ships with `Cache-Control: no-store`.
+const PUBLIC_DIR = `${import.meta.dir}/../public`;
+const STATIC_ASSETS: Record<string, { path: string; contentType: string; cacheControl: string }> = {
+  '/manifest.webmanifest': {
+    path: `${PUBLIC_DIR}/manifest.webmanifest`,
+    contentType: 'application/manifest+json; charset=utf-8',
+    cacheControl: 'public, max-age=300',
+  },
+  '/sw.js': {
+    path: `${PUBLIC_DIR}/sw.js`,
+    contentType: 'application/javascript; charset=utf-8',
+    cacheControl: 'no-store',
+  },
+  '/icon.svg': {
+    path: `${PUBLIC_DIR}/icon.svg`,
+    contentType: 'image/svg+xml; charset=utf-8',
+    cacheControl: 'public, max-age=86400',
+  },
+  '/icon-maskable.svg': {
+    path: `${PUBLIC_DIR}/icon-maskable.svg`,
+    contentType: 'image/svg+xml; charset=utf-8',
+    cacheControl: 'public, max-age=86400',
+  },
+};
+
 // --- CLI installer ---
 //
 // Pipe-to-bash script served from /cli/install. Takes an optional
@@ -318,6 +349,16 @@ const server = Bun.serve<WsData>({
 
     if (p === '/build-hash') {
       return Response.json({ hash: BUILD_HASH }, { headers: { 'Cache-Control': 'no-store' } });
+    }
+
+    const staticAsset = STATIC_ASSETS[p];
+    if (staticAsset) {
+      return new Response(Bun.file(staticAsset.path), {
+        headers: {
+          'Content-Type': staticAsset.contentType,
+          'Cache-Control': staticAsset.cacheControl,
+        },
+      });
     }
 
     // CLI distribution.

@@ -31,12 +31,23 @@ function htmlShell(
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#b24b1e" />
     <meta name="fairfox-build-hash" content="${buildHash}" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
     <title>fairfox · ${name}</title>
 ${cssLink}  </head>
   <body>
     <div id="app"></div>
     <script type="module" src="/${name}${entryJs}"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js').catch(function () {});
+        });
+      }
+    </script>
   </body>
 </html>
 `;
