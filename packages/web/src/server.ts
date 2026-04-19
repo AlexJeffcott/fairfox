@@ -380,6 +380,20 @@ const websocket: WebSocketHandler<WsData> = {
 
 // --- Main server ---
 
+// Railway's TLS terminator forwards requests to the container over plain
+// HTTP, so `req.url` reports `http://...` even when the user reached the
+// site over HTTPS. `X-Forwarded-Proto` carries the real scheme; preferring
+// it keeps the origin string we bake into install scripts, extension
+// panels, and pairing URLs matched to what the browser actually uses.
+function publicOrigin(req: Request): string {
+  const url = new URL(req.url);
+  const forwardedProto = req.headers.get('x-forwarded-proto');
+  const forwardedHost = req.headers.get('x-forwarded-host');
+  const scheme = forwardedProto ?? url.protocol.replace(/:$/, '');
+  const host = forwardedHost ?? url.host;
+  return `${scheme}://${host}`;
+}
+
 const server = Bun.serve<WsData>({
   port: env.PORT,
   async fetch(req, srv) {
@@ -434,7 +448,7 @@ const server = Bun.serve<WsData>({
     }
     if (p === '/cli/install.sh' || p === '/cli/install') {
       const token = new URL(req.url).searchParams.get('token') ?? '';
-      const origin = `${new URL(req.url).protocol}//${new URL(req.url).host}`;
+      const origin = publicOrigin(req);
       const script = renderInstallScript(origin, token);
       return new Response(script, {
         headers: {
@@ -452,7 +466,7 @@ const server = Bun.serve<WsData>({
         );
       }
       const token = new URL(req.url).searchParams.get('token') ?? '';
-      const origin = `${new URL(req.url).protocol}//${new URL(req.url).host}`;
+      const origin = publicOrigin(req);
       const zip = buildExtensionZip(origin, token);
       const buffer = new ArrayBuffer(zip.byteLength);
       new Uint8Array(buffer).set(zip);
