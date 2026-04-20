@@ -29,6 +29,31 @@ interface DevicesPrimitive {
 
 export type DeviceAgent = 'browser' | 'cli' | 'extension';
 
+/** Capability strings a device self-declares. Used by the UI to hide
+ * affordances that won't work on this device — NOT a security
+ * boundary. A device that lies about its capabilities only confuses
+ * the UI. Anything load-bearing for correctness must gate on a
+ * user permission instead. */
+export type Capability =
+  | 'webrtc'
+  | 'pwa-installed'
+  | 'push-notifications'
+  | 'camera'
+  | 'keyboard'
+  | 'background-sync'
+  | 'llm-peer';
+
+/** A signature by a user key binding a user to a device. Stored on
+ * the device row so verifiers can check it without side-channels.
+ * Signed payload: `{ deviceId, userId, addedAt }` as JSON. */
+export interface Endorsement {
+  userId: string;
+  /** 64-byte Ed25519 signature as `number[]` — Automerge doesn't
+   * round-trip Uint8Array reliably. */
+  signature: number[];
+  addedAt: string;
+}
+
 export interface DeviceEntry {
   peerId: string;
   name: string;
@@ -39,6 +64,26 @@ export interface DeviceEntry {
   /** Which kind of device wrote this entry. Drives the agent chip in
    * the peer-list row. */
   agent: DeviceAgent;
+  /** User ids endorsed on this device. Effective permissions are the
+   * intersection of these users' permission sets (Phase E). Optional
+   * for migration: pre-Phase-A rows don't have this field — a read
+   * site treats undefined the same as empty. */
+  ownerUserIds?: string[];
+  /** One entry per `ownerUserIds` element, in the same order.
+   * Optional for migration. */
+  endorsements?: Endorsement[];
+  /** Device-local capabilities self-declared at boot. Optional for
+   * migration (Phase D populates it). */
+  capabilities?: Capability[];
+  /** ISO 8601 timestamp set when this device is revoked by an admin.
+   * A revoked device is filtered out of the effective-permission
+   * calculation on every other peer. */
+  revokedAt?: string;
+  /** Signature over `{ peerId, revokedAt }` by the revoking user's
+   * key. Phase F verifies the revoker holds `device.revoke`. */
+  revocationSignature?: number[];
+  /** The user that signed the revocation, if any. */
+  revokedByUserId?: string;
 }
 
 export interface DevicesDoc {
@@ -104,11 +149,53 @@ export function upsertDeviceEntry(
     createdAt: existing?.createdAt ?? patch.createdAt ?? now,
     lastSeenAt: patch.lastSeenAt ?? now,
     agent: patch.agent ?? existing?.agent ?? 'browser',
+    ownerUserIds: patch.ownerUserIds ?? existing?.ownerUserIds,
+    endorsements: patch.endorsements ?? existing?.endorsements,
+    capabilities: patch.capabilities ?? existing?.capabilities,
+    revokedAt: patch.revokedAt ?? existing?.revokedAt,
+    revocationSignature: patch.revocationSignature ?? existing?.revocationSignature,
+    revokedByUserId: patch.revokedByUserId ?? existing?.revokedByUserId,
   };
   devicesState.value = {
     ...devicesState.value,
     devices: { ...devicesState.value.devices, [peerId]: next },
   };
+}
+
+/** Merge a fresh endorsement into a device row. Called from the
+ * "add me to a shared device" flow. If the userId already has an
+ * endorsement its entry is replaced (a re-endorsement bumps the
+ * timestamp). */
+export function addEndorsementToDevice(peerId: string, endorsement: Endorsement): void {
+  const existing = devicesState.value.devices[peerId];
+  if (!existing) {
+    throw new Error(`addEndorsementToDevice: unknown peer ${peerId}`);
+  }
+  const prevEndorsements = existing.endorsements ?? [];
+  const prevOwners = existing.ownerUserIds ?? [];
+  const endorsements = prevEndorsements.filter((e) => e.userId !== endorsement.userId);
+  endorsements.push(endorsement);
+  const ownerUserIds = prevOwners.includes(endorsement.userId)
+    ? prevOwners
+    : [...prevOwners, endorsement.userId];
+  upsertDeviceEntry(peerId, { endorsements, ownerUserIds });
+}
+
+/** Remove an endorsement from a device row. Used by both the leaving
+ * user ("remove me from this device") and by an admin force-revoking
+ * a user's access to a device they don't own. Phase F's accept hook
+ * enforces the rule that the remover must match the removed user or
+ * hold `user.revoke`. */
+export function removeEndorsementFromDevice(peerId: string, userId: string): void {
+  const existing = devicesState.value.devices[peerId];
+  if (!existing) {
+    throw new Error(`removeEndorsementFromDevice: unknown peer ${peerId}`);
+  }
+  const prevEndorsements = existing.endorsements ?? [];
+  const prevOwners = existing.ownerUserIds ?? [];
+  const endorsements = prevEndorsements.filter((e) => e.userId !== userId);
+  const ownerUserIds = prevOwners.filter((id) => id !== userId);
+  upsertDeviceEntry(peerId, { endorsements, ownerUserIds });
 }
 
 function defaultBrowserName(): string {

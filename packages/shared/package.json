@@ -14,6 +14,8 @@
     "./require-paired": "./src/require-paired.tsx",
     "./pwa-install": "./src/pwa-install.tsx",
     "./devices-state": "./src/devices-state.ts",
+    "./users-state": "./src/users-state.ts",
+    "./user-identity": "./src/user-identity.ts",
     "./peers-presence": "./src/peers-presence.ts",
     "./custom-frames": "./src/custom-frames.ts",
     "./hub-back": "./src/hub-back.tsx",
