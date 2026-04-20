@@ -1,12 +1,35 @@
 /** @jsxImportSource preact */
 // The fairfox home screen — visible only once the device is paired.
 //
-// One grid of cards, each pointing at a sub-app. The goal is visible
-// nav, not decoration; sub-apps own their own look. Layout dictates
-// the rhythm, tokens drive the colour.
+// Two tabs: Apps (the grid of sub-app cards) and Peers (the mesh-wide
+// device list, rename, reconnect, forget). The Apps tab is the
+// default because most visits want to launch a sub-app; the Peers tab
+// is the natural home for pairing-adjacent administration since
+// pairing already lives on this sub-app.
 
-import { Layout } from '@fairfox/polly/ui';
+import { Layout, Tabs } from '@fairfox/polly/ui';
 import { PwaInstallPrompt } from '@fairfox/shared/pwa-install';
+import { signal } from '@preact/signals';
+import { PeersView } from '#src/client/PeersView.tsx';
+
+export type HomeView = 'apps' | 'peers';
+
+export const activeView = signal<HomeView>('apps');
+
+function isHomeView(v: string): v is HomeView {
+  return v === 'apps' || v === 'peers';
+}
+
+export function setActiveView(v: string): void {
+  if (isHomeView(v)) {
+    activeView.value = v;
+  }
+}
+
+const TAB_LIST = [
+  { id: 'apps', label: 'Apps' },
+  { id: 'peers', label: 'Peers' },
+];
 
 interface SubApp {
   readonly path: string;
@@ -28,20 +51,9 @@ const LEGACY: readonly SubApp[] = [
   { path: '/struggle', name: '/struggle', description: 'Legacy struggle reader' },
 ];
 
-export function Home() {
+function AppsGrid() {
   return (
-    <Layout
-      rows="auto auto 1fr"
-      gap="var(--polly-space-xl)"
-      padding="var(--polly-space-xl)"
-      maxInlineSize="var(--polly-measure-page)"
-    >
-      <header>
-        <h1>fairfox</h1>
-        <p style={{ color: 'var(--polly-text-muted)' }}>A small monorepo of things.</p>
-        <PwaInstallPrompt />
-      </header>
-
+    <Layout rows="auto auto" gap="var(--polly-space-xl)">
       <Layout rows="auto" gap="var(--polly-space-md)">
         {SUBAPPS.map((s) => (
           <a
@@ -83,16 +95,34 @@ export function Home() {
             <a
               key={s.path}
               href={s.path}
-              style={{
-                color: 'var(--polly-text-muted)',
-                fontSize: 'var(--polly-text-sm)',
-              }}
+              style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}
             >
               {s.name} — {s.description}
             </a>
           ))}
         </Layout>
       </Layout>
+    </Layout>
+  );
+}
+
+export function Home() {
+  return (
+    <Layout
+      rows="auto auto 1fr"
+      gap="var(--polly-space-xl)"
+      padding="var(--polly-space-xl)"
+      maxInlineSize="var(--polly-measure-page)"
+    >
+      <header>
+        <h1>fairfox</h1>
+        <p style={{ color: 'var(--polly-text-muted)' }}>A small monorepo of things.</p>
+        <PwaInstallPrompt />
+      </header>
+
+      <Tabs tabs={TAB_LIST} activeTab={activeView.value} action="home.tab" />
+
+      <div>{activeView.value === 'apps' ? <AppsGrid /> : <PeersView />}</div>
     </Layout>
   );
 }

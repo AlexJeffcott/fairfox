@@ -140,3 +140,25 @@ export async function loadOrCreateKeyring(): Promise<MeshKeyring> {
   await saveKeyring(fresh);
   return fresh;
 }
+
+/** Stop syncing with a peer on THIS device. Removes the peer from the
+ * trust set and adds it to the revoked-peers set so polly's network
+ * adapter refuses further messages from it. Persists the change.
+ *
+ * The scope is local: other paired devices still have the forgotten
+ * peer in their own keyrings and still share mesh documents with it.
+ * A mesh-wide revocation would rotate the shared mesh keys and
+ * propagate through a signed `createRevocation` envelope — separate
+ * design, not this helper.
+ *
+ * Callers must trigger a `window.location.reload()` after this
+ * resolves. The mesh client was constructed at module load time with
+ * the old known-peer set; without a reload the WebRTC adapter will
+ * still try to reach the forgotten peer on the next reconnect.
+ */
+export async function forgetPeer(keyring: MeshKeyring, peerId: string): Promise<void> {
+  const { revokePeerLocally } = await import('@fairfox/polly/mesh');
+  revokePeerLocally(peerId, keyring);
+  keyring.knownPeers.delete(peerId);
+  await saveKeyring(keyring);
+}

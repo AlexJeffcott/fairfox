@@ -22,6 +22,7 @@ import { parseArgs } from 'node:util';
 import { agendaAdd, agendaList } from '#src/commands/agenda.ts';
 import { deploy } from '#src/commands/deploy.ts';
 import { pair } from '#src/commands/pair.ts';
+import { peers } from '#src/commands/peers.ts';
 import { todo } from '#src/commands/todo.ts';
 
 function printUsage(): void {
@@ -33,6 +34,9 @@ function printUsage(): void {
       '  fairfox pair <token-or-url>   Apply a pairing token; print our share URL.',
       '  fairfox agenda list           List chores and events in the agenda doc.',
       '  fairfox agenda add <name>     Add a chore (daily recurrence).',
+      '  fairfox peers                 List every paired device.',
+      '  fairfox peers rename <name>   Rename this device in the mesh.',
+      '  fairfox peers forget <pid>    Stop syncing with a peer (local).',
       '  fairfox todo tasks            List open tasks (add --done for all).',
       '  fairfox todo task add <desc>  Add a task; --project P --priority high|med|low.',
       '  fairfox todo task done <tid>  Mark a task done.',
@@ -92,6 +96,10 @@ function main(): Promise<number> {
 
   if (subcommand === 'todo') {
     return todo(rest);
+  }
+
+  if (subcommand === 'peers') {
+    return peers(rest);
   }
 
   process.stderr.write(`fairfox: unknown subcommand "${subcommand}".\n\n`);

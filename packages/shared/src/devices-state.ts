@@ -18,6 +18,15 @@
 import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
 
+// Internal type for the CrdtPrimitive returned by $meshState. We only
+// use the surface actually consumed (`value` read/write, `loaded`), so
+// a structural type is enough; duplicating polly's full CrdtPrimitive
+// here would couple this module to polly internals.
+interface DevicesPrimitive {
+  value: DevicesDoc;
+  readonly loaded: Promise<void>;
+}
+
 export type DeviceAgent = 'browser' | 'cli' | 'extension';
 
 export interface DeviceEntry {
@@ -39,7 +48,34 @@ export interface DevicesDoc {
   devices: Record<string, DeviceEntry>;
 }
 
-export const devicesState = $meshState<DevicesDoc>('mesh:devices', { devices: {} });
+// Lazy initialisation: the CLI bundle imports this module at startup
+// (through `bin.ts` → `commands/peers.ts`), but the Repo isn't
+// configured until a subcommand actually calls `openMeshClient`.
+// Evaluating `$meshState` at module load throws "no Repo configured".
+// Deferring the call until first access of `.value` / `.loaded` makes
+// the module safe to import eagerly and still Just Works in the
+// browser, where `ensure-mesh` has already configured the Repo by the
+// time anything reads the signal.
+let _devicesPrimitive: DevicesPrimitive | null = null;
+
+function primitive(): DevicesPrimitive {
+  if (_devicesPrimitive === null) {
+    _devicesPrimitive = $meshState<DevicesDoc>('mesh:devices', { devices: {} });
+  }
+  return _devicesPrimitive;
+}
+
+export const devicesState: DevicesPrimitive = {
+  get value(): DevicesDoc {
+    return primitive().value;
+  },
+  set value(next: DevicesDoc) {
+    primitive().value = next;
+  },
+  get loaded(): Promise<void> {
+    return primitive().loaded;
+  },
+};
 
 /** Read-only helper for the common case of "does this peer have an
  * entry yet?" — used on the browser side to decide whether to prompt
