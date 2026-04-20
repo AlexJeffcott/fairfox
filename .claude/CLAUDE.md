@@ -7,6 +7,28 @@ A Bun monorepo that gathers small web projects into a single Railway service. Ea
 - **`/todo`** — project tracker (transplanted from `~/projects/todo-remote`). Raw `Bun.serve` routes + Preact/HTM/Signals frontend. Lives in `packages/todo`. Owns `data/todo.db`.
 - **`/struggle`** — interactive sci-fi story (transplanted from `~/projects/the_struggle`). Elysia + vanilla JS thick client. Lives in `packages/struggle`. Owns `data/struggle.db`. **The database is the source of truth.** Seed files and `/api/reseed` referenced in old docs no longer exist; the only authoritative copy is the live DB.
 
+## Starting / resetting a mesh
+
+There is **one** canonical way to create a new fairfox mesh:
+`fairfox mesh init --admin "Name" [--user "Other:role"]…`. It
+generates the device keyring + admin user key, writes the admin
+`UserEntry` into `mesh:users`, and stashes per-user invite blobs
+locally. Roles: `admin`, `member`, `guest`, `llm`. Pass `--force`
+to wipe this machine's keyring + user identity + pending invites
+and start fresh (affects only the local machine; other paired
+devices stay on the old mesh until they wipe their own state).
+
+Invites are onboarded with `fairfox mesh invite open <name>`
+which renders a terminal QR and holds the signalling socket open
+until ctrl-c. The pair-token + session id are ephemeral (born
+when the QR opens, die when it closes); the admin-signed invite
+blob persists across re-opens. Re-emit with `--reopen` to let an
+already-paired user add another device.
+
+Full walkthrough: `packages/cli/README.md`. The browser's
+WhoAreYou wizard accepts an existing recovery blob but no longer
+bootstraps a fresh admin — that path lives in the CLI.
+
 ## Architecture
 
 - `packages/shared` — typed `SubApp`/`WsSubApp`/`WsData` contract, `loadEnv()`, `openDb()`. Zero runtime deps.
