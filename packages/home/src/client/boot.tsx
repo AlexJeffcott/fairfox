@@ -22,7 +22,10 @@ import { touchSelfDeviceEntry, upsertDeviceEntry } from '@fairfox/shared/devices
 import { forgetPeer, loadOrCreateKeyring } from '@fairfox/shared/keyring';
 import { MeshGate } from '@fairfox/shared/mesh-gate';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
+import { canDo } from '@fairfox/shared/policy';
 import { pwaInstallActions } from '@fairfox/shared/pwa-install';
+import { userIdentity } from '@fairfox/shared/user-identity-state';
+import { revokeUser } from '@fairfox/shared/users-state';
 import { render } from 'preact';
 import { Home, setActiveView } from '#src/client/Home.tsx';
 import { selfPeerId, setSelfPeerId } from '#src/client/self-peer.ts';
@@ -69,6 +72,10 @@ const homeActions: Record<string, (ctx: HandlerContext) => void> = {
     void ctx;
   },
   'peers.forget-local': (ctx) => {
+    if (!canDo('device.revoke')) {
+      console.warn('[policy] blocked peers.forget-local: user lacks device.revoke');
+      return;
+    }
     const peerId = ctx.data.peerId;
     if (!peerId) {
       return;
@@ -83,6 +90,29 @@ const homeActions: Record<string, (ctx: HandlerContext) => void> = {
         window.location.reload();
       }
     })();
+  },
+  'users.revoke-peer': (ctx) => {
+    if (!canDo('user.revoke')) {
+      console.warn('[policy] blocked users.revoke-peer: user lacks user.revoke');
+      return;
+    }
+    const targetUserId = ctx.data.userId;
+    if (!targetUserId) {
+      return;
+    }
+    const identity = userIdentity.value;
+    if (!identity) {
+      return;
+    }
+    try {
+      revokeUser({
+        userId: targetUserId,
+        revokerUserId: identity.userId,
+        revokerUserKey: identity.keypair,
+      });
+    } catch (err) {
+      console.error('[users.revoke-peer]', err);
+    }
   },
 };
 

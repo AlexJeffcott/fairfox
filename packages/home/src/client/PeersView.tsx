@@ -9,9 +9,19 @@
 import { ActionInput, Badge, Button, Layout } from '@fairfox/polly/ui';
 import { devicesState } from '@fairfox/shared/devices-state';
 import { peersPresent } from '@fairfox/shared/peers-presence';
+import { canDo, effectivePermissionsForDevice } from '@fairfox/shared/policy';
+import { usersState } from '@fairfox/shared/users-state';
 import { selfPeerId } from '#src/client/self-peer.ts';
 
 function PairActions() {
+  const canPair = canDo('device.pair');
+  if (!canPair) {
+    return (
+      <p style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+        This device isn't allowed to bring in new peers — ask an admin.
+      </p>
+    );
+  }
   return (
     <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
       <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
@@ -64,10 +74,27 @@ function agentColor(agent: string): 'info' | 'success' | 'warning' | 'default' {
   }
 }
 
+function capabilityPillColor(cap: string): 'info' | 'success' | 'warning' | 'default' {
+  switch (cap) {
+    case 'webrtc':
+    case 'pwa-installed':
+      return 'success';
+    case 'llm-peer':
+      return 'warning';
+    case 'camera':
+    case 'keyboard':
+      return 'info';
+    default:
+      return 'default';
+  }
+}
+
 export function PeersView() {
   const selfId = selfPeerId.value;
   const entries = Object.values(devicesState.value.devices);
   const online = peersPresent.value;
+  const canRevoke = canDo('device.revoke');
+  const users = usersState.value.users;
 
   // Sort: self first, then online peers, then everyone else by name.
   entries.sort((a, b) => {
@@ -103,6 +130,9 @@ export function PeersView() {
         {entries.map((entry) => {
           const isSelf = entry.peerId === selfId;
           const isOnline = online.has(entry.peerId);
+          const ownerUserIds = entry.ownerUserIds ?? [];
+          const capabilities = entry.capabilities ?? [];
+          const effective = Array.from(effectivePermissionsForDevice(entry.peerId)).sort();
           return (
             <Layout
               key={entry.peerId}
@@ -121,7 +151,7 @@ export function PeersView() {
                 }}
                 title={isOnline ? 'online' : 'offline'}
               />
-              <Layout rows="auto auto" gap="0">
+              <Layout rows="auto auto auto auto" gap="0">
                 <Layout
                   columns="auto auto auto"
                   gap="var(--polly-space-sm)"
@@ -154,6 +184,47 @@ export function PeersView() {
                   {' · '}
                   {isOnline ? 'online' : `last seen ${relativeTime(entry.lastSeenAt)}`}
                 </span>
+                {ownerUserIds.length > 0 && (
+                  <Layout
+                    columns="repeat(auto-fit, minmax(0, auto))"
+                    gap="var(--polly-space-xs)"
+                    alignItems="center"
+                    justifyContent="start"
+                  >
+                    {ownerUserIds.map((userId) => (
+                      <Badge key={userId} variant="info">
+                        {users[userId]?.displayName ?? userId.slice(0, 8)}
+                      </Badge>
+                    ))}
+                    {capabilities.map((cap) => (
+                      <Badge key={cap} variant={capabilityPillColor(cap)}>
+                        {cap}
+                      </Badge>
+                    ))}
+                  </Layout>
+                )}
+                {effective.length > 0 && (
+                  <span
+                    style={{
+                      color: 'var(--polly-text-muted)',
+                      fontSize: 'var(--polly-text-sm)',
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    can: {effective.join(', ')}
+                  </span>
+                )}
+                {ownerUserIds.length > 0 && effective.length === 0 && (
+                  <span
+                    style={{
+                      color: 'var(--polly-warning, #b45309)',
+                      fontSize: 'var(--polly-text-sm)',
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    read-only (no endorsed user has any permissions)
+                  </span>
+                )}
               </Layout>
               {isSelf ? (
                 <span />
@@ -166,14 +237,16 @@ export function PeersView() {
                     data-action="peers.reconnect"
                     data-action-peer-id={entry.peerId}
                   />
-                  <Button
-                    label="Forget"
-                    size="small"
-                    tier="tertiary"
-                    color="danger"
-                    data-action="peers.forget-local"
-                    data-action-peer-id={entry.peerId}
-                  />
+                  {canRevoke && (
+                    <Button
+                      label="Forget"
+                      size="small"
+                      tier="tertiary"
+                      color="danger"
+                      data-action="peers.forget-local"
+                      data-action-peer-id={entry.peerId}
+                    />
+                  )}
                 </Layout>
               )}
             </Layout>

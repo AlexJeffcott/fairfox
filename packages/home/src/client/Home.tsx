@@ -8,16 +8,18 @@
 // pairing already lives on this sub-app.
 
 import { Layout, Tabs } from '@fairfox/polly/ui';
+import { canDo } from '@fairfox/shared/policy';
 import { PwaInstallPrompt } from '@fairfox/shared/pwa-install';
 import { signal } from '@preact/signals';
 import { PeersView } from '#src/client/PeersView.tsx';
+import { UsersView } from '#src/client/UsersView.tsx';
 
-export type HomeView = 'apps' | 'peers';
+export type HomeView = 'apps' | 'peers' | 'users';
 
 export const activeView = signal<HomeView>('apps');
 
 function isHomeView(v: string): v is HomeView {
-  return v === 'apps' || v === 'peers';
+  return v === 'apps' || v === 'peers' || v === 'users';
 }
 
 export function setActiveView(v: string): void {
@@ -26,10 +28,20 @@ export function setActiveView(v: string): void {
   }
 }
 
-const TAB_LIST = [
-  { id: 'apps', label: 'Apps' },
-  { id: 'peers', label: 'Peers' },
-];
+function tabList(): { id: string; label: string }[] {
+  const tabs = [
+    { id: 'apps', label: 'Apps' },
+    { id: 'peers', label: 'Peers' },
+  ];
+  // Users tab is admin-only — no point in every household seeing a
+  // roster of identities they can't act on. The gate is any of the
+  // user.* permissions since a member with the "user.invite" grant
+  // still benefits from seeing who's there.
+  if (canDo('user.invite') || canDo('user.revoke') || canDo('user.grant-role')) {
+    tabs.push({ id: 'users', label: 'Users' });
+  }
+  return tabs;
+}
 
 interface SubApp {
   readonly path: string;
@@ -120,9 +132,13 @@ export function Home() {
         <PwaInstallPrompt />
       </header>
 
-      <Tabs tabs={TAB_LIST} activeTab={activeView.value} action="home.tab" />
+      <Tabs tabs={tabList()} activeTab={activeView.value} action="home.tab" />
 
-      <div>{activeView.value === 'apps' ? <AppsGrid /> : <PeersView />}</div>
+      <div>
+        {activeView.value === 'apps' && <AppsGrid />}
+        {activeView.value === 'peers' && <PeersView />}
+        {activeView.value === 'users' && <UsersView />}
+      </div>
     </Layout>
   );
 }

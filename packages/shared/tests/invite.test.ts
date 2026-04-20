@@ -3,11 +3,7 @@
 
 import { describe, expect, test } from 'bun:test';
 import { generateSigningKeyPair } from '@fairfox/polly/mesh';
-import {
-  createInvite,
-  decodeInviteBlob,
-  verifyInviteSignature,
-} from '#src/invite.ts';
+import { createInvite, decodeInviteBlob, verifyInviteSignature } from '#src/invite.ts';
 import { encodePublicKeyHex } from '#src/users-state.ts';
 
 describe('invite', () => {
