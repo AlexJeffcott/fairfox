@@ -17,6 +17,7 @@
 
 import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
+import { detectCapabilities } from '#src/capabilities.ts';
 
 // Internal type for the CrdtPrimitive returned by $meshState. We only
 // use the surface actually consumed (`value` read/write, `loaded`), so
@@ -234,7 +235,7 @@ function defaultBrowserName(): string {
  * agent family — the peer list lets the user rename it later. */
 export function touchSelfDeviceEntry(
   peerId: string,
-  options: { agent?: DeviceAgent; defaultName?: string } = {}
+  options: { agent?: DeviceAgent; defaultName?: string; capabilities?: Capability[] } = {}
 ): void {
   const existing = devicesState.value.devices[peerId];
   const agent = options.agent ?? existing?.agent ?? 'browser';
@@ -242,5 +243,11 @@ export function touchSelfDeviceEntry(
     options.defaultName ??
     existing?.name ??
     (agent === 'cli' ? 'CLI' : agent === 'extension' ? 'Extension' : defaultBrowserName());
-  upsertDeviceEntry(peerId, { agent, name: fallbackName });
+  // Refresh the capability list on every touch — it's cheap and
+  // picks up the pwa-installed flip the first time the tab loads
+  // after the user installs the PWA, or the push-notifications flip
+  // after a permission change. Callers can override (e.g. the CLI
+  // passes its own list since `detectCapabilities` is browser-only).
+  const capabilities = options.capabilities ?? detectCapabilities();
+  upsertDeviceEntry(peerId, { agent, name: fallbackName, capabilities });
 }
