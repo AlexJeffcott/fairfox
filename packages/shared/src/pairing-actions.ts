@@ -14,7 +14,7 @@
 
 import QRCode from 'qrcode';
 import { type CustomFrame, subscribeCustomFrames } from '#src/custom-frames.ts';
-import { touchSelfDeviceEntry } from '#src/devices-state.ts';
+import { addEndorsementToDevice, touchSelfDeviceEntry } from '#src/devices-state.ts';
 import { mesh } from '#src/ensure-mesh.ts';
 import { loadOrCreateKeyring } from '#src/keyring.ts';
 import { completePairing, initiatePairing } from '#src/pairing.ts';
@@ -32,6 +32,21 @@ import {
   persistSoloDeviceMode,
   scanInput,
 } from '#src/pairing-state.ts';
+import {
+  createUserIdentity,
+  decodeRecoveryBlob,
+  exportRecoveryBlob,
+  saveUserIdentity,
+  signEndorsement,
+} from '#src/user-identity.ts';
+import {
+  displayNameDraft,
+  pendingRecoveryBlob,
+  recoveryBlobDraft,
+  userIdentity,
+  userSetupError,
+} from '#src/user-identity-state.ts';
+import { createBootstrapUser, upsertUser, usersState } from '#src/users-state.ts';
 
 interface PairingHandlerContext {
   data: Record<string, string>;
@@ -329,4 +344,101 @@ export const pairingActions: Record<string, (ctx: PairingHandlerContext) => void
     pairingMode.value = 'idle';
     persistSoloDeviceMode(true);
   },
+
+  'users.display-name-input': (ctx) => {
+    displayNameDraft.value = ctx.data.value ?? '';
+  },
+
+  'users.recovery-blob-input': (ctx) => {
+    recoveryBlobDraft.value = ctx.data.value ?? '';
+  },
+
+  'users.create-bootstrap': () => {
+    const name = displayNameDraft.value.trim();
+    if (!name) {
+      userSetupError.value = 'Pick a display name first.';
+      return;
+    }
+    userSetupError.value = null;
+    (async () => {
+      try {
+        const identity = await createUserIdentity(name);
+        // Write the user row. On a fresh mesh this is the only entry
+        // and the user is admin. On a pre-existing mesh without a
+        // user registry yet (legacy migration) this still applies —
+        // the first writer wins, and whoever bootstraps first becomes
+        // the admin. Phase F will add an accept hook that rejects
+        // unsigned rows, so the self-signature matters even in
+        // lenient mode.
+        const existingUserCount = Object.keys(usersState.value.users).length;
+        if (existingUserCount === 0) {
+          createBootstrapUser({ displayName: name, userKey: identity.keypair });
+        } else {
+          // A mesh that already has a user registry must not get a
+          // second self-signed admin for free — that would let any
+          // device promote itself. Fall back to import-recovery or an
+          // invite (Phase C). Surface the mismatch.
+          userSetupError.value =
+            'This mesh already has a user registry. Paste your recovery blob or accept an invite.';
+          return;
+        }
+        await selfEndorseDevice(identity);
+        pendingRecoveryBlob.value = exportRecoveryBlob(identity);
+        userIdentity.value = identity;
+        displayNameDraft.value = '';
+      } catch (err) {
+        userSetupError.value = err instanceof Error ? err.message : String(err);
+      }
+    })();
+  },
+
+  'users.import-recovery': () => {
+    const blob = recoveryBlobDraft.value.trim();
+    if (!blob) {
+      userSetupError.value = 'Paste your recovery blob first.';
+      return;
+    }
+    userSetupError.value = null;
+    (async () => {
+      try {
+        const identity = decodeRecoveryBlob(blob);
+        await saveUserIdentity(identity);
+        // If the imported user has no `UserEntry` yet in the mesh
+        // registry — i.e. the user was created on a device that never
+        // synced — write a self-signed row now. Otherwise the existing
+        // row already speaks for them.
+        if (!usersState.value.users[identity.userId]) {
+          upsertUser({
+            entry: createBootstrapUser({
+              displayName: identity.displayName,
+              userKey: identity.keypair,
+            }),
+          });
+        }
+        await selfEndorseDevice(identity);
+        userIdentity.value = identity;
+        recoveryBlobDraft.value = '';
+      } catch (err) {
+        userSetupError.value = err instanceof Error ? err.message : String(err);
+      }
+    })();
+  },
+
+  'users.dismiss-recovery-blob': () => {
+    pendingRecoveryBlob.value = null;
+  },
 };
+
+/** After a user identity lands, attach it to this device's row in
+ * `mesh:devices` so the accept-hook (Phase F) can verify this device
+ * acts under a known user. Idempotent — `addEndorsementToDevice`
+ * replaces a same-user endorsement rather than stacking duplicates. */
+async function selfEndorseDevice(identity: Parameters<typeof signEndorsement>[0]): Promise<void> {
+  const keyring = await loadOrCreateKeyring();
+  const peerId = Array.from(keyring.identity.publicKey.slice(0, 8))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  touchSelfDeviceEntry(peerId, { agent: 'browser' });
+  const endorsement = signEndorsement(identity, peerId);
+  addEndorsementToDevice(peerId, endorsement);
+}

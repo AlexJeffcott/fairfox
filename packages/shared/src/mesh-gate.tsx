@@ -32,6 +32,7 @@ import {
   pairingMode,
   soloDeviceMode,
 } from '#src/pairing-state.ts';
+import { hydrateUserIdentity, userIdentity } from '#src/user-identity-state.ts';
 
 async function refreshKeyringState(): Promise<void> {
   try {
@@ -61,6 +62,9 @@ export function MeshGate({ children }: MeshGateProps): preact.JSX.Element | null
     }
     if (!soloDeviceMode.value) {
       hydrateSoloDeviceMode();
+    }
+    if (userIdentity.value === undefined) {
+      void hydrateUserIdentity();
     }
   });
 

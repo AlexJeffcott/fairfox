@@ -25,6 +25,13 @@ import {
   scanInput,
 } from '#src/pairing-state.ts';
 import { PwaInstallPrompt } from '#src/pwa-install.tsx';
+import {
+  displayNameDraft,
+  pendingRecoveryBlob,
+  recoveryBlobDraft,
+  userIdentity,
+  userSetupError,
+} from '#src/user-identity-state.ts';
 
 const PAGE_STYLE = {
   minHeight: '100vh',
@@ -266,7 +273,188 @@ function ScanView(): preact.JSX.Element {
   );
 }
 
+function WhoAreYouHeader(): preact.JSX.Element {
+  return (
+    <div style={{ textAlign: 'center', marginBottom: 'var(--polly-space-md, 1rem)' }}>
+      <h1 style={{ margin: '0 0 0.5rem', fontSize: '1.5rem' }}>fairfox</h1>
+      <p style={{ margin: 0, color: 'var(--polly-text-muted, #57534e)', fontSize: '0.95rem' }}>
+        First, tell fairfox who you are. This is the identity every device you pair will act under.
+      </p>
+    </div>
+  );
+}
+
+function WhoAreYouView(): preact.JSX.Element {
+  return (
+    <Layout rows="auto auto auto" gap="var(--polly-space-md, 1rem)">
+      <div>
+        <p
+          style={{
+            margin: '0 0 var(--polly-space-xs, 0.25rem)',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+          }}
+        >
+          New user
+        </p>
+        <p
+          style={{
+            margin: '0 0 var(--polly-space-sm, 0.5rem)',
+            fontSize: '0.85rem',
+            color: 'var(--polly-text-muted, #57534e)',
+          }}
+        >
+          Pick a display name. fairfox will generate a keypair and show you a one-time recovery blob
+          you can use to bring this identity onto another device later.
+        </p>
+        <ActionInput
+          value={displayNameDraft.value}
+          variant="single"
+          action="users.display-name-input"
+          saveOn="blur"
+          placeholder="Your name"
+          ariaLabel="Your display name"
+        />
+        <Layout
+          columns="1fr"
+          gap="var(--polly-space-sm, 0.5rem)"
+          padding="var(--polly-space-sm, 0.5rem) 0 0 0"
+        >
+          <Button
+            label="Create my identity"
+            tier="primary"
+            fullWidth={true}
+            data-action="users.create-bootstrap"
+          />
+        </Layout>
+      </div>
+      <div>
+        <p
+          style={{
+            margin: '0 0 var(--polly-space-xs, 0.25rem)',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+          }}
+        >
+          Existing user — import recovery blob
+        </p>
+        <p
+          style={{
+            margin: '0 0 var(--polly-space-sm, 0.5rem)',
+            fontSize: '0.85rem',
+            color: 'var(--polly-text-muted, #57534e)',
+          }}
+        >
+          Already have a recovery blob from another device? Paste it here.
+        </p>
+        <ActionInput
+          value={recoveryBlobDraft.value}
+          variant="single"
+          action="users.recovery-blob-input"
+          saveOn="blur"
+          placeholder="fairfox-user-v1:..."
+          ariaLabel="Recovery blob"
+        />
+        <Layout
+          columns="1fr"
+          gap="var(--polly-space-sm, 0.5rem)"
+          padding="var(--polly-space-sm, 0.5rem) 0 0 0"
+        >
+          <Button
+            label="Import"
+            tier="secondary"
+            fullWidth={true}
+            data-action="users.import-recovery"
+          />
+        </Layout>
+      </div>
+      {userSetupError.value && (
+        <p style={{ color: '#b91c1c', fontSize: '0.85rem' }}>{userSetupError.value}</p>
+      )}
+    </Layout>
+  );
+}
+
+function RecoveryBlobView(): preact.JSX.Element | null {
+  const blob = pendingRecoveryBlob.value;
+  if (!blob) {
+    return null;
+  }
+  return (
+    <Layout rows="auto auto auto auto" gap="var(--polly-space-sm, 0.5rem)">
+      <div>
+        <p
+          style={{
+            margin: 0,
+            fontSize: '0.9rem',
+            fontWeight: 600,
+          }}
+        >
+          Save this recovery blob
+        </p>
+        <p
+          style={{
+            margin: '0.25rem 0 0',
+            fontSize: '0.85rem',
+            color: 'var(--polly-text-muted, #57534e)',
+          }}
+        >
+          It holds your user key. Store it somewhere safe (password manager, encrypted note).
+          Without it, losing every device holding this identity means losing access.
+        </p>
+      </div>
+      <code
+        style={{
+          display: 'block',
+          wordBreak: 'break-all',
+          padding: '0.5rem',
+          background: 'rgba(0, 0, 0, 0.06)',
+          borderRadius: '4px',
+          fontSize: '0.72rem',
+        }}
+      >
+        {blob}
+      </code>
+      <Button
+        label="I've saved it — continue"
+        tier="primary"
+        fullWidth={true}
+        data-action="users.dismiss-recovery-blob"
+      />
+    </Layout>
+  );
+}
+
 export function LoginPage(): preact.JSX.Element {
+  // The user identity gate runs before the pairing gate: without an
+  // identity there's nothing to sign a pairing endorsement with.
+  // `userIdentity.value === undefined` means the IDB load is still
+  // in flight — render nothing to avoid a flash of WhoAreYou that
+  // vanishes once IDB resolves.
+  const identity = userIdentity.value;
+  if (identity === undefined) {
+    return <div />;
+  }
+  if (pendingRecoveryBlob.value) {
+    return (
+      <div style={PAGE_STYLE}>
+        <div style={CARD_STYLE}>
+          <WhoAreYouHeader />
+          <RecoveryBlobView />
+        </div>
+      </div>
+    );
+  }
+  if (identity === null) {
+    return (
+      <div style={PAGE_STYLE}>
+        <div style={CARD_STYLE}>
+          <WhoAreYouHeader />
+          <WhoAreYouView />
+        </div>
+      </div>
+    );
+  }
   return (
     <div style={PAGE_STYLE}>
       <div style={CARD_STYLE}>
