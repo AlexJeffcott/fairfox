@@ -14,9 +14,17 @@ import type { SigningKeyPair } from '@fairfox/polly/mesh';
 import { generateSigningKeyPair, sign, signingKeyPairFromSecret } from '@fairfox/polly/mesh';
 import { encodePublicKeyHex } from '#src/users-state.ts';
 
-const DB_NAME = 'fairfox-keyring';
-const STORE_NAME = 'keyring';
-const USER_KEY = 'user-identity';
+// Own database, not `fairfox-keyring`. Sharing the IDB with
+// keyring.ts saves a schema upgrade but races its onupgradeneeded
+// handler: both modules open the same DB at version 1 and both try
+// to createObjectStore on a fresh install. On localhost the race
+// happens fast enough that one resolves before the other runs;
+// against Railway the share-URL boot path opens both DBs in
+// parallel and the loser's transaction crashes with NotFoundError.
+// Keeping a separate DB isolates the upgrade transactions entirely.
+const DB_NAME = 'fairfox-user-identity';
+const STORE_NAME = 'user-identity';
+const USER_KEY = 'default';
 
 interface PersistedUserIdentity {
   secretKey: number[];
