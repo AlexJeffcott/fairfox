@@ -31,7 +31,12 @@ import { canDo } from '@fairfox/shared/policy';
 import { pwaInstallActions } from '@fairfox/shared/pwa-install';
 import { signEndorsement } from '@fairfox/shared/user-identity';
 import { userIdentity } from '@fairfox/shared/user-identity-state';
-import { revokeUser } from '@fairfox/shared/users-state';
+import {
+  type Permission,
+  revokeUser,
+  setUserGrants,
+  usersState,
+} from '@fairfox/shared/users-state';
 import { render } from 'preact';
 import { Home, setActiveView } from '#src/client/Home.tsx';
 import { selfPeerId, setSelfPeerId } from '#src/client/self-peer.ts';
@@ -40,6 +45,48 @@ function derivePeerId(publicKey: Uint8Array): string {
   return Array.from(publicKey.slice(0, 8))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+const KNOWN_PERMISSIONS: ReadonlySet<string> = new Set<Permission>([
+  'user.invite',
+  'user.revoke',
+  'user.grant-role',
+  'device.pair',
+  'device.rename',
+  'device.revoke',
+  'device.designate-llm',
+  'subapp.install',
+  'todo.write',
+  'agenda.write',
+  'agenda.complete-other',
+]);
+
+function parsePermission(input: string | undefined): Permission | undefined {
+  if (!input) {
+    return undefined;
+  }
+  if (!KNOWN_PERMISSIONS.has(input)) {
+    return undefined;
+  }
+  // Safe now: the set's element type is Permission, so membership
+  // narrows to that. The explicit assertion below is `as unknown as
+  // const` — a concession to TypeScript that membership on a
+  // Set<string> doesn't narrow. Keeping it local means no `any`
+  // escape hatch in the wider codebase.
+  const all: readonly Permission[] = [
+    'user.invite',
+    'user.revoke',
+    'user.grant-role',
+    'device.pair',
+    'device.rename',
+    'device.revoke',
+    'device.designate-llm',
+    'subapp.install',
+    'todo.write',
+    'agenda.write',
+    'agenda.complete-other',
+  ];
+  return all.find((p) => p === input);
 }
 
 type HandlerContext = {
@@ -159,6 +206,39 @@ const homeActions: Record<string, (ctx: HandlerContext) => void> = {
       removeEndorsementFromDevice(targetPeerId, identity.userId);
     } catch (err) {
       console.error('[devices.leave]', err);
+    }
+  },
+  'users.toggle-grant': (ctx) => {
+    if (!canDo('user.grant-role')) {
+      console.warn('[policy] blocked users.toggle-grant: user lacks user.grant-role');
+      return;
+    }
+    const targetUserId = ctx.data.userId;
+    const permission = parsePermission(ctx.data.permission);
+    if (!targetUserId || !permission) {
+      return;
+    }
+    const identity = userIdentity.value;
+    if (!identity) {
+      return;
+    }
+    const entry = usersState.value.users[targetUserId];
+    if (!entry) {
+      return;
+    }
+    const has = entry.grants.some((g) => g.permission === permission);
+    const nextGrants = has
+      ? entry.grants.filter((g) => g.permission !== permission)
+      : [...entry.grants, { permission }];
+    try {
+      setUserGrants({
+        userId: targetUserId,
+        grants: nextGrants,
+        granterUserId: identity.userId,
+        granterUserKey: identity.keypair,
+      });
+    } catch (err) {
+      console.error('[users.toggle-grant]', err);
     }
   },
 };

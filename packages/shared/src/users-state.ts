@@ -202,6 +202,46 @@ export function upsertUser(options: UpsertUserOptions): void {
   };
 }
 
+export interface SetGrantsOptions {
+  userId: string;
+  grants: Grant[];
+  granterUserId: string;
+  granterUserKey: SigningKeyPair;
+}
+
+/** Overwrite a user's grants list with a new set, re-signed by the
+ * granter. The row's `createdByUserId` is updated to the granter so
+ * the new signature verifies under the right key; the original
+ * `createdAt` is preserved so the provenance timeline isn't lost.
+ * Callers gate on the granter holding `user.grant-role` before
+ * invoking. */
+export function setUserGrants(options: SetGrantsOptions): void {
+  const existing = usersState.value.users[options.userId];
+  if (!existing) {
+    throw new Error(`setUserGrants: unknown userId ${options.userId}`);
+  }
+  const createdAt = existing.createdAt;
+  const draft = {
+    userId: options.userId,
+    displayName: existing.displayName,
+    roles: existing.roles,
+    grants: options.grants,
+    createdByUserId: options.granterUserId,
+    createdAt,
+  };
+  const signature = sign(encodeUserForSigning(draft), options.granterUserKey.secretKey);
+  const next: UserEntry = {
+    ...existing,
+    grants: options.grants,
+    createdByUserId: options.granterUserId,
+    signature: Array.from(signature),
+  };
+  usersState.value = {
+    ...usersState.value,
+    users: { ...usersState.value.users, [options.userId]: next },
+  };
+}
+
 export interface RevokeUserOptions {
   userId: string;
   revokerUserId: string;

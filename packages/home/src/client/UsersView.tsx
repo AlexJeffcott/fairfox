@@ -10,12 +10,56 @@
 import { Badge, Button, Layout } from '@fairfox/polly/ui';
 import { canDo } from '@fairfox/shared/policy';
 import { userIdentity } from '@fairfox/shared/user-identity-state';
-import { usersState } from '@fairfox/shared/users-state';
+import { type Permission, type UserEntry, usersState } from '@fairfox/shared/users-state';
+
+/** Every permission that makes sense as a fine-grained grant on top
+ * of a role. Order matters — the picker renders them in this order
+ * so a user scanning the UI sees the most commonly toggled ones
+ * (sub-app writes) first. */
+const GRANTABLE_PERMISSIONS: readonly Permission[] = [
+  'todo.write',
+  'agenda.write',
+  'agenda.complete-other',
+  'subapp.install',
+  'device.pair',
+  'device.rename',
+  'device.revoke',
+  'device.designate-llm',
+  'user.invite',
+  'user.revoke',
+  'user.grant-role',
+];
+
+function GrantPicker({ user }: { user: UserEntry }): preact.JSX.Element {
+  const held = new Set(user.grants.map((g) => g.permission));
+  return (
+    <Layout
+      columns="repeat(auto-fit, minmax(10rem, 1fr))"
+      gap="var(--polly-space-xs)"
+      alignItems="center"
+      justifyContent="start"
+      padding="var(--polly-space-sm) 0 0 0"
+    >
+      {GRANTABLE_PERMISSIONS.map((perm) => (
+        <Button
+          key={perm}
+          label={`${held.has(perm) ? '✓ ' : ''}${perm}`}
+          size="small"
+          tier={held.has(perm) ? 'primary' : 'tertiary'}
+          data-action="users.toggle-grant"
+          data-action-user-id={user.userId}
+          data-action-permission={perm}
+        />
+      ))}
+    </Layout>
+  );
+}
 
 export function UsersView(): preact.JSX.Element {
   const users = Object.values(usersState.value.users);
   const selfUserId = userIdentity.value?.userId;
   const canRevoke = canDo('user.revoke');
+  const canGrant = canDo('user.grant-role');
 
   if (users.length === 0) {
     return (
@@ -33,52 +77,54 @@ export function UsersView(): preact.JSX.Element {
         return (
           <Layout
             key={user.userId}
-            columns="1fr auto"
-            gap="var(--polly-space-md)"
-            alignItems="center"
+            rows="auto auto"
+            gap="var(--polly-space-sm)"
             padding="var(--polly-space-md) var(--polly-space-lg)"
           >
-            <Layout rows="auto auto" gap="0">
-              <Layout
-                columns="auto auto auto"
-                gap="var(--polly-space-sm)"
-                alignItems="center"
-                justifyContent="start"
-              >
-                <strong style={isRevoked ? { textDecoration: 'line-through' } : undefined}>
-                  {user.displayName}
-                </strong>
-                {user.roles.map((role) => (
-                  <Badge
-                    key={role}
-                    variant={role === 'admin' ? 'warning' : role === 'guest' ? 'default' : 'info'}
-                  >
-                    {role}
-                  </Badge>
-                ))}
-                {isSelf && <Badge variant="success">you</Badge>}
-                {isRevoked && <Badge variant="default">revoked</Badge>}
+            <Layout columns="1fr auto" gap="var(--polly-space-md)" alignItems="center">
+              <Layout rows="auto auto" gap="0">
+                <Layout
+                  columns="auto auto auto"
+                  gap="var(--polly-space-sm)"
+                  alignItems="center"
+                  justifyContent="start"
+                >
+                  <strong style={isRevoked ? { textDecoration: 'line-through' } : undefined}>
+                    {user.displayName}
+                  </strong>
+                  {user.roles.map((role) => (
+                    <Badge
+                      key={role}
+                      variant={role === 'admin' ? 'warning' : role === 'guest' ? 'default' : 'info'}
+                    >
+                      {role}
+                    </Badge>
+                  ))}
+                  {isSelf && <Badge variant="success">you</Badge>}
+                  {isRevoked && <Badge variant="default">revoked</Badge>}
+                </Layout>
+                <span
+                  style={{
+                    color: 'var(--polly-text-muted)',
+                    fontSize: 'var(--polly-text-sm)',
+                    fontFamily: 'var(--polly-font-mono)',
+                  }}
+                >
+                  {user.userId.slice(0, 16)}
+                </span>
               </Layout>
-              <span
-                style={{
-                  color: 'var(--polly-text-muted)',
-                  fontSize: 'var(--polly-text-sm)',
-                  fontFamily: 'var(--polly-font-mono)',
-                }}
-              >
-                {user.userId.slice(0, 16)}
-              </span>
+              {!isSelf && !isRevoked && canRevoke && (
+                <Button
+                  label="Revoke"
+                  size="small"
+                  tier="tertiary"
+                  color="danger"
+                  data-action="users.revoke-peer"
+                  data-action-user-id={user.userId}
+                />
+              )}
             </Layout>
-            {!isSelf && !isRevoked && canRevoke && (
-              <Button
-                label="Revoke"
-                size="small"
-                tier="tertiary"
-                color="danger"
-                data-action="users.revoke-peer"
-                data-action-user-id={user.userId}
-              />
-            )}
+            {canGrant && !isRevoked && <GrantPicker user={user} />}
           </Layout>
         );
       })}
