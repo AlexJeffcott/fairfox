@@ -50,7 +50,13 @@ export async function openMeshClient(options: ConnectOptions): Promise<MeshClien
       peerId: options.peerId,
     },
     keyring: { storage: keyringStorage() },
-    rtc: { RTCPeerConnection: RTCPeerConnection as unknown as typeof RTCPeerConnection },
+    // werift's RTCPeerConnection implements the subset polly needs but
+    // doesn't declare the full DOM spec (e.g. `generateCertificate`),
+    // so the cast bridges the structural gap. The rtc field only uses
+    // the instance-level API (createOffer/createAnswer/data channels)
+    // which werift does satisfy.
+    // biome-ignore lint/suspicious/noExplicitAny: werift shim to DOM type
+    rtc: { RTCPeerConnection: RTCPeerConnection as unknown as any },
   });
   // The `mesh:devices` write happens against the same Repo the client
   // just configured; $meshState is safe to call after createMeshClient

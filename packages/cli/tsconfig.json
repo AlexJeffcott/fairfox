@@ -1,7 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2022"],
+    // DOM lib is load-bearing here: the CLI imports from
+    // @fairfox/shared, and several shared modules (keyring,
+    // user-identity, capabilities, ensure-mesh) reference browser
+    // globals (indexedDB, window, navigator, RTCPeerConnection).
+    // The runtime guards them with `typeof X === "undefined"`, but
+    // the types still have to resolve for tsc. Including DOM lets
+    // the compiler recognise the names; at runtime the CLI simply
+    // never enters those branches.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["bun", "node"]
   },
   "include": ["src/**/*"],

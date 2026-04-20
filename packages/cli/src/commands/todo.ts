@@ -104,7 +104,9 @@ interface MeshHandles {
   captures: ReturnType<typeof $meshState<CapturesDoc>>;
 }
 
-async function withMesh<T>(runner: (mesh: MeshHandles, peered: boolean) => Promise<T>): Promise<T> {
+async function withMesh<T>(
+  runner: (mesh: MeshHandles, peered: boolean) => T | Promise<T>
+): Promise<T> {
   const peerId = await loadOwnPeerId();
   const client = await openMeshClient({ peerId });
   try {
@@ -224,7 +226,7 @@ function taskAdd(rest: readonly string[]): Promise<number> {
     process.stderr.write(
       'fairfox todo task add: expected a description. Usage: fairfox todo task add "do X" [--project i18n] [--priority high|med|low]\n'
     );
-    return 1;
+    return Promise.resolve(1);
   }
   return withMesh(async ({ tasks }) => {
     const task: Task = {
@@ -248,7 +250,7 @@ function taskMutate(tid: string, mutator: (t: Task) => Task, label: string): Pro
     const exists = tasks.value.tasks.find((t) => t.tid === tid);
     if (!exists) {
       process.stderr.write(`fairfox todo: no task with tid "${tid}".\n`);
-      return 1;
+      return Promise.resolve(1);
     }
     tasks.value = {
       ...tasks.value,
@@ -277,7 +279,7 @@ function taskDelete(tid: string): Promise<number> {
     };
     if (tasks.value.tasks.length === before) {
       process.stderr.write(`fairfox todo: no task with tid "${tid}".\n`);
-      return 1;
+      return Promise.resolve(1);
     }
     await flushOutgoing();
     process.stdout.write(`deleted ${tid}\n`);
@@ -307,7 +309,7 @@ function taskUpdate(tid: string, rest: readonly string[]): Promise<number> {
     process.stderr.write(
       'fairfox todo task update: expected one or more field=value pairs (description, project, priority, links, notes).\n'
     );
-    return 1;
+    return Promise.resolve(1);
   }
   return taskMutate(
     tid,
@@ -388,7 +390,7 @@ function projectAdd(rest: readonly string[]): Promise<number> {
     process.stderr.write(
       'fairfox todo project add: expected a name. Usage: fairfox todo project add "i18n" [--category amboss|personal]\n'
     );
-    return 1;
+    return Promise.resolve(1);
   }
   return withMesh(async ({ projects }) => {
     const project: Project = {
@@ -419,13 +421,13 @@ function projectUpdate(pid: string, rest: readonly string[]): Promise<number> {
     process.stderr.write(
       'fairfox todo project update: expected field=value pairs (name, category, status, notes, dirs, skills).\n'
     );
-    return 1;
+    return Promise.resolve(1);
   }
   return withMesh(async ({ projects }) => {
     const exists = projects.value.projects.find((p) => p.pid === pid);
     if (!exists) {
       process.stderr.write(`fairfox todo: no project with pid "${pid}".\n`);
-      return 1;
+      return Promise.resolve(1);
     }
     projects.value = {
       ...projects.value,
@@ -461,7 +463,7 @@ function projectDelete(pid: string): Promise<number> {
     };
     if (projects.value.projects.length === before) {
       process.stderr.write(`fairfox todo: no project with pid "${pid}".\n`);
-      return 1;
+      return Promise.resolve(1);
     }
     await flushOutgoing();
     process.stdout.write(`deleted ${pid}\n`);
@@ -474,7 +476,7 @@ function projectDelete(pid: string): Promise<number> {
 function captureAdd(text: string): Promise<number> {
   if (!text.trim()) {
     process.stderr.write('fairfox todo capture add: expected text.\n');
-    return 1;
+    return Promise.resolve(1);
   }
   return withMesh(async ({ captures }) => {
     const capture: QuickCapture = {
@@ -515,7 +517,7 @@ function captureDelete(id: string): Promise<number> {
     };
     if (captures.value.captures.length === before) {
       process.stderr.write(`fairfox todo: no capture with id "${id}".\n`);
-      return 1;
+      return Promise.resolve(1);
     }
     await flushOutgoing();
     process.stdout.write(`deleted ${id}\n`);
@@ -555,7 +557,7 @@ export function todo(rest: readonly string[]): Promise<number> {
   const [verb, ...args] = rest;
   if (!verb) {
     todoUsage();
-    return 1;
+    return Promise.resolve(1);
   }
 
   if (verb === 'tasks') {
@@ -579,7 +581,7 @@ export function todo(rest: readonly string[]): Promise<number> {
       return taskUpdate(subargs[0], subargs.slice(1));
     }
     todoUsage();
-    return 1;
+    return Promise.resolve(1);
   }
 
   if (verb === 'projects') {
@@ -597,7 +599,7 @@ export function todo(rest: readonly string[]): Promise<number> {
       return projectDelete(subargs[0]);
     }
     todoUsage();
-    return 1;
+    return Promise.resolve(1);
   }
 
   if (verb === 'captures') {
@@ -615,9 +617,9 @@ export function todo(rest: readonly string[]): Promise<number> {
       return captureDelete(subargs[0]);
     }
     todoUsage();
-    return 1;
+    return Promise.resolve(1);
   }
 
   todoUsage();
-  return 1;
+  return Promise.resolve(1);
 }
