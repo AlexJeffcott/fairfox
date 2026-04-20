@@ -4,7 +4,7 @@
 // the global delegator via data-action attributes.
 
 import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
-import { MeshControls } from '@fairfox/shared/mesh-controls';
+import { HubBack } from '@fairfox/shared/hub-back';
 import type { AgendaItem, Completion } from '#src/client/state.ts';
 import { activeTab, agenda } from '#src/client/state.ts';
 
@@ -176,7 +176,7 @@ export function App() {
       <Layout rows="auto" gap="var(--polly-space-md)">
         <Layout columns="1fr auto" gap="var(--polly-space-sm)">
           <h1 style={{ margin: 0 }}>Agenda</h1>
-          <MeshControls />
+          <HubBack />
         </Layout>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="agenda.tab" />
       </Layout>

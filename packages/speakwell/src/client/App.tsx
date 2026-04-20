@@ -5,7 +5,7 @@
 // iteration; the current UI is a text-first stepping stone.
 
 import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
-import { MeshControls } from '@fairfox/shared/mesh-controls';
+import { HubBack } from '@fairfox/shared/hub-back';
 import { useSignal } from '@preact/signals';
 import type { Format, Language } from '#src/client/state.ts';
 import { sessionsState } from '#src/client/state.ts';
@@ -130,7 +130,7 @@ export function App() {
       <Layout rows="auto" gap="var(--polly-space-md)">
         <Layout columns="1fr auto" gap="var(--polly-space-sm)">
           <h1 style={{ margin: 0 }}>Speakwell</h1>
-          <MeshControls />
+          <HubBack />
         </Layout>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="speakwell.tab" />
       </Layout>

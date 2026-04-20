@@ -3,7 +3,7 @@
 // Three views: Projects, Tasks, Capture. All state from $meshState.
 
 import { ActionInput, Badge, Button, Checkbox, Layout, Tabs } from '@fairfox/polly/ui';
-import { MeshControls } from '@fairfox/shared/mesh-controls';
+import { HubBack } from '@fairfox/shared/hub-back';
 import { signal, useSignal } from '@preact/signals';
 import { capturesState, projectsState, tasksState } from '#src/client/state.ts';
 
@@ -669,7 +669,7 @@ export function App() {
       <Layout rows="auto" gap="var(--polly-space-md)">
         <Layout columns="1fr auto" gap="var(--polly-space-sm)">
           <h1 style={{ margin: 0 }}>Todo</h1>
-          <MeshControls />
+          <HubBack />
         </Layout>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="todo.tab" />
       </Layout>

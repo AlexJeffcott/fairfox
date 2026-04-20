@@ -4,7 +4,7 @@
 // to render the login surface itself.
 
 import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
-import { MeshControls } from '@fairfox/shared/mesh-controls';
+import { HubBack } from '@fairfox/shared/hub-back';
 import { useSignal } from '@preact/signals';
 import { directoryState } from '#src/client/state.ts';
 
@@ -124,7 +124,7 @@ export function App() {
       <Layout rows="auto" gap="var(--polly-space-md)">
         <Layout columns="1fr auto" gap="var(--polly-space-sm)">
           <h1 style={{ margin: 0 }}>Family Phone — Admin</h1>
-          <MeshControls />
+          <HubBack />
         </Layout>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="directory.tab" />
       </Layout>
