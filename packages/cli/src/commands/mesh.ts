@@ -397,6 +397,90 @@ async function acceptReturnToken(
   await storage.save(keyring);
 }
 
+async function meshAddDevice(): Promise<number> {
+  const identity = loadUserIdentityFile();
+  if (!identity) {
+    process.stderr.write(
+      'fairfox mesh add-device: no local user identity. Run `fairfox mesh init` first.\n'
+    );
+    return 1;
+  }
+
+  const peerId = await loadPeerId();
+  const storage = keyringStorage();
+  const keyring = await storage.load();
+  if (!keyring) {
+    throw new Error('no keyring');
+  }
+  const sessionId = randomBase64(16);
+
+  const client = await openMeshClient({
+    peerId,
+    onCustomFrame: (frame) => {
+      if (frame.type !== 'pair-return' || frame.sessionId !== sessionId) {
+        return;
+      }
+      const returnToken = typeof frame.token === 'string' ? frame.token : null;
+      if (!returnToken) {
+        return;
+      }
+      void acceptReturnToken(returnToken, keyring, storage).then(() => {
+        process.stdout.write(
+          `\n✓ Device paired under "${identity.displayName}". Close with ctrl-c, or stay open.\n`
+        );
+      });
+    },
+  });
+  try {
+    await waitForPeer(client, 4000);
+
+    const documentKey = keyring.documentKeys.get(DEFAULT_MESH_KEY_ID);
+    const pairToken = encodePairingToken(
+      createPairingToken({
+        identity: keyring.identity,
+        issuerPeerId: peerId,
+        documentKey,
+        documentKeyId: DEFAULT_MESH_KEY_ID,
+      })
+    );
+
+    const registered = client.signaling.sendCustom('pair-issue', { sessionId });
+    if (!registered) {
+      process.stderr.write(
+        'fairfox mesh add-device: signalling relay unavailable; scanner will have to paste back manually.\n'
+      );
+    }
+
+    const recovery = exportRecoveryBlob(identity);
+    const base = process.env.FAIRFOX_URL ?? 'https://fairfox-production-8273.up.railway.app';
+    const fragment = `pair=${encodeURIComponent(pairToken)}&s=${encodeURIComponent(sessionId)}&recovery=${encodeURIComponent(recovery)}`;
+    const shareUrl = `${base.replace(/\/$/, '')}/#${fragment}`;
+
+    const qr = await QRCode.toString(shareUrl, { type: 'terminal', small: true });
+    process.stdout.write(`\n${qr}\n`);
+    process.stdout.write(`${shareUrl}\n\n`);
+    process.stdout.write(
+      `Add-device open for "${identity.displayName}". Waiting for scan — ctrl-c to close.\n\n`
+    );
+    process.stdout.write(
+      'Treat the URL above like a password — it carries your user secret key.\n' +
+        'Anyone who scans it becomes another device of yours.\n'
+    );
+
+    await new Promise<void>((resolve) => {
+      const done = (): void => {
+        process.stdout.write('\nAdd-device closed.\n');
+        resolve();
+      };
+      process.on('SIGINT', done);
+      process.on('SIGTERM', done);
+    });
+    return 0;
+  } finally {
+    await client.close();
+  }
+}
+
 function randomBase64(bytes: number): string {
   const buf = new Uint8Array(bytes);
   crypto.getRandomValues(buf);
@@ -424,6 +508,11 @@ export function meshUsage(stream: NodeJS.WriteStream = process.stderr): void {
       '                                     until ctrl-c. --reopen to re-emit',
       '                                     after the user has already paired',
       '                                     one device (lets them add another).',
+      '  fairfox mesh add-device            Live QR that pairs a new device',
+      "                                     under THIS CLI's user identity",
+      '                                     (your phone, a second laptop,',
+      '                                     etc.). URL carries your recovery',
+      '                                     blob — share only with yourself.',
       '',
       "Only this machine's state is affected. Other paired devices stay on",
       'the old mesh until they wipe their own state.',
@@ -449,6 +538,9 @@ export function mesh(rest: readonly string[]): Promise<number> {
     if (subverb === 'open') {
       return meshInviteOpen(subargs);
     }
+  }
+  if (verb === 'add-device') {
+    return meshAddDevice();
   }
   meshUsage();
   return Promise.resolve(1);

@@ -101,6 +101,34 @@ terminal prints `✓ "Elisa" paired.` and stays open until ctrl-c.
 If the signalling relay is unreachable, the invitee can still
 fall back to the browser's manual-paste flow.
 
+## Adding another device for yourself
+
+The `--user` flags on `mesh init` and `fairfox users invite` are
+for bringing *other people* into the mesh. Adding your phone, a
+second laptop, or any new device for your own user identity is a
+different verb:
+
+```bash
+fairfox mesh add-device
+```
+
+This emits a terminal QR + share URL that carries
+`#pair=<tok>&s=<sid>&recovery=<your-recovery-blob>`. Scanning it
+on the new device's browser:
+
+1. Applies the pair token (the new device now trusts this CLI).
+2. Imports the recovery blob (the new device adopts *your* user
+   identity — same `userId`, same role, same grants).
+3. Self-endorses the new device on its `mesh:devices` row.
+4. Sends the reciprocal pair-token back so this CLI trusts the
+   new device too.
+
+The URL carries your user secret key — treat it like a password
+and only send it over channels you control (your own phone, a
+private message, etc.). The session closes when you ctrl-c out
+of the command; reopening generates a fresh pair-token but
+reuses the same recovery blob.
+
 ## After init: day-to-day commands
 
 ```bash

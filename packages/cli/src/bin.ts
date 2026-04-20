@@ -36,6 +36,7 @@ function printUsage(): void {
       '  fairfox mesh init             Create a new mesh (admin + invites).',
       '  fairfox mesh invite list      Show pending and consumed invites.',
       '  fairfox mesh invite open <n>  Live QR for an invite — held open.',
+      '  fairfox mesh add-device       Live QR to add another device for YOU.',
       '  fairfox pair <token-or-url>   Apply a pairing token; print our share URL.',
       '  fairfox agenda list           List chores and events in the agenda doc.',
       '  fairfox agenda add <name>     Add a chore (daily recurrence).',

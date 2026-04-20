@@ -319,7 +319,13 @@ function advanceAfter(step: PairingStep): void {
 interface ParsedHash {
   token: string;
   sessionId: string | null;
+  /** Admin-signed invite blob (new user joining the mesh). */
   invite: string | null;
+  /** Recovery blob of an existing user (a new device joining THIS
+   * user — the "add my phone to my mesh" flow). Mutually exclusive
+   * with `invite` at consumption time; if both are present, invite
+   * wins because it carries additional role/grant info. */
+  recovery: string | null;
 }
 
 function readHashParam(body: string, name: string): string | null {
@@ -346,6 +352,7 @@ function parsePairingHash(hash: string): ParsedHash | null {
     token,
     sessionId: readHashParam(body, 's'),
     invite: readHashParam(body, 'invite'),
+    recovery: readHashParam(body, 'recovery'),
   };
 }
 
@@ -376,6 +383,8 @@ export async function consumePairingHash(): Promise<boolean> {
     await applyScannedToken(parsed.token);
     if (parsed.invite) {
       await acceptInviteBlob(parsed.invite);
+    } else if (parsed.recovery) {
+      await acceptRecoveryBlob(parsed.recovery);
     }
     if (parsed.sessionId) {
       await sendPairReturnForSession(parsed.sessionId);
@@ -411,6 +420,19 @@ async function sendPairReturnForSession(sessionId: string): Promise<void> {
     .join('');
   const returnToken = initiatePairing(keyring, peerId);
   mesh.signaling.sendCustom('pair-return', { sessionId, token: returnToken });
+}
+
+/** Accept a recovery blob arriving from the URL fragment — the
+ * "add another device to myself" flow. Imports the user key
+ * carried in the blob as this device's identity, then
+ * self-endorses the device. No UserEntry write: the user already
+ * exists in `mesh:users`, and this device joining under the same
+ * identity doesn't add a new user row. */
+async function acceptRecoveryBlob(blob: string): Promise<void> {
+  const identity = decodeRecoveryBlob(blob);
+  await saveUserIdentity(identity);
+  userIdentity.value = identity;
+  await selfEndorseDevice(identity);
 }
 
 /** Accept an invite blob arriving from the URL fragment. Imports the
