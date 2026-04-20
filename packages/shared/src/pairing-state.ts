@@ -33,6 +33,18 @@ export const soloDeviceMode = signal<boolean>(false);
  * rather than going through the wizard. */
 export const deviceNameDraft = signal<string>('');
 
+/** Signalling session id attached to the current issue-mode token.
+ * Generated at `pair-issue` time, appended to the share URL as `&s=…`,
+ * echoed by the scanner in its `pair-return` frame. Null when no
+ * ceremony is in progress or the issue step has not yet started. */
+export const pairingSessionId = signal<string | null>(null);
+
+/** True while the issuer's wizard is waiting for the scanner's
+ * reciprocal token to arrive over the signalling socket. The wizard's
+ * UI uses this to show a passive "waiting for the other device…"
+ * line under the QR. */
+export const issuerWaitingForReturn = signal<boolean>(false);
+
 export const meshGateOpen = computed(() => {
   if (knownPeerCount.value === null) {
     return false;

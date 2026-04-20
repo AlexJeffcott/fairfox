@@ -13,17 +13,21 @@
 // each success.
 
 import QRCode from 'qrcode';
+import { type CustomFrame, subscribeCustomFrames } from '#src/custom-frames.ts';
 import { touchSelfDeviceEntry } from '#src/devices-state.ts';
+import { mesh } from '#src/ensure-mesh.ts';
 import { loadOrCreateKeyring } from '#src/keyring.ts';
 import { completePairing, initiatePairing } from '#src/pairing.ts';
 import {
   issuedQr,
   issuedShareUrl,
   issuedToken,
+  issuerWaitingForReturn,
   knownPeerCount,
   type PairingStep,
   pairingError,
   pairingMode,
+  pairingSessionId,
   pairingStepsRemaining,
   persistSoloDeviceMode,
   scanInput,
@@ -42,6 +46,63 @@ function resetCeremony(): void {
   issuedShareUrl.value = null;
   scanInput.value = '';
   pairingError.value = null;
+  pairingSessionId.value = null;
+  issuerWaitingForReturn.value = false;
+  unsubscribePairReturn();
+}
+
+/** Opaque id that threads the issuer's pair-issue frame through to the
+ * matching pair-return frame on the server. Kept separate from polly's
+ * pairing token format so no polly release is needed to carry it. */
+function generateSessionId(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  let binary = '';
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+let pairReturnUnsubscribe: (() => void) | null = null;
+
+function unsubscribePairReturn(): void {
+  if (pairReturnUnsubscribe !== null) {
+    pairReturnUnsubscribe();
+    pairReturnUnsubscribe = null;
+  }
+}
+
+function subscribeToPairReturn(sessionId: string): void {
+  unsubscribePairReturn();
+  pairReturnUnsubscribe = subscribeCustomFrames((frame: CustomFrame) => {
+    if (frame.type === 'pair-error' && frame.sessionId === sessionId) {
+      pairingError.value =
+        typeof frame.reason === 'string' ? `Pairing relay: ${frame.reason}` : 'Pairing relay error';
+      issuerWaitingForReturn.value = false;
+      return;
+    }
+    if (frame.type !== 'pair-return' || frame.sessionId !== sessionId) {
+      return;
+    }
+    const token = typeof frame.token === 'string' ? frame.token : null;
+    if (!token) {
+      return;
+    }
+    // The scanner's reciprocal token completes the ceremony from the
+    // issuer's side. Apply it, drain both steps, advance — the remaining
+    // logic identical to the manual-paste path.
+    (async () => {
+      try {
+        await applyScannedToken(token);
+        drainStep('issue');
+        advanceAfter('scan');
+      } catch (err) {
+        pairingError.value = err instanceof Error ? err.message : String(err);
+        issuerWaitingForReturn.value = false;
+      }
+    })();
+  });
 }
 
 function drainStep(step: PairingStep): ReadonlySet<PairingStep> {
@@ -51,12 +112,16 @@ function drainStep(step: PairingStep): ReadonlySet<PairingStep> {
   return next;
 }
 
-function shareUrlForToken(token: string): string {
+function shareUrlForToken(token: string, sessionId: string | null): string {
+  const encoded = encodeURIComponent(token);
+  const fragment = sessionId
+    ? `pair=${encoded}&s=${encodeURIComponent(sessionId)}`
+    : `pair=${encoded}`;
   if (typeof window === 'undefined') {
-    return `#pair=${encodeURIComponent(token)}`;
+    return `#${fragment}`;
   }
   const url = new URL(window.location.href);
-  url.hash = `pair=${encodeURIComponent(token)}`;
+  url.hash = fragment;
   return url.toString();
 }
 
@@ -66,7 +131,20 @@ async function generateIssueArtefacts(): Promise<void> {
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
   const token = initiatePairing(keyring, peerId);
-  const shareUrl = shareUrlForToken(token);
+  // Register with the server's pair-return relay under a fresh session
+  // id, then bake that id into the share URL so the scanner can echo
+  // it back through the relay. The mesh signalling connection may not
+  // be ready on brand-new devices; if it isn't, fall through with a
+  // null sessionId and the manual-paste fallback still covers the
+  // ceremony.
+  const sessionId = generateSessionId();
+  const sent = mesh?.signaling.sendCustom('pair-issue', { sessionId }) ?? false;
+  pairingSessionId.value = sent ? sessionId : null;
+  issuerWaitingForReturn.value = sent;
+  if (sent) {
+    subscribeToPairReturn(sessionId);
+  }
+  const shareUrl = shareUrlForToken(token, pairingSessionId.value);
   issuedToken.value = token;
   issuedShareUrl.value = shareUrl;
   try {
@@ -131,34 +209,74 @@ function advanceAfter(step: PairingStep): void {
   pairingError.value = null;
 }
 
-// Consume a `#pair=<token>` hash on banner mount. Returns true if a
-// token was present and submitted. Always clears the fragment from
-// the URL so it doesn't leak further into history or bookmarks.
+interface ParsedHash {
+  token: string;
+  sessionId: string | null;
+}
+
+function parsePairingHash(hash: string): ParsedHash | null {
+  if (!hash.startsWith('#pair=')) {
+    return null;
+  }
+  const body = hash.slice('#pair='.length);
+  const ampIndex = body.indexOf('&s=');
+  if (ampIndex === -1) {
+    return { token: decodeURIComponent(body), sessionId: null };
+  }
+  const token = decodeURIComponent(body.slice(0, ampIndex));
+  const sessionId = decodeURIComponent(body.slice(ampIndex + '&s='.length));
+  return { token, sessionId };
+}
+
+// Consume a `#pair=<token>[&s=<sessionId>]` hash on banner mount.
+// Returns true if a token was present and submitted. Always clears
+// the fragment from the URL so it doesn't leak further into history
+// or bookmarks. When the fragment carries a session id, the scanner
+// sends its reciprocal token back through the signalling-relayed
+// pair-return frame so the issuer's wizard can auto-complete; if the
+// relay is unreachable the scanner falls through to the historical
+// manual-paste flow (its own share URL is still generated and shown).
 export async function consumePairingHash(): Promise<boolean> {
   if (typeof window === 'undefined') {
     return false;
   }
-  const hash = window.location.hash;
-  if (!hash.startsWith('#pair=')) {
-    return false;
-  }
-  const token = decodeURIComponent(hash.slice('#pair='.length));
+  const parsed = parsePairingHash(window.location.hash);
   window.history.replaceState(null, '', window.location.pathname + window.location.search);
-  if (!token) {
+  if (parsed === null || !parsed.token) {
     return false;
   }
   pairingStepsRemaining.value = new Set<PairingStep>(['issue', 'scan']);
   pairingMode.value = 'wizard-scan';
-  scanInput.value = token;
+  scanInput.value = parsed.token;
   pairingError.value = null;
   try {
-    await applyScannedToken(token);
+    await applyScannedToken(parsed.token);
+    if (parsed.sessionId) {
+      await sendPairReturnForSession(parsed.sessionId);
+    }
     advanceAfter('scan');
     return true;
   } catch (err) {
     pairingError.value = err instanceof Error ? err.message : String(err);
     return false;
   }
+}
+
+/** Send the scanner's own reciprocal pairing token back to the issuer
+ * through the signalling relay. Generated on this device so the issuer
+ * can call `applyPairingToken` to add us as a known peer on their side.
+ * Best-effort: if the signalling socket isn't connected the scanner
+ * falls through and the old manual-paste fallback still works. */
+async function sendPairReturnForSession(sessionId: string): Promise<void> {
+  if (!mesh) {
+    return;
+  }
+  const keyring = await loadOrCreateKeyring();
+  const peerId = Array.from(keyring.identity.publicKey.slice(0, 8))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  const returnToken = initiatePairing(keyring, peerId);
+  mesh.signaling.sendCustom('pair-return', { sessionId, token: returnToken });
 }
 
 export const pairingActions: Record<string, (ctx: PairingHandlerContext) => void> = {

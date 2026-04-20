@@ -131,6 +131,61 @@ async function getTodo(): Promise<WsSubApp> {
 // Signaling state: peer id → WebSocket
 const signalingPeers = new Map<string, ServerWebSocket<WsData>>();
 
+// Pair-return relay state: sessionId → waiting issuer socket. Populated
+// by a `pair-issue` frame from the issuer during the pairing ceremony,
+// consumed by the matching `pair-return` from the scanner. The map has
+// a hard cap (one entry per socket) and a 5-minute TTL; expired entries
+// are swept lazily on every message. Nothing outside the pairing flow
+// touches this state, so a crash during a ceremony just means the
+// user falls back to the existing manual-paste path.
+const PAIR_SESSION_TTL_MS = 5 * 60_000;
+interface PairSession {
+  issuerSocket: ServerWebSocket<WsData>;
+  createdAt: number;
+}
+const pairSessions = new Map<string, PairSession>();
+const socketPairSessions = new WeakMap<ServerWebSocket<WsData>, string>();
+
+function sweepExpiredPairSessions(now: number): void {
+  for (const [sessionId, session] of pairSessions) {
+    if (now - session.createdAt > PAIR_SESSION_TTL_MS) {
+      pairSessions.delete(sessionId);
+      socketPairSessions.delete(session.issuerSocket);
+    }
+  }
+}
+
+function handlePairIssue(ws: ServerWebSocket<WsData>, sessionId: string): void {
+  sweepExpiredPairSessions(Date.now());
+  // One active session per socket — rejoining overwrites the previous.
+  const existing = socketPairSessions.get(ws);
+  if (existing && existing !== sessionId) {
+    pairSessions.delete(existing);
+  }
+  pairSessions.set(sessionId, { issuerSocket: ws, createdAt: Date.now() });
+  socketPairSessions.set(ws, sessionId);
+}
+
+function handlePairReturn(ws: ServerWebSocket<WsData>, sessionId: string, token: string): void {
+  sweepExpiredPairSessions(Date.now());
+  const session = pairSessions.get(sessionId);
+  if (!session) {
+    try {
+      ws.send(JSON.stringify({ type: 'pair-error', sessionId, reason: 'session-not-found' }));
+    } catch {
+      // best effort
+    }
+    return;
+  }
+  try {
+    session.issuerSocket.send(JSON.stringify({ type: 'pair-return', sessionId, token }));
+  } catch {
+    // issuer socket is gone; the scanner's own fallback path still works.
+  }
+  pairSessions.delete(sessionId);
+  socketPairSessions.delete(session.issuerSocket);
+}
+
 function handleSignalingMessage(ws: ServerWebSocket<WsData>, msg: string): void {
   try {
     const parsed = JSON.parse(msg);
@@ -144,6 +199,18 @@ function handleSignalingMessage(ws: ServerWebSocket<WsData>, msg: string): void 
       typeof parsed.targetPeerId === 'string'
     ) {
       handleSignal(ws, msg, parsed.targetPeerId);
+      return;
+    }
+    if (parsed.type === 'pair-issue' && typeof parsed.sessionId === 'string') {
+      handlePairIssue(ws, parsed.sessionId);
+      return;
+    }
+    if (
+      parsed.type === 'pair-return' &&
+      typeof parsed.sessionId === 'string' &&
+      typeof parsed.token === 'string'
+    ) {
+      handlePairReturn(ws, parsed.sessionId, parsed.token);
     }
   } catch {
     // Malformed messages are silently dropped.
@@ -198,6 +265,13 @@ function handleSignal(ws: ServerWebSocket<WsData>, raw: string, targetPeerId: st
 }
 
 function handleSignalingClose(ws: ServerWebSocket<WsData>): void {
+  // Drop any pair-return session this socket was waiting on; the scanner's
+  // next POST would just bounce off a 404.
+  const sessionId = socketPairSessions.get(ws);
+  if (sessionId !== undefined) {
+    pairSessions.delete(sessionId);
+    socketPairSessions.delete(ws);
+  }
   const peerId = ws.data.peerId;
   if (!peerId) {
     return;

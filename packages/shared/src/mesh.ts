@@ -9,6 +9,7 @@
 import { IndexedDBStorageAdapter } from '@automerge/automerge-repo-storage-indexeddb';
 import type { MeshClient, MeshKeyring } from '@fairfox/polly/mesh';
 import { createMeshClient } from '@fairfox/polly/mesh';
+import { dispatchCustomFrame } from '#src/custom-frames.ts';
 import { markPeersPresent, resetPeersPresent } from '#src/peers-presence.ts';
 
 export interface MeshConnection {
@@ -36,7 +37,13 @@ export async function createMeshConnection(
   options: CreateMeshConnectionOptions
 ): Promise<MeshConnection> {
   const client = await createMeshClient({
-    signaling: { url: options.signalingUrl, peerId: options.peerId },
+    signaling: {
+      url: options.signalingUrl,
+      peerId: options.peerId,
+      onCustomFrame: (frame) => {
+        dispatchCustomFrame(frame);
+      },
+    },
     keyring: options.keyring,
     repoStorage: new IndexedDBStorageAdapter('fairfox-mesh'),
   });

@@ -18,6 +18,7 @@ import {
   issuedQr,
   issuedShareUrl,
   issuedToken,
+  issuerWaitingForReturn,
   pairingError,
   pairingMode,
   pairingStepsRemaining,
@@ -151,6 +152,7 @@ function IdleChoices(): preact.JSX.Element {
 function IssueView(): preact.JSX.Element {
   const remaining = pairingStepsRemaining.value;
   const scanPending = remaining.has('scan');
+  const waiting = issuerWaitingForReturn.value;
   const doneLabel = scanPending ? 'Continue — paste their link' : "They accepted — we're done";
   return (
     <div>
@@ -169,6 +171,19 @@ function IssueView(): preact.JSX.Element {
         />
       ) : (
         <p style={{ textAlign: 'center', fontStyle: 'italic' }}>Generating QR…</p>
+      )}
+      {waiting && (
+        <p
+          style={{
+            textAlign: 'center',
+            fontStyle: 'italic',
+            color: 'var(--polly-text-muted, #57534e)',
+            fontSize: '0.85rem',
+            marginBottom: 'var(--polly-space-sm, 0.5rem)',
+          }}
+        >
+          Waiting for the other device… (or paste their token manually below)
+        </p>
       )}
       {issuedShareUrl.value && (
         <p style={{ wordBreak: 'break-all', fontSize: '0.8rem', textAlign: 'center' }}>
