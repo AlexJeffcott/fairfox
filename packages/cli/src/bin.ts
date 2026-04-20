@@ -24,6 +24,7 @@ import { deploy } from '#src/commands/deploy.ts';
 import { pair } from '#src/commands/pair.ts';
 import { peers } from '#src/commands/peers.ts';
 import { todo } from '#src/commands/todo.ts';
+import { users } from '#src/commands/users.ts';
 
 function printUsage(): void {
   process.stderr.write(
@@ -37,6 +38,7 @@ function printUsage(): void {
       '  fairfox peers                 List every paired device.',
       '  fairfox peers rename <name>   Rename this device in the mesh.',
       '  fairfox peers forget <pid>    Stop syncing with a peer (local).',
+      '  fairfox users                 List every user in the mesh (admins first).',
       '  fairfox todo tasks            List open tasks (add --done for all).',
       '  fairfox todo task add <desc>  Add a task; --project P --priority high|med|low.',
       '  fairfox todo task done <tid>  Mark a task done.',
@@ -100,6 +102,10 @@ function main(): Promise<number> {
 
   if (subcommand === 'peers') {
     return peers(rest);
+  }
+
+  if (subcommand === 'users') {
+    return users(rest);
   }
 
   process.stderr.write(`fairfox: unknown subcommand "${subcommand}".\n\n`);
