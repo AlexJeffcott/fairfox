@@ -84,22 +84,8 @@ export function waitForText(page: Page, text: string, timeoutMs?: number): Promi
   });
 }
 
-// TODO: swap to `@fairfox/polly/guards` once polly 0.29.2 is published
-// and fairfox's catalog pin moves. The inline copy below keeps the
-// build green in the interim — the shape matches polly's exports
-// byte-for-byte so the swap is a one-line change.
-/** Type guard: does `input` look like an object carrying its own
- * property named `key`? Uses `Object.hasOwn` so the check stays on
- * own properties only. Leaves the inner value as `unknown`. */
-export function hasKeyInObject<K extends string>(
-  input: unknown,
-  key: K
-): input is Record<K, unknown> {
-  return typeof input === 'object' && input !== null && Object.hasOwn(input, key);
-}
-
-/** Type guard: narrow `input` to `Record<string, unknown>` when it's
- * a non-null, non-array object. */
-export function isRecord(input: unknown): input is Record<string, unknown> {
-  return typeof input === 'object' && input !== null && !Array.isArray(input);
-}
+// `hasKeyInObject` and `isRecord` come from polly so every consumer in
+// fairfox (scripts, sub-apps, shared) shares the same definitions
+// rather than drifting inline copies. Re-exported here so the e2e
+// scripts pull every e2e-shaped helper from one module.
+export { hasKeyInObject, isRecord } from '@fairfox/polly/guards';
