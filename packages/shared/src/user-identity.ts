@@ -33,7 +33,14 @@ function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, 1);
     req.onupgradeneeded = () => {
-      req.result.createObjectStore(STORE_NAME);
+      // See keyring.ts's openDb for why the contains() guard is
+      // load-bearing — both modules race to upgrade the same DB on
+      // fresh install, and the unguarded createObjectStore throws
+      // ConstraintError on the losing racer, leaving the DB in a
+      // half-upgraded state.
+      if (!req.result.objectStoreNames.contains(STORE_NAME)) {
+        req.result.createObjectStore(STORE_NAME);
+      }
     };
     req.onsuccess = () => {
       resolve(req.result);

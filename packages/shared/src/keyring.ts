@@ -32,7 +32,15 @@ function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, 1);
     req.onupgradeneeded = () => {
-      req.result.createObjectStore(STORE_NAME);
+      // Guard against concurrent openers racing to create the same
+      // store. On a fresh install, keyring.ts and user-identity.ts
+      // both open `fairfox-keyring` at version 1; whichever fires
+      // onupgradeneeded first wins, and without this guard the
+      // second one's `createObjectStore` throws ConstraintError and
+      // the upgrade rolls back — leaving a DB at v1 with no stores.
+      if (!req.result.objectStoreNames.contains(STORE_NAME)) {
+        req.result.createObjectStore(STORE_NAME);
+      }
     };
     req.onsuccess = () => {
       resolve(req.result);
