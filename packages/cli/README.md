@@ -42,26 +42,16 @@ What this does:
    and the list of pending invites with `mesh invite open`
    commands ready to copy-paste.
 
-**What this deliberately does NOT do:** write the admin / invitee
-`UserEntry` rows into `mesh:users` from the CLI. Polly's
-`$meshState` signal layer hits a "Cycle detected" in preact
-signals on bun whenever a write triggers automerge's change event
-synchronously while the signal's own effect is still on the
-stack. The browser's event loop spaces these interactions; bun
-runs tighter. Those rows land instead the first time a browser
-opens under the relevant identity:
+The admin's signed `UserEntry` and the invitees' pre-signed rows
+land in `mesh:users` at init time. The admin's own CLI also
+endorses itself on its `mesh:devices` row so `canDo('user.*')`
+returns admin permissions immediately (useful if you skip
+straight to `fairfox users invite` without opening a browser).
 
-  - the admin's row lands when Alex's first browser hydrates his
-    user-identity (import the recovery blob, or pair a second
-    CLI-generated device) and the WhoAreYou path sees an empty
-    registry to write into.
-  - each invitee's row lands when they consume their invite URL.
-
-Invite blobs are admin-signed at generation time so no ambient
-mesh state is required to mint them — a peer consuming an invite
-can verify the admin's signature against the admin's userId-
-embedded pubkey without needing the admin's UserEntry present
-yet.
+(Earlier releases deferred these writes to the first browser
+open because polly's `$meshState` hit a preact-signals "Cycle
+detected" on bun. Fixed in polly by guarding `applyTopLevel`
+against value-equal writes; requires `@fairfox/polly@0.29.3+`.)
 
 Roles: `admin`, `member`, `guest`, `llm`. See
 `packages/shared/src/policy.ts` for the role → permission table.
