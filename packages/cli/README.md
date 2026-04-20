@@ -34,16 +34,34 @@ What this does:
 2. Generates a fresh device keypair → `~/.fairfox/keyring.json`.
 3. Generates a fresh admin user keypair → `~/.fairfox/user-identity.json`
    (chmod 0600).
-4. Writes the admin's self-signed `UserEntry` into `mesh:users`
-   and endorses this device on its `mesh:devices` row.
-5. For each `--user <name>:<role>`: signs an invite blob (the
+4. For each `--user <name>:<role>`: signs an invite blob (the
    invitee's fresh private key + role + display name, signed by
-   the admin's key), writes the invitee's `UserEntry` into
-   `mesh:users`, and stashes the blob in `~/.fairfox/invites.json`.
-6. Prints the admin's recovery blob (save it — losing every
+   the admin's key) and stashes it in `~/.fairfox/invites.json`.
+5. Prints the admin's recovery blob (save it — losing every
    device that holds the admin user key means losing the admin)
    and the list of pending invites with `mesh invite open`
    commands ready to copy-paste.
+
+**What this deliberately does NOT do:** write the admin / invitee
+`UserEntry` rows into `mesh:users` from the CLI. Polly's
+`$meshState` signal layer hits a "Cycle detected" in preact
+signals on bun whenever a write triggers automerge's change event
+synchronously while the signal's own effect is still on the
+stack. The browser's event loop spaces these interactions; bun
+runs tighter. Those rows land instead the first time a browser
+opens under the relevant identity:
+
+  - the admin's row lands when Alex's first browser hydrates his
+    user-identity (import the recovery blob, or pair a second
+    CLI-generated device) and the WhoAreYou path sees an empty
+    registry to write into.
+  - each invitee's row lands when they consume their invite URL.
+
+Invite blobs are admin-signed at generation time so no ambient
+mesh state is required to mint them — a peer consuming an invite
+can verify the admin's signature against the admin's userId-
+embedded pubkey without needing the admin's UserEntry present
+yet.
 
 Roles: `admin`, `member`, `guest`, `llm`. See
 `packages/shared/src/policy.ts` for the role → permission table.

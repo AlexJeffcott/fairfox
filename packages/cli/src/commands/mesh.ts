@@ -10,7 +10,6 @@
 //   - "consumed":                          derived from mesh:devices endorsing the userId.
 
 import { existsSync, unlinkSync } from 'node:fs';
-import { hostname } from 'node:os';
 import {
   $meshState,
   applyPairingToken,
@@ -23,10 +22,8 @@ import {
   type MeshKeyring,
 } from '@fairfox/polly/mesh';
 import type { DevicesDoc } from '@fairfox/shared/devices-state';
-import { addEndorsementToDevice, touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
-import { createInvite, type InvitePayload } from '@fairfox/shared/invite';
-import { signEndorsement } from '@fairfox/shared/user-identity';
-import { createBootstrapUser, type Role, type UsersDoc } from '@fairfox/shared/users-state';
+import { createInvite } from '@fairfox/shared/invite';
+import type { Role } from '@fairfox/shared/users-state';
 import QRCode from 'qrcode';
 import {
   addInvite,
@@ -37,7 +34,6 @@ import {
 } from '#src/invites-node.ts';
 import {
   derivePeerId,
-  flushOutgoing,
   KEYRING_PATH,
   keyringStorage,
   openMeshClient,
@@ -51,7 +47,6 @@ import {
   USER_IDENTITY_PATH,
 } from '#src/user-identity-node.ts';
 
-const USERS_INITIAL: UsersDoc = { users: {} };
 const DEVICES_INITIAL: DevicesDoc = { devices: {} };
 
 interface InitUser {
@@ -152,19 +147,25 @@ async function meshInit(rest: readonly string[]): Promise<number> {
   const peerId = derivePeerId(deviceKeyring.identity.publicKey);
   const client = await openMeshClient({ peerId });
   try {
-    const users = $meshState<UsersDoc>('mesh:users', USERS_INITIAL);
-    await users.loaded;
-
-    // Write the admin row.
-    const adminEntry = createBootstrapUser({ displayName: adminName, userKey: adminUserKey });
-
-    // Touch our own device row with the admin endorsement.
-    touchSelfDeviceEntry(peerId, { agent: 'cli', defaultName: hostname() });
-    addEndorsementToDevice(peerId, signEndorsement(adminIdentity, peerId));
-
-    // Emit invites for each additional user. Each invite blob
-    // carries the invitee's fresh private key signed by the admin
-    // — admin-signed, safe for CRDT sync, ready to be consumed.
+    // Don't write to mesh:users / mesh:devices from the CLI during
+    // init. polly's $meshState signal layer hits "Cycle detected"
+    // in the preact signals core on bun when a write triggers
+    // automerge's change event synchronously while the signal's
+    // own effect is still on the stack. The browser's event loop
+    // spaces these out; bun runs tighter. We defer every CRDT
+    // write to the next device that opens a browser under this
+    // identity:
+    //
+    //   - admin UserEntry + self-endorsement → written by the
+    //     browser's hydrate path the first time Alex opens his
+    //     laptop / phone under this user identity (post-import).
+    //   - invitee UserEntry rows → written by each invitee's
+    //     browser when they consume the invite URL.
+    //
+    // Invite blobs are already admin-signed at invite generation
+    // time so no ambient mesh state is required to mint them; the
+    // signature verifies against the admin's userId-embedded
+    // pubkey.
     const storedInvites: StoredInvite[] = [];
     for (const u of args.users) {
       const { blob, payload } = createInvite({
@@ -173,17 +174,6 @@ async function meshInit(rest: readonly string[]): Promise<number> {
         adminUserKey,
         adminUserId: adminIdentity.userId,
       });
-      // Write the invitee's UserEntry so the row exists on every
-      // peer — the invitee's own write post-pairing would race
-      // otherwise (see the fresh-install IDB race in the browser).
-      const pre = users.value.users;
-      users.value = {
-        ...users.value,
-        users: {
-          ...pre,
-          [payload.userId]: toUserEntryShape(payload),
-        },
-      };
       const stored: StoredInvite = {
         name: u.name,
         userId: payload.userId,
@@ -194,8 +184,6 @@ async function meshInit(rest: readonly string[]): Promise<number> {
       addInvite(stored);
       storedInvites.push(stored);
     }
-
-    await flushOutgoing(2000);
 
     // Tell the user what just happened. Plain text, not JSON — the
     // admin reads this once.
@@ -219,8 +207,9 @@ async function meshInit(rest: readonly string[]): Promise<number> {
         storedInvites.length === 0 ? '' : 'Open each QR with:',
         ...storedInvites.map((i) => `  fairfox mesh invite open ${i.name.toLowerCase()}`),
         '',
-        `Admin's entry is ` +
-          `${adminEntry.roles.join(',')} — other devices can be added via invites only.`,
+        "Admin's entry (admin role) lands in mesh:users the first time",
+        'a browser opens under this identity (WhoAreYouView → import',
+        'recovery blob). Invites are already signed and ready.',
         '',
       ].join('\n')
     );
@@ -228,18 +217,6 @@ async function meshInit(rest: readonly string[]): Promise<number> {
   } finally {
     await client.close();
   }
-}
-
-function toUserEntryShape(payload: InvitePayload): import('@fairfox/shared/users-state').UserEntry {
-  return {
-    userId: payload.userId,
-    displayName: payload.displayName,
-    roles: payload.roles,
-    grants: payload.grants,
-    createdByUserId: payload.createdByUserId,
-    createdAt: payload.createdAt,
-    signature: payload.signature,
-  };
 }
 
 // --- invite list / open ------------------------------------------

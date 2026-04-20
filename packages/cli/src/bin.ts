@@ -130,9 +130,21 @@ function main(): Promise<number> {
 // subcommands do positional parsing only.
 void parseArgs;
 
+process.on('uncaughtException', (err) => {
+  process.stderr.write(`fairfox: uncaught — ${err instanceof Error ? err.stack : String(err)}\n`);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  const s = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+  process.stderr.write(`fairfox: unhandled rejection — ${s}\n`);
+  process.exit(1);
+});
+
 main()
   .then((code) => process.exit(code))
   .catch((err) => {
-    process.stderr.write(`fairfox: fatal — ${err instanceof Error ? err.message : String(err)}\n`);
+    process.stderr.write(
+      `fairfox: fatal — ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`
+    );
     process.exit(1);
   });
