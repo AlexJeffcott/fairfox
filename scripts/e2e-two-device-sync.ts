@@ -24,6 +24,14 @@
 import { mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import puppeteer, { type Browser, type Page } from 'puppeteer';
+import {
+  MESH_SYNC_TIMEOUT_MS,
+  PAIR_CEREMONY_TIMEOUT_MS,
+  SHORT_TIMEOUT_MS,
+  sleep,
+  waitFor,
+  waitForText,
+} from './e2e-config.ts';
 
 const URL = process.env.TARGET_URL ?? 'https://fairfox-production-8273.up.railway.app/agenda';
 const HEADLESS = process.env.HEADLESS !== 'false';
@@ -37,18 +45,6 @@ const TRACE = (label: string, msg: string): void => {
 rmSync(PROFILES, { recursive: true, force: true });
 mkdirSync(ARTIFACTS, { recursive: true });
 
-async function waitForText(page: Page, text: string, timeoutMs = 20000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const found = await page.evaluate((t) => (document.body.innerText || '').includes(t), text);
-    if (found) {
-      return;
-    }
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  throw new Error(`text "${text}" not seen within ${timeoutMs}ms`);
-}
-
 async function clickByText(page: Page, text: string): Promise<void> {
   const handle = await page.evaluateHandle((t) => {
     const candidates = Array.from(document.querySelectorAll('button, a')) as HTMLElement[];
@@ -61,20 +57,16 @@ async function clickByText(page: Page, text: string): Promise<void> {
   await element.click();
 }
 
-async function readShareUrl(page: Page): Promise<string> {
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline) {
-    const found = await page.evaluate(() => {
-      const links = Array.from(document.querySelectorAll('a')) as HTMLAnchorElement[];
-      const hit = links.find((el) => el.href.includes('#pair='));
-      return hit?.href;
-    });
-    if (found) {
-      return found;
-    }
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  throw new Error('share URL never appeared');
+function readShareUrl(page: Page): Promise<string> {
+  return waitFor(
+    () =>
+      page.evaluate(() => {
+        const links = Array.from(document.querySelectorAll('a')) as HTMLAnchorElement[];
+        const hit = links.find((el) => el.href.includes('#pair='));
+        return hit?.href;
+      }),
+    { timeoutMs: SHORT_TIMEOUT_MS, description: 'share URL anchor' }
+  );
 }
 
 async function launch(label: string): Promise<{ browser: Browser; page: Page }> {
@@ -108,13 +100,13 @@ try {
 
   TRACE('phone', 'open desktop share link');
   await phone.page.goto(desktopShare, { waitUntil: 'domcontentloaded' });
-  await waitForText(phone.page, 'Show the raw token', 20000);
+  await waitForText(phone.page, 'Show the raw token', PAIR_CEREMONY_TIMEOUT_MS);
   const phoneShare = await readShareUrl(phone.page);
 
   TRACE('desktop', 'advance to scan and open phone share link');
   await clickByText(desktop.page, 'Continue — paste their link');
   await desktop.page.goto(phoneShare, { waitUntil: 'domcontentloaded' });
-  await waitForText(desktop.page, 'Show the raw token', 20000);
+  await waitForText(desktop.page, 'Show the raw token', PAIR_CEREMONY_TIMEOUT_MS);
 
   TRACE('both', 'drain the final issue leg on both sides');
   // Each click triggers advanceAfter, which reloads the page once the
@@ -127,20 +119,20 @@ try {
   await clickByText(desktop.page, "They accepted — we're done");
   await desktopNav;
 
-  await waitForText(desktop.page, 'Agenda', 20000);
-  await waitForText(phone.page, 'Agenda', 20000);
+  await waitForText(desktop.page, 'Agenda', PAIR_CEREMONY_TIMEOUT_MS);
+  await waitForText(phone.page, 'Agenda', PAIR_CEREMONY_TIMEOUT_MS);
   TRACE('both', 'agenda visible on both devices');
 
   // Give the mesh a moment to complete its initial sync handshake over
   // the newly-opened WebRTC data channel before the test writes.
-  await new Promise((r) => setTimeout(r, 5000));
+  await sleep(5000);
 
   // Switch both sides to the Items tab. polly's ActionInput starts in a
   // view-mode div (data-polly-action-input, role=button); a click
   // promotes it into an editable input we can type into.
   const switchToItems = async (page: Page): Promise<void> => {
     await page.click('button[data-action="agenda.tab"][data-action-id="items"]');
-    await page.waitForSelector('[data-polly-action-input]', { timeout: 5000 });
+    await page.waitForSelector('[data-polly-action-input]', { timeout: SHORT_TIMEOUT_MS });
   };
   await switchToItems(desktop.page);
   await switchToItems(phone.page);
@@ -150,9 +142,7 @@ try {
   await desktop.page.click('[data-polly-action-input][data-state="empty"]');
   await desktop.page.waitForSelector(
     'input[data-polly-action-input], textarea[data-polly-action-input]',
-    {
-      timeout: 5000,
-    }
+    { timeout: SHORT_TIMEOUT_MS }
   );
   const input = await desktop.page.$(
     'input[data-polly-action-input], textarea[data-polly-action-input]'
@@ -164,14 +154,11 @@ try {
   await input.press('Enter');
 
   TRACE('phone', 'wait for chore to converge');
-  const deadline = Date.now() + 20000;
-  while (Date.now() < deadline) {
-    const body = await phone.page.evaluate(() => document.body.innerText || '');
-    if (body.includes(chore)) {
-      ok = true;
-      break;
-    }
-    await new Promise((r) => setTimeout(r, 500));
+  try {
+    await waitForText(phone.page, chore, MESH_SYNC_TIMEOUT_MS);
+    ok = true;
+  } catch {
+    ok = false;
   }
 
   await desktop.page.screenshot({
