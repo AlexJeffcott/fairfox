@@ -33,6 +33,11 @@ export function derivePeerId(publicKey: Uint8Array): string {
 export interface ConnectOptions {
   peerId: string;
   signalingUrl?: string;
+  /** Optional custom-frame subscription — forwarded to polly's
+   * `signaling.onCustomFrame`. The `mesh invite open` command uses
+   * this to listen for pair-return frames while the QR is on
+   * screen. */
+  onCustomFrame?: (frame: { type: string; [k: string]: unknown }) => void;
 }
 
 /**
@@ -48,6 +53,7 @@ export async function openMeshClient(options: ConnectOptions): Promise<MeshClien
     signaling: {
       url: options.signalingUrl ?? defaultSignalingUrl(),
       peerId: options.peerId,
+      onCustomFrame: options.onCustomFrame,
     },
     keyring: { storage: keyringStorage() },
     // werift's RTCPeerConnection implements the subset polly needs but

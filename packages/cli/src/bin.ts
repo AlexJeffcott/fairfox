@@ -21,6 +21,7 @@
 import { parseArgs } from 'node:util';
 import { agendaAdd, agendaList } from '#src/commands/agenda.ts';
 import { deploy } from '#src/commands/deploy.ts';
+import { mesh } from '#src/commands/mesh.ts';
 import { pair } from '#src/commands/pair.ts';
 import { peers } from '#src/commands/peers.ts';
 import { todo } from '#src/commands/todo.ts';
@@ -32,6 +33,9 @@ function printUsage(): void {
       'fairfox — CLI peer for the fairfox mesh',
       '',
       'Usage:',
+      '  fairfox mesh init             Create a new mesh (admin + invites).',
+      '  fairfox mesh invite list      Show pending and consumed invites.',
+      '  fairfox mesh invite open <n>  Live QR for an invite — held open.',
       '  fairfox pair <token-or-url>   Apply a pairing token; print our share URL.',
       '  fairfox agenda list           List chores and events in the agenda doc.',
       '  fairfox agenda add <name>     Add a chore (daily recurrence).',
@@ -111,6 +115,10 @@ function main(): Promise<number> {
 
   if (subcommand === 'users') {
     return users(rest);
+  }
+
+  if (subcommand === 'mesh') {
+    return mesh(rest);
   }
 
   process.stderr.write(`fairfox: unknown subcommand "${subcommand}".\n\n`);

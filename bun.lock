@@ -70,6 +70,7 @@
         "@automerge/automerge-repo-storage-nodefs": "catalog:",
         "@fairfox/polly": "catalog:",
         "@fairfox/shared": "workspace:*",
+        "qrcode": "catalog:",
         "tweetnacl": "catalog:",
         "werift": "catalog:",
         "ws": "catalog:",
@@ -77,6 +78,7 @@
       "devDependencies": {
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
+        "@types/qrcode": "catalog:",
         "@types/ws": "^8.5.10",
         "typescript": "catalog:",
       },
