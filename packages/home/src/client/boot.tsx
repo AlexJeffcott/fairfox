@@ -18,12 +18,18 @@ import '@fairfox/polly/ui/theme.css';
 
 import { type ActionDispatch, installEventDelegation } from '@fairfox/polly/actions';
 import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
-import { touchSelfDeviceEntry, upsertDeviceEntry } from '@fairfox/shared/devices-state';
+import {
+  addEndorsementToDevice,
+  removeEndorsementFromDevice,
+  touchSelfDeviceEntry,
+  upsertDeviceEntry,
+} from '@fairfox/shared/devices-state';
 import { forgetPeer, loadOrCreateKeyring } from '@fairfox/shared/keyring';
 import { MeshGate } from '@fairfox/shared/mesh-gate';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
 import { canDo } from '@fairfox/shared/policy';
 import { pwaInstallActions } from '@fairfox/shared/pwa-install';
+import { signEndorsement } from '@fairfox/shared/user-identity';
 import { userIdentity } from '@fairfox/shared/user-identity-state';
 import { revokeUser } from '@fairfox/shared/users-state';
 import { render } from 'preact';
@@ -112,6 +118,47 @@ const homeActions: Record<string, (ctx: HandlerContext) => void> = {
       });
     } catch (err) {
       console.error('[users.revoke-peer]', err);
+    }
+  },
+  'devices.add-me': (ctx) => {
+    // Endorse another device on behalf of the local user — the
+    // shared-tablet flow. `device.pair` is the required permission
+    // because adding a user to a shared device is effectively
+    // extending that user's authority to a new peer. The
+    // intersection semantics mean this can only LOWER the target
+    // device's effective permissions (we add our own set to the
+    // mix), so the check is a sanity gate, not a security one.
+    if (!canDo('device.pair')) {
+      console.warn('[policy] blocked devices.add-me: user lacks device.pair');
+      return;
+    }
+    const targetPeerId = ctx.data.peerId;
+    if (!targetPeerId) {
+      return;
+    }
+    const identity = userIdentity.value;
+    if (!identity) {
+      return;
+    }
+    try {
+      addEndorsementToDevice(targetPeerId, signEndorsement(identity, targetPeerId));
+    } catch (err) {
+      console.error('[devices.add-me]', err);
+    }
+  },
+  'devices.leave': (ctx) => {
+    const targetPeerId = ctx.data.peerId;
+    if (!targetPeerId) {
+      return;
+    }
+    const identity = userIdentity.value;
+    if (!identity) {
+      return;
+    }
+    try {
+      removeEndorsementFromDevice(targetPeerId, identity.userId);
+    } catch (err) {
+      console.error('[devices.leave]', err);
     }
   },
 };

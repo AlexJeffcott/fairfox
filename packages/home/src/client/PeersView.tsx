@@ -10,6 +10,7 @@ import { ActionInput, Badge, Button, Layout } from '@fairfox/polly/ui';
 import { devicesState } from '@fairfox/shared/devices-state';
 import { peersPresent } from '@fairfox/shared/peers-presence';
 import { canDo, effectivePermissionsForDevice } from '@fairfox/shared/policy';
+import { userIdentity } from '@fairfox/shared/user-identity-state';
 import { usersState } from '@fairfox/shared/users-state';
 import { selfPeerId } from '#src/client/self-peer.ts';
 
@@ -94,6 +95,8 @@ export function PeersView() {
   const entries = Object.values(devicesState.value.devices);
   const online = peersPresent.value;
   const canRevoke = canDo('device.revoke');
+  const canPair = canDo('device.pair');
+  const localUserId = userIdentity.value?.userId;
   const users = usersState.value.users;
 
   // Sort: self first, then online peers, then everyone else by name.
@@ -229,7 +232,7 @@ export function PeersView() {
               {isSelf ? (
                 <span />
               ) : (
-                <Layout columns="auto auto" gap="var(--polly-space-xs)" alignItems="center">
+                <Layout columns="auto auto auto" gap="var(--polly-space-xs)" alignItems="center">
                   <Button
                     label="Reconnect"
                     size="small"
@@ -237,6 +240,31 @@ export function PeersView() {
                     data-action="peers.reconnect"
                     data-action-peer-id={entry.peerId}
                   />
+                  {/* Shared-device add-me: show only when the local
+                   * user isn't already endorsed on this device and
+                   * holds device.pair. Leaving is self-service; an
+                   * admin can force-remove via Forget. */}
+                  {localUserId &&
+                    canPair &&
+                    !ownerUserIds.includes(localUserId) &&
+                    entry.agent !== 'cli' && (
+                      <Button
+                        label="Add me"
+                        size="small"
+                        tier="secondary"
+                        data-action="devices.add-me"
+                        data-action-peer-id={entry.peerId}
+                      />
+                    )}
+                  {localUserId && ownerUserIds.includes(localUserId) && (
+                    <Button
+                      label="Leave"
+                      size="small"
+                      tier="tertiary"
+                      data-action="devices.leave"
+                      data-action-peer-id={entry.peerId}
+                    />
+                  )}
                   {canRevoke && (
                     <Button
                       label="Forget"
