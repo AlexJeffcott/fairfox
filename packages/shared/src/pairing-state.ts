@@ -45,6 +45,23 @@ export const pairingSessionId = signal<string | null>(null);
  * line under the QR. */
 export const issuerWaitingForReturn = signal<boolean>(false);
 
+export type InviteRole = 'admin' | 'member' | 'guest';
+
+/** Draft state for the "also invite a user" toggle in the issue
+ * wizard. `inviteDraftEnabled` flips the toggle; `inviteDraftName`
+ * carries the invitee's display name; `inviteDraftRole` is the role
+ * they'll be granted. When the issuer regenerates the share URL,
+ * these are consulted to decide whether to attach an `&invite=…`
+ * segment. */
+export const inviteDraftEnabled = signal<boolean>(false);
+export const inviteDraftName = signal<string>('');
+export const inviteDraftRole = signal<InviteRole>('member');
+/** Last-generated invite blob for the current pairing session. Kept
+ * so the UI can show a short confirmation ("invited Leo as member")
+ * next to the share URL without re-encoding. */
+export const inviteIssuedBlob = signal<string | null>(null);
+export const inviteIssuedName = signal<string | null>(null);
+
 export const meshGateOpen = computed(() => {
   if (knownPeerCount.value === null) {
     return false;

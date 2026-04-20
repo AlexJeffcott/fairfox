@@ -16,9 +16,21 @@ import QRCode from 'qrcode';
 import { type CustomFrame, subscribeCustomFrames } from '#src/custom-frames.ts';
 import { addEndorsementToDevice, touchSelfDeviceEntry } from '#src/devices-state.ts';
 import { mesh } from '#src/ensure-mesh.ts';
+import {
+  createInvite,
+  decodeInviteBlob,
+  type InvitePayload,
+  verifyInviteSignature,
+} from '#src/invite.ts';
 import { loadOrCreateKeyring } from '#src/keyring.ts';
 import { completePairing, initiatePairing } from '#src/pairing.ts';
 import {
+  type InviteRole,
+  inviteDraftEnabled,
+  inviteDraftName,
+  inviteDraftRole,
+  inviteIssuedBlob,
+  inviteIssuedName,
   issuedQr,
   issuedShareUrl,
   issuedToken,
@@ -38,6 +50,7 @@ import {
   exportRecoveryBlob,
   saveUserIdentity,
   signEndorsement,
+  type UserIdentity,
 } from '#src/user-identity.ts';
 import {
   displayNameDraft,
@@ -46,7 +59,13 @@ import {
   userIdentity,
   userSetupError,
 } from '#src/user-identity-state.ts';
-import { createBootstrapUser, upsertUser, usersState } from '#src/users-state.ts';
+import {
+  createBootstrapUser,
+  decodeUserPublicKey,
+  type Role,
+  upsertUser,
+  usersState,
+} from '#src/users-state.ts';
 
 interface PairingHandlerContext {
   data: Record<string, string>;
@@ -127,17 +146,65 @@ function drainStep(step: PairingStep): ReadonlySet<PairingStep> {
   return next;
 }
 
-function shareUrlForToken(token: string, sessionId: string | null): string {
+function shareUrlForToken(
+  token: string,
+  sessionId: string | null,
+  inviteBlob: string | null
+): string {
   const encoded = encodeURIComponent(token);
-  const fragment = sessionId
-    ? `pair=${encoded}&s=${encodeURIComponent(sessionId)}`
-    : `pair=${encoded}`;
+  const parts: string[] = [`pair=${encoded}`];
+  if (sessionId) {
+    parts.push(`s=${encodeURIComponent(sessionId)}`);
+  }
+  if (inviteBlob) {
+    parts.push(`invite=${encodeURIComponent(inviteBlob)}`);
+  }
+  const fragment = parts.join('&');
   if (typeof window === 'undefined') {
     return `#${fragment}`;
   }
   const url = new URL(window.location.href);
   url.hash = fragment;
   return url.toString();
+}
+
+/** Build an invite blob from the current draft signals, returning
+ * null if the draft is incomplete or the device has no user key /
+ * not-admin. Safe to call on every pairing regen — does not mutate
+ * mesh state yet; the invitee's UserEntry is only written once they
+ * actually accept. */
+function maybeCreateInviteBlob(): { blob: string | null; invitedName: string | null } {
+  if (!inviteDraftEnabled.value) {
+    return { blob: null, invitedName: null };
+  }
+  const identity = userIdentity.value;
+  if (!identity) {
+    pairingError.value = 'Set up your own identity before inviting someone else.';
+    inviteDraftEnabled.value = false;
+    return { blob: null, invitedName: null };
+  }
+  const adminEntry = usersState.value.users[identity.userId];
+  const adminRoles = adminEntry?.roles ?? [];
+  if (!adminRoles.includes('admin')) {
+    pairingError.value = 'Only admins can invite new users.';
+    inviteDraftEnabled.value = false;
+    return { blob: null, invitedName: null };
+  }
+  const name = inviteDraftName.value.trim();
+  if (!name) {
+    pairingError.value = 'Pick a display name for the person you are inviting.';
+    return { blob: null, invitedName: null };
+  }
+  const role: Role = inviteDraftRole.value;
+  const { blob, payload } = createInvite({
+    displayName: name,
+    roles: [role],
+    adminUserKey: identity.keypair,
+    adminUserId: identity.userId,
+  });
+  inviteIssuedBlob.value = blob;
+  inviteIssuedName.value = payload.displayName;
+  return { blob, invitedName: payload.displayName };
 }
 
 async function generateIssueArtefacts(): Promise<void> {
@@ -159,7 +226,8 @@ async function generateIssueArtefacts(): Promise<void> {
   if (sent) {
     subscribeToPairReturn(sessionId);
   }
-  const shareUrl = shareUrlForToken(token, pairingSessionId.value);
+  const { blob: inviteBlob } = maybeCreateInviteBlob();
+  const shareUrl = shareUrlForToken(token, pairingSessionId.value, inviteBlob);
   issuedToken.value = token;
   issuedShareUrl.value = shareUrl;
   try {
@@ -227,30 +295,46 @@ function advanceAfter(step: PairingStep): void {
 interface ParsedHash {
   token: string;
   sessionId: string | null;
+  invite: string | null;
+}
+
+function readHashParam(body: string, name: string): string | null {
+  const prefix = `&${name}=`;
+  const idx = body.indexOf(prefix);
+  if (idx === -1) {
+    return null;
+  }
+  const start = idx + prefix.length;
+  const nextAmp = body.indexOf('&', start);
+  const raw = nextAmp === -1 ? body.slice(start) : body.slice(start, nextAmp);
+  return decodeURIComponent(raw);
 }
 
 function parsePairingHash(hash: string): ParsedHash | null {
   if (!hash.startsWith('#pair=')) {
     return null;
   }
-  const body = hash.slice('#pair='.length);
-  const ampIndex = body.indexOf('&s=');
-  if (ampIndex === -1) {
-    return { token: decodeURIComponent(body), sessionId: null };
-  }
-  const token = decodeURIComponent(body.slice(0, ampIndex));
-  const sessionId = decodeURIComponent(body.slice(ampIndex + '&s='.length));
-  return { token, sessionId };
+  const body = hash.slice('#'.length);
+  const firstAmp = body.indexOf('&');
+  const tokenPart = firstAmp === -1 ? body : body.slice(0, firstAmp);
+  const token = decodeURIComponent(tokenPart.slice('pair='.length));
+  return {
+    token,
+    sessionId: readHashParam(body, 's'),
+    invite: readHashParam(body, 'invite'),
+  };
 }
 
-// Consume a `#pair=<token>[&s=<sessionId>]` hash on banner mount.
-// Returns true if a token was present and submitted. Always clears
-// the fragment from the URL so it doesn't leak further into history
-// or bookmarks. When the fragment carries a session id, the scanner
-// sends its reciprocal token back through the signalling-relayed
-// pair-return frame so the issuer's wizard can auto-complete; if the
-// relay is unreachable the scanner falls through to the historical
-// manual-paste flow (its own share URL is still generated and shown).
+// Consume a `#pair=<token>[&s=<sessionId>][&invite=<blob>]` hash on
+// banner mount. Returns true if a token was present and submitted.
+// Always clears the fragment from the URL so it doesn't leak further
+// into history or bookmarks. When the fragment carries a session id,
+// the scanner sends its reciprocal token back through the
+// signalling-relayed pair-return frame so the issuer's wizard can
+// auto-complete. When it carries an invite, the scanner imports the
+// invitee's user key and writes the signed UserEntry into
+// `mesh:users` before the post-scan reload — both halves land
+// together so the post-reload state is "paired AND known as <name>".
 export async function consumePairingHash(): Promise<boolean> {
   if (typeof window === 'undefined') {
     return false;
@@ -266,6 +350,9 @@ export async function consumePairingHash(): Promise<boolean> {
   pairingError.value = null;
   try {
     await applyScannedToken(parsed.token);
+    if (parsed.invite) {
+      await acceptInviteBlob(parsed.invite);
+    }
     if (parsed.sessionId) {
       await sendPairReturnForSession(parsed.sessionId);
     }
@@ -292,6 +379,55 @@ async function sendPairReturnForSession(sessionId: string): Promise<void> {
     .join('');
   const returnToken = initiatePairing(keyring, peerId);
   mesh.signaling.sendCustom('pair-return', { sessionId, token: returnToken });
+}
+
+/** Accept an invite blob arriving from the URL fragment. Imports the
+ * invitee's user key into this device's keyring, writes their signed
+ * `UserEntry` into `mesh:users`, and self-endorses this device on
+ * their behalf. The caller is expected to invoke this between
+ * `applyScannedToken` and the post-scan reload so both halves land
+ * before the page refreshes. */
+async function acceptInviteBlob(blob: string): Promise<void> {
+  const payload: InvitePayload = decodeInviteBlob(blob);
+  // Verify the signature against the admin's public key embedded in
+  // the invite — the admin's UserEntry itself may not have synced to
+  // this fresh device yet, so deriving the key from the userId is
+  // the only path we have at accept time. Phase F will re-verify on
+  // accept against mesh:users once it's populated.
+  const adminPublicKey = decodeUserPublicKey(payload.createdByUserId);
+  if (!adminPublicKey) {
+    throw new Error('acceptInviteBlob: admin user id malformed');
+  }
+  if (!verifyInviteSignature(payload, adminPublicKey)) {
+    throw new Error('acceptInviteBlob: invite signature invalid');
+  }
+  // Import the invitee's user key as this device's new identity.
+  const secretKey = new Uint8Array(payload.secretKey);
+  const { signingKeyPairFromSecret } = await import('@fairfox/polly/mesh');
+  const keypair = signingKeyPairFromSecret(secretKey);
+  const identity: UserIdentity = {
+    userId: payload.userId,
+    displayName: payload.displayName,
+    keypair,
+  };
+  await saveUserIdentity(identity);
+  userIdentity.value = identity;
+  // Write the invitee's signed UserEntry so other peers know about
+  // the new user. `upsertUser` doesn't verify — that's Phase F's job
+  // on the accept hook. The signature we store was produced by the
+  // admin; every peer can verify it later against the admin's pubkey.
+  upsertUser({
+    entry: {
+      userId: payload.userId,
+      displayName: payload.displayName,
+      roles: payload.roles,
+      grants: payload.grants,
+      createdByUserId: payload.createdByUserId,
+      createdAt: payload.createdAt,
+      signature: payload.signature,
+    },
+  });
+  await selfEndorseDevice(identity);
 }
 
 export const pairingActions: Record<string, (ctx: PairingHandlerContext) => void> = {
@@ -426,6 +562,40 @@ export const pairingActions: Record<string, (ctx: PairingHandlerContext) => void
 
   'users.dismiss-recovery-blob': () => {
     pendingRecoveryBlob.value = null;
+  },
+
+  'invite.toggle': () => {
+    inviteDraftEnabled.value = !inviteDraftEnabled.value;
+    // Regenerate the share URL so the invite blob is added or dropped
+    // from the fragment in sync with the toggle.
+    if (pairingMode.value === 'wizard-issue' && issuedToken.value) {
+      void generateIssueArtefacts().catch((err) => {
+        pairingError.value = err instanceof Error ? err.message : String(err);
+      });
+    }
+  },
+
+  'invite.name-input': (ctx) => {
+    inviteDraftName.value = ctx.data.value ?? '';
+    if (pairingMode.value === 'wizard-issue' && issuedToken.value && inviteDraftEnabled.value) {
+      void generateIssueArtefacts().catch((err) => {
+        pairingError.value = err instanceof Error ? err.message : String(err);
+      });
+    }
+  },
+
+  'invite.role-input': (ctx) => {
+    const role = ctx.data.value;
+    if (role !== 'admin' && role !== 'member' && role !== 'guest') {
+      return;
+    }
+    const next: InviteRole = role;
+    inviteDraftRole.value = next;
+    if (pairingMode.value === 'wizard-issue' && issuedToken.value && inviteDraftEnabled.value) {
+      void generateIssueArtefacts().catch((err) => {
+        pairingError.value = err instanceof Error ? err.message : String(err);
+      });
+    }
   },
 };
 

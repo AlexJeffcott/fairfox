@@ -15,6 +15,10 @@
 
 import { ActionInput, Button, Layout } from '@fairfox/polly/ui';
 import {
+  inviteDraftEnabled,
+  inviteDraftName,
+  inviteDraftRole,
+  inviteIssuedName,
   issuedQr,
   issuedShareUrl,
   issuedToken,
@@ -32,6 +36,7 @@ import {
   userIdentity,
   userSetupError,
 } from '#src/user-identity-state.ts';
+import { usersState } from '#src/users-state.ts';
 
 const PAGE_STYLE = {
   minHeight: '100vh',
@@ -156,6 +161,94 @@ function IdleChoices(): preact.JSX.Element {
   );
 }
 
+function canIssueInvite(): boolean {
+  const identity = userIdentity.value;
+  if (!identity) {
+    return false;
+  }
+  const entry = usersState.value.users[identity.userId];
+  if (!entry) {
+    return false;
+  }
+  if (entry.revokedAt) {
+    return false;
+  }
+  return entry.roles.includes('admin');
+}
+
+function InviteSection(): preact.JSX.Element | null {
+  if (!canIssueInvite()) {
+    return null;
+  }
+  const enabled = inviteDraftEnabled.value;
+  return (
+    <details style={{ marginTop: 'var(--polly-space-sm, 0.5rem)' }}>
+      <summary style={{ cursor: 'pointer', fontSize: '0.8rem' }}>
+        Also invite a new user with this link
+      </summary>
+      <Layout
+        rows="auto auto auto auto"
+        gap="var(--polly-space-xs, 0.25rem)"
+        padding="var(--polly-space-sm, 0.5rem) 0 0 0"
+      >
+        <Button
+          label={enabled ? 'Invite: ON' : 'Invite: OFF'}
+          tier={enabled ? 'primary' : 'tertiary'}
+          size="small"
+          data-action="invite.toggle"
+        />
+        {enabled && (
+          <>
+            <ActionInput
+              value={inviteDraftName.value}
+              variant="single"
+              action="invite.name-input"
+              saveOn="blur"
+              placeholder="Invitee's display name"
+              ariaLabel="Invitee display name"
+            />
+            <Layout columns="auto auto auto" gap="var(--polly-space-xs, 0.25rem)">
+              <Button
+                label="Guest"
+                tier={inviteDraftRole.value === 'guest' ? 'primary' : 'tertiary'}
+                size="small"
+                data-action="invite.role-input"
+                data-action-value="guest"
+              />
+              <Button
+                label="Member"
+                tier={inviteDraftRole.value === 'member' ? 'primary' : 'tertiary'}
+                size="small"
+                data-action="invite.role-input"
+                data-action-value="member"
+              />
+              <Button
+                label="Admin"
+                tier={inviteDraftRole.value === 'admin' ? 'primary' : 'tertiary'}
+                size="small"
+                data-action="invite.role-input"
+                data-action-value="admin"
+              />
+            </Layout>
+            {inviteIssuedName.value && (
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: '0.75rem',
+                  color: 'var(--polly-text-muted, #57534e)',
+                  fontStyle: 'italic',
+                }}
+              >
+                Invite baked into the link above for {inviteIssuedName.value}.
+              </p>
+            )}
+          </>
+        )}
+      </Layout>
+    </details>
+  );
+}
+
 function IssueView(): preact.JSX.Element {
   const remaining = pairingStepsRemaining.value;
   const scanPending = remaining.has('scan');
@@ -219,6 +312,7 @@ function IssueView(): preact.JSX.Element {
       )}
       {issuedToken.value && <CliPairReveal token={issuedToken.value} />}
       {issuedToken.value && <ExtensionPairReveal token={issuedToken.value} />}
+      {issuedToken.value && <InviteSection />}
       <Layout
         columns="1fr 1fr"
         gap="var(--polly-space-sm, 0.5rem)"
