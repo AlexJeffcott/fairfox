@@ -32,18 +32,35 @@ function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, 1);
     req.onupgradeneeded = () => {
-      // Guard against concurrent openers racing to create the same
-      // store. On a fresh install, keyring.ts and user-identity.ts
-      // both open `fairfox-keyring` at version 1; whichever fires
-      // onupgradeneeded first wins, and without this guard the
-      // second one's `createObjectStore` throws ConstraintError and
-      // the upgrade rolls back — leaving a DB at v1 with no stores.
       if (!req.result.objectStoreNames.contains(STORE_NAME)) {
         req.result.createObjectStore(STORE_NAME);
       }
     };
     req.onsuccess = () => {
-      resolve(req.result);
+      const db = req.result;
+      // Self-heal: if the DB is at our version but the store is
+      // missing (another process raced the upgrade and created the
+      // DB without our handler), close it, bump the version, and
+      // re-open to force onupgradeneeded on us. Otherwise the next
+      // transaction() crashes with NotFoundError.
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        const currentVersion = db.version;
+        db.close();
+        const bump = indexedDB.open(DB_NAME, currentVersion + 1);
+        bump.onupgradeneeded = () => {
+          if (!bump.result.objectStoreNames.contains(STORE_NAME)) {
+            bump.result.createObjectStore(STORE_NAME);
+          }
+        };
+        bump.onsuccess = () => {
+          resolve(bump.result);
+        };
+        bump.onerror = () => {
+          reject(bump.error);
+        };
+        return;
+      }
+      resolve(db);
     };
     req.onerror = () => {
       reject(req.error);

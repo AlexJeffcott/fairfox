@@ -98,9 +98,10 @@ async function launch(label: string): Promise<{ browser: Browser; page: Page }> 
   await page.setViewport({ width: 1000, height: 900 });
   page.on('pageerror', (err) => TRACE(`${label}-pageerror`, err.message));
   page.on('console', (msg) => {
-    if (msg.type() === 'error' || msg.type() === 'warning') {
-      TRACE(`${label}-console`, `[${msg.type()}] ${msg.text()}`);
-    }
+    TRACE(`${label}-console`, `[${msg.type()}] ${msg.text()}`);
+  });
+  page.on('requestfailed', (r) => {
+    TRACE(`${label}-reqfail`, `${r.method()} ${r.url()} — ${r.failure()?.errorText}`);
   });
   return { browser, page };
 }
@@ -149,6 +150,9 @@ try {
     { timeoutMs: SHORT_TIMEOUT_MS, description: 'share URL with invite' }
   );
   TRACE('admin', `share URL captured: ${shareUrl.slice(0, 100)}…`);
+  if (process.env.DUMP_SHARE_URL === '1') {
+    console.log(`FULL_SHARE_URL=${shareUrl}`);
+  }
 
   // ---- 3. Guest navigates to the share URL, pairs + accepts invite ----
   TRACE('guest', 'navigate to share URL');
@@ -164,8 +168,24 @@ try {
         new Promise<number>((resolvePromise, rejectPromise) => {
           const req = indexedDB.open('fairfox-keyring', 1);
           req.onerror = () => rejectPromise(req.error);
+          // Mirror the app's `openDb` so this probe doesn't race the
+          // boot-time open. Without this, if the probe wins the race
+          // it creates `fairfox-keyring` at version 1 with no stores;
+          // the app's subsequent open then sees the same version and
+          // skips onupgradeneeded, leaving every idbGet to crash
+          // with NotFoundError.
+          req.onupgradeneeded = () => {
+            if (!req.result.objectStoreNames.contains('keyring')) {
+              req.result.createObjectStore('keyring');
+            }
+          };
           req.onsuccess = () => {
             const db = req.result;
+            if (!db.objectStoreNames.contains('keyring')) {
+              db.close();
+              resolvePromise(0);
+              return;
+            }
             const tx = db.transaction('keyring', 'readonly');
             const getReq = tx.objectStore('keyring').get('default');
             getReq.onerror = () => rejectPromise(getReq.error);
