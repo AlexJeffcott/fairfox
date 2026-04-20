@@ -202,6 +202,25 @@ function maybeCreateInviteBlob(): { blob: string | null; invitedName: string | n
     adminUserKey: identity.keypair,
     adminUserId: identity.userId,
   });
+  // Also write the invitee's UserEntry on the admin side so the
+  // mesh:users doc gains the row regardless of whether the
+  // invitee's own upsertUser survives their post-pair reload. CRDT
+  // merge will union the admin's write with the invitee's, so both
+  // writing the same row is safe (Automerge merges last-write-wins
+  // on the JSON path). Guarding by the role check above ensures we
+  // only write rows the current admin is actually allowed to
+  // create.
+  upsertUser({
+    entry: {
+      userId: payload.userId,
+      displayName: payload.displayName,
+      roles: payload.roles,
+      grants: payload.grants,
+      createdByUserId: payload.createdByUserId,
+      createdAt: payload.createdAt,
+      signature: payload.signature,
+    },
+  });
   inviteIssuedBlob.value = blob;
   inviteIssuedName.value = payload.displayName;
   return { blob, invitedName: payload.displayName };
@@ -265,14 +284,19 @@ function advanceAfter(step: PairingStep): void {
     // peers-present / peer-joined notifications do the rest.
     //
     // A short fence before the reload gives Automerge's IndexedDB
-    // storage a chance to flush the `mesh:devices` write from
-    // `applyScannedToken`. Without it the just-written self-entry
-    // can vanish behind the reload on a slow machine; 200 ms is enough
-    // to cover the flush without being noticeable to the user.
+    // storage a chance to flush the pending mesh:users /
+    // mesh:devices writes from the invite-accept path. Without it
+    // Leo's UserEntry and his device row endorsement can vanish
+    // behind the reload — the subsequent post-reload render then
+    // shows the synced-from-admin state only, which is missing our
+    // own rows. 1 s covers even slow machines without being
+    // noticeable; the earlier 200 ms cushion was tuned for a
+    // lighter write load and proved too tight for the full
+    // users+permissions flow.
     if (typeof window !== 'undefined') {
       setTimeout(() => {
         window.location.reload();
-      }, 200);
+      }, 1000);
     }
     return;
   }
@@ -355,6 +379,14 @@ export async function consumePairingHash(): Promise<boolean> {
     }
     if (parsed.sessionId) {
       await sendPairReturnForSession(parsed.sessionId);
+      // One-scan completion: when we send a pair-return through the
+      // signalling relay, the issuer receives our token and drains
+      // their own 'scan' step on receipt. Both halves are therefore
+      // done on both sides. Drain our 'issue' step too so the
+      // wizard doesn't strand us on a QR nobody will scan —
+      // advanceAfter will see remaining.size === 0 and reload into
+      // the paired home.
+      drainStep('issue');
     }
     advanceAfter('scan');
     return true;
@@ -412,6 +444,11 @@ async function acceptInviteBlob(blob: string): Promise<void> {
   };
   await saveUserIdentity(identity);
   userIdentity.value = identity;
+  // Wait for polly's mesh:users doc to hydrate from storage before
+  // writing. On a fresh install the storage adapter races the
+  // in-memory primitive init; skipping this fence means the write
+  // lands, then the empty storage load overwrites it.
+  await usersState.loaded;
   // Write the invitee's signed UserEntry so other peers know about
   // the new user. `upsertUser` doesn't verify — that's Phase F's job
   // on the accept hook. The signature we store was produced by the
@@ -499,6 +536,14 @@ export const pairingActions: Record<string, (ctx: PairingHandlerContext) => void
     (async () => {
       try {
         const identity = await createUserIdentity(name);
+        // Wait for polly's mesh:users doc to finish hydrating from
+        // storage before deciding whether it's empty. On a fresh
+        // install the storage adapter briefly returns an empty doc
+        // *after* the first write if we don't fence here — polly
+        // races the in-memory primitive init against the async
+        // storage load, and the storage load wins if it lands
+        // second.
+        await usersState.loaded;
         // Write the user row. On a fresh mesh this is the only entry
         // and the user is admin. On a pre-existing mesh without a
         // user registry yet (legacy migration) this still applies —
@@ -608,6 +653,11 @@ async function selfEndorseDevice(identity: Parameters<typeof signEndorsement>[0]
   const peerId = Array.from(keyring.identity.publicKey.slice(0, 8))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
+  // Fence on devicesState hydration for the same reason usersState
+  // needs it: a fresh-install race between the in-memory primitive
+  // init and polly's storage load otherwise drops the write.
+  const { devicesState: devState } = await import('#src/devices-state.ts');
+  await devState.loaded;
   touchSelfDeviceEntry(peerId, { agent: 'browser' });
   const endorsement = signEndorsement(identity, peerId);
   addEndorsementToDevice(peerId, endorsement);

@@ -144,19 +144,42 @@ export function upsertDeviceEntry(
 ): void {
   const existing = devicesState.value.devices[peerId];
   const now = new Date().toISOString();
+  // Build the entry field-by-field and only include optional fields
+  // when they actually have a value. Automerge rejects explicit
+  // undefined on optional fields ("Cannot assign undefined value at
+  // /devices/.../ownerUserIds") so writing `{ ownerUserIds: undefined }`
+  // crashes the accept path on fresh rows.
   const next: DeviceEntry = {
     peerId,
     name: patch.name ?? existing?.name ?? '',
     createdAt: existing?.createdAt ?? patch.createdAt ?? now,
     lastSeenAt: patch.lastSeenAt ?? now,
     agent: patch.agent ?? existing?.agent ?? 'browser',
-    ownerUserIds: patch.ownerUserIds ?? existing?.ownerUserIds,
-    endorsements: patch.endorsements ?? existing?.endorsements,
-    capabilities: patch.capabilities ?? existing?.capabilities,
-    revokedAt: patch.revokedAt ?? existing?.revokedAt,
-    revocationSignature: patch.revocationSignature ?? existing?.revocationSignature,
-    revokedByUserId: patch.revokedByUserId ?? existing?.revokedByUserId,
   };
+  const ownerUserIds = patch.ownerUserIds ?? existing?.ownerUserIds;
+  if (ownerUserIds !== undefined) {
+    next.ownerUserIds = ownerUserIds;
+  }
+  const endorsements = patch.endorsements ?? existing?.endorsements;
+  if (endorsements !== undefined) {
+    next.endorsements = endorsements;
+  }
+  const capabilities = patch.capabilities ?? existing?.capabilities;
+  if (capabilities !== undefined) {
+    next.capabilities = capabilities;
+  }
+  const revokedAt = patch.revokedAt ?? existing?.revokedAt;
+  if (revokedAt !== undefined) {
+    next.revokedAt = revokedAt;
+  }
+  const revocationSignature = patch.revocationSignature ?? existing?.revocationSignature;
+  if (revocationSignature !== undefined) {
+    next.revocationSignature = revocationSignature;
+  }
+  const revokedByUserId = patch.revokedByUserId ?? existing?.revokedByUserId;
+  if (revokedByUserId !== undefined) {
+    next.revokedByUserId = revokedByUserId;
+  }
   devicesState.value = {
     ...devicesState.value,
     devices: { ...devicesState.value.devices, [peerId]: next },
