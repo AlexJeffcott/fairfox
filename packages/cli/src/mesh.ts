@@ -3,11 +3,12 @@
 // under ~/.fairfox/keyring.json, and the WebSocket global that Bun
 // already exposes. Shared by every subcommand that reaches into the mesh.
 
-import { homedir } from 'node:os';
+import { homedir, hostname } from 'node:os';
 import { join } from 'node:path';
 import type { MeshClient } from '@fairfox/polly/mesh';
 import { createMeshClient } from '@fairfox/polly/mesh';
 import { fileKeyringStorage, type KeyringStorage } from '@fairfox/polly/mesh/node';
+import { touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
 import { RTCPeerConnection } from 'werift';
 
 export const KEYRING_PATH = join(homedir(), '.fairfox', 'keyring.json');
@@ -36,10 +37,14 @@ export interface ConnectOptions {
 
 /**
  * Open a mesh client using the on-disk keyring. Caller is responsible
- * for `await client.close()` when done.
+ * for `await client.close()` when done. Also writes this CLI's own
+ * entry into the `mesh:devices` document (or bumps `lastSeenAt` if it
+ * already exists), so `fairfox peers` and the browser's peer list
+ * show the CLI under a sensible default name — the machine's
+ * hostname — which the user can rename later.
  */
 export async function openMeshClient(options: ConnectOptions): Promise<MeshClient> {
-  return await createMeshClient({
+  const client = await createMeshClient({
     signaling: {
       url: options.signalingUrl ?? defaultSignalingUrl(),
       peerId: options.peerId,
@@ -47,6 +52,16 @@ export async function openMeshClient(options: ConnectOptions): Promise<MeshClien
     keyring: { storage: keyringStorage() },
     rtc: { RTCPeerConnection: RTCPeerConnection as unknown as typeof RTCPeerConnection },
   });
+  // The `mesh:devices` write happens against the same Repo the client
+  // just configured; $meshState is safe to call after createMeshClient
+  // returns. The write runs fire-and-forget — the document handle
+  // buffers locally and flushes on `flushOutgoing` at command exit.
+  try {
+    touchSelfDeviceEntry(options.peerId, { agent: 'cli', defaultName: hostname() });
+  } catch {
+    // Never block a CLI invocation on device-entry housekeeping.
+  }
+  return client;
 }
 
 /**

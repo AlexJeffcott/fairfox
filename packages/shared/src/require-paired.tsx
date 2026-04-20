@@ -17,6 +17,7 @@
 import { useSignalEffect } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { BuildFreshnessBanner } from '#src/build-freshness.tsx';
+import { touchSelfDeviceEntry } from '#src/devices-state.ts';
 import { loadOrCreateKeyring } from '#src/keyring.ts';
 import { LoginPage } from '#src/login-page.tsx';
 import {
@@ -30,6 +31,12 @@ async function refreshKeyringState(): Promise<void> {
   try {
     const keyring = await loadOrCreateKeyring();
     knownPeerCount.value = keyring.knownPeers.size;
+    if (keyring.knownPeers.size > 0) {
+      const peerId = Array.from(keyring.identity.publicKey.slice(0, 8))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      touchSelfDeviceEntry(peerId, { agent: 'browser' });
+    }
   } catch {
     knownPeerCount.value = null;
   }

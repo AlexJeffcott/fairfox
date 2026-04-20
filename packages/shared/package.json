@@ -13,6 +13,7 @@
     "./mesh-gate": "./src/mesh-gate.tsx",
     "./require-paired": "./src/require-paired.tsx",
     "./pwa-install": "./src/pwa-install.tsx",
+    "./devices-state": "./src/devices-state.ts",
     "./mesh-controls": "./src/mesh-controls.tsx",
     "./build-freshness": "./src/build-freshness.tsx",
     "./login-page": "./src/login-page.tsx",

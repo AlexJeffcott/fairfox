@@ -27,6 +27,12 @@ export const pairingError = signal<string | null>(null);
 export const knownPeerCount = signal<number | null>(null);
 export const soloDeviceMode = signal<boolean>(false);
 
+/** Draft for the name this device will announce into `mesh:devices` when
+ * it first enters the pairing ceremony. Prefilled from the user agent on
+ * the browser side; the CLI writes its own default (hostname) directly
+ * rather than going through the wizard. */
+export const deviceNameDraft = signal<string>('');
+
 export const meshGateOpen = computed(() => {
   if (knownPeerCount.value === null) {
     return false;

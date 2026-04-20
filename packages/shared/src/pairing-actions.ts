@@ -13,6 +13,7 @@
 // each success.
 
 import QRCode from 'qrcode';
+import { touchSelfDeviceEntry } from '#src/devices-state.ts';
 import { loadOrCreateKeyring } from '#src/keyring.ts';
 import { completePairing, initiatePairing } from '#src/pairing.ts';
 import {
@@ -79,6 +80,10 @@ async function applyScannedToken(token: string): Promise<boolean> {
   const keyring = await loadOrCreateKeyring();
   await completePairing(keyring, token);
   knownPeerCount.value = keyring.knownPeers.size;
+  const peerId = Array.from(keyring.identity.publicKey.slice(0, 8))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  touchSelfDeviceEntry(peerId, { agent: 'browser' });
   return true;
 }
 
@@ -97,8 +102,16 @@ function advanceAfter(step: PairingStep): void {
     // module load. A full-page reload is the smallest correct fix: it
     // reconstructs the mesh stack with the new keyring and the
     // peers-present / peer-joined notifications do the rest.
+    //
+    // A short fence before the reload gives Automerge's IndexedDB
+    // storage a chance to flush the `mesh:devices` write from
+    // `applyScannedToken`. Without it the just-written self-entry
+    // can vanish behind the reload on a slow machine; 200 ms is enough
+    // to cover the flush without being noticeable to the user.
     if (typeof window !== 'undefined') {
-      window.location.reload();
+      setTimeout(() => {
+        window.location.reload();
+      }, 200);
     }
     return;
   }
