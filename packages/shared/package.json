@@ -20,6 +20,7 @@
     "./invite": "./src/invite.ts",
     "./capabilities": "./src/capabilities.ts",
     "./policy": "./src/policy.ts",
+    "./strict-mode": "./src/strict-mode.ts",
     "./peers-presence": "./src/peers-presence.ts",
     "./custom-frames": "./src/custom-frames.ts",
     "./hub-back": "./src/hub-back.tsx",

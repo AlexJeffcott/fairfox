@@ -22,6 +22,7 @@ import {
   type Role,
   type UserEntry,
   usersState,
+  verifiedEndorsementUserIds,
 } from '#src/users-state.ts';
 
 /** Every permission a role implies. Order-independent — the caller
@@ -84,7 +85,16 @@ export function effectivePermissionsForDevice(peerId: string): Set<Permission> {
   if (!device || device.revokedAt) {
     return new Set();
   }
-  const owners = device.ownerUserIds ?? [];
+  // Use the verified endorsement list, not the raw `ownerUserIds`,
+  // so a peer that writes an `ownerUserIds` entry without a matching
+  // signed endorsement gains no permissions in strict mode. In
+  // lenient mode `verifiedEndorsementUserIds` returns every userId
+  // and logs failures.
+  const verifiedOwners = verifiedEndorsementUserIds(device.endorsements, peerId);
+  // Intersect with `ownerUserIds` so an endorsement without a
+  // matching ownerUserIds entry doesn't count (the two must agree).
+  const declaredOwners = new Set(device.ownerUserIds ?? []);
+  const owners = verifiedOwners.filter((id) => declaredOwners.has(id));
   if (owners.length === 0) {
     return new Set();
   }

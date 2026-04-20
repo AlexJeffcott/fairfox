@@ -18,6 +18,7 @@
 
 import { $meshState, type SigningKeyPair, sign, verify } from '@fairfox/polly/mesh';
 import '@fairfox/shared/ensure-mesh';
+import { logLenientViolation, strictMode } from '#src/strict-mode.ts';
 
 interface UsersPrimitive {
   value: UsersDoc;
@@ -268,7 +269,15 @@ export function verifyUserRevocation(entry: UserEntry): boolean {
 
 /** Look up a non-revoked user by id. Returns undefined for revoked
  * users so callers can treat "revoked" as "gone" at the reading
- * layer. */
+ * layer.
+ *
+ * Under strict mode the signature is also verified and a failing
+ * row is treated as absent; under lenient mode a failing row passes
+ * through but logs a warning via `logLenientViolation`. This is the
+ * load-bearing read gate — every downstream helper
+ * (`permissionsForUser`, `canDo`, `effectivePermissionsForDevice`)
+ * goes through `liveUser`, so flipping strict-mode flips enforcement
+ * for the whole policy surface. */
 export function liveUser(userId: string): UserEntry | undefined {
   const entry = usersState.value.users[userId];
   if (!entry) {
@@ -277,5 +286,59 @@ export function liveUser(userId: string): UserEntry | undefined {
   if (entry.revokedAt) {
     return undefined;
   }
+  if (!verifyUserSignature(entry)) {
+    if (strictMode.value) {
+      return undefined;
+    }
+    logLenientViolation('unsigned user row accepted', { userId });
+  }
   return entry;
+}
+
+/** Verify every endorsement on a device row against the endorser's
+ * public key. Under strict mode, returns only endorsements whose
+ * signature passes; under lenient mode, returns the full list but
+ * logs each failure. */
+export function verifiedEndorsementUserIds(
+  endorsements: { userId: string; signature: number[]; addedAt: string }[] | undefined,
+  deviceId: string
+): string[] {
+  if (!endorsements || endorsements.length === 0) {
+    return [];
+  }
+  const strict = strictMode.value;
+  const kept: string[] = [];
+  for (const endorsement of endorsements) {
+    const endorserKey = decodeUserPublicKey(endorsement.userId);
+    if (!endorserKey) {
+      if (!strict) {
+        logLenientViolation('endorsement with malformed userId', {
+          deviceId,
+          userId: endorsement.userId,
+        });
+        kept.push(endorsement.userId);
+      }
+      continue;
+    }
+    const payload = new TextEncoder().encode(
+      JSON.stringify({
+        deviceId,
+        userId: endorsement.userId,
+        addedAt: endorsement.addedAt,
+      })
+    );
+    const ok = verify(payload, new Uint8Array(endorsement.signature), endorserKey);
+    if (ok) {
+      kept.push(endorsement.userId);
+      continue;
+    }
+    if (!strict) {
+      logLenientViolation('endorsement signature invalid', {
+        deviceId,
+        userId: endorsement.userId,
+      });
+      kept.push(endorsement.userId);
+    }
+  }
+  return kept;
 }
