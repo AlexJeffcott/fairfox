@@ -340,6 +340,59 @@ function readHashParam(body: string, name: string): string | null {
   return decodeURIComponent(raw);
 }
 
+/** Forgiving parser for whatever the user pastes into the scan
+ * box. Accepts:
+ *   - a raw base64 pair token (`UFBUMQEAAAAQ…`)
+ *   - a URL-encoded token (`UFBUMQEAAAAQ…%2F…`)
+ *   - a token followed by `&s=…` / `&invite=…` / `&recovery=…`
+ *     (what you'd copy out of a share URL's fragment body)
+ *   - a full share URL with `#pair=…` (whole thing with scheme, or
+ *     just the hash)
+ * Returns a ParsedHash. Throws only if we can't find a token at
+ * all — the eventual `decodePairingToken` call surfaces the real
+ * decode error. */
+function parseScanPaste(raw: string): ParsedHash {
+  const trimmed = raw.trim();
+  // Full share URL? Peel off everything up to and including '#pair='.
+  const hashIdx = trimmed.indexOf('#pair=');
+  if (hashIdx >= 0) {
+    const hash = trimmed.slice(hashIdx);
+    const parsed = parsePairingHash(hash);
+    if (parsed) {
+      return parsed;
+    }
+  }
+  // Bare fragment body with pair=… prefix (no leading #)?
+  if (trimmed.startsWith('pair=')) {
+    const parsed = parsePairingHash(`#${trimmed}`);
+    if (parsed) {
+      return parsed;
+    }
+  }
+  // Otherwise treat the whole thing as the token itself, stripped
+  // of any trailing `&foo=…` query-ish suffix, URI-decoded.
+  const ampIdx = trimmed.indexOf('&');
+  const tokenPart = ampIdx === -1 ? trimmed : trimmed.slice(0, ampIdx);
+  let token: string;
+  try {
+    token = decodeURIComponent(tokenPart);
+  } catch {
+    token = tokenPart;
+  }
+  // Collect sessionId / invite / recovery suffixes if they're
+  // present after the first `&`.
+  let sessionId: string | null = null;
+  let invite: string | null = null;
+  let recovery: string | null = null;
+  if (ampIdx !== -1) {
+    const rest = trimmed.slice(ampIdx);
+    sessionId = readHashParam(rest, 's');
+    invite = readHashParam(rest, 'invite');
+    recovery = readHashParam(rest, 'recovery');
+  }
+  return { token, sessionId, invite, recovery };
+}
+
 function parsePairingHash(hash: string): ParsedHash | null {
   if (!hash.startsWith('#pair=')) {
     return null;
@@ -533,13 +586,30 @@ export const pairingActions: Record<string, (ctx: PairingHandlerContext) => void
   },
 
   'pairing.submit-scan': (ctx) => {
-    const encoded = ctx.data.value;
-    if (!encoded) {
+    const raw = ctx.data.value;
+    if (!raw) {
       return;
     }
+    // The paste box is forgiving: a raw base64 token, a URL-encoded
+    // token, or a whole share URL / hash fragment
+    // (`https://…/#pair=…&s=…&invite=…` or just `pair=…&s=…`) all
+    // resolve to the same thing. If an invite / recovery blob rides
+    // along, honour it through the same code path as
+    // consumePairingHash; otherwise fall back to the raw-token
+    // shape.
+    const parsed = parseScanPaste(raw);
     (async () => {
       try {
-        await applyScannedToken(encoded);
+        await applyScannedToken(parsed.token);
+        if (parsed.invite) {
+          await acceptInviteBlob(parsed.invite);
+        } else if (parsed.recovery) {
+          await acceptRecoveryBlob(parsed.recovery);
+        }
+        if (parsed.sessionId) {
+          await sendPairReturnForSession(parsed.sessionId);
+          drainStep('issue');
+        }
         advanceAfter('scan');
       } catch (err) {
         pairingError.value = err instanceof Error ? err.message : String(err);
