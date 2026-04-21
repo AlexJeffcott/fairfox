@@ -35,7 +35,6 @@ import {
   KEYRING_PATH,
   keyringStorage,
   openMeshClient,
-  waitForPeer,
 } from '#src/mesh.ts';
 
 function extractToken(input: string): string {
@@ -124,15 +123,35 @@ export async function pair(tokenInputOrArgs: string | readonly string[]): Promis
   });
   const ownEncoded = encodePairingToken(ownToken);
 
-  // Open the mesh briefly: publish the CLI's mesh:devices row, send
-  // the pair-return frame if we have a session id, then flush so
-  // Automerge pushes the row and the server relays the return before
-  // we close. `openMeshClient` awaits devicesState.loaded and writes
-  // the self-row as a side effect.
+  // Open the mesh, publish the CLI's mesh:devices row, and ship the
+  // pair-return frame. Then wait for an explicit `pair-ack` from the
+  // issuer's tab rather than a blind timer: the ack fires in the
+  // issuer's `subscribeToPairReturn` after it calls
+  // applyScannedToken, so when the CLI sees it we know the issuer
+  // has added our identity to its keyring and the handshake is
+  // complete. The safety-net timeout is there only for the case
+  // where signalling is unreachable or the issuer's tab was closed —
+  // it's not the happy path.
+  //
+  // `openMeshClient` awaits devicesState.loaded and writes the self-
+  // row as a side effect on open.
+  const ACK_TIMEOUT_MS = 12000;
   try {
-    const client = await openMeshClient({ peerId: ownPeerId });
+    let gotAck = false;
+    let ackResolve: (() => void) | undefined;
+    const ackWait = new Promise<void>((resolve) => {
+      ackResolve = resolve;
+    });
+    const client = await openMeshClient({
+      peerId: ownPeerId,
+      onCustomFrame: (frame) => {
+        if (frame.type === 'pair-ack' && frame.sessionId === sessionId) {
+          gotAck = true;
+          ackResolve?.();
+        }
+      },
+    });
     try {
-      const peered = await waitForPeer(client, 4000);
       if (sessionId) {
         const sent = client.signaling.sendCustom('pair-return', {
           sessionId,
@@ -144,9 +163,17 @@ export async function pair(tokenInputOrArgs: string | readonly string[]): Promis
           );
         }
       }
-      if (peered) {
-        await flushOutgoing(1500);
+      // Race the ack against the safety timeout. On ack we have proof
+      // the issuer applied our token; we still give Automerge a short
+      // flush so the row writes propagate before we tear down.
+      const timeout = new Promise<void>((r) => setTimeout(r, ACK_TIMEOUT_MS));
+      await Promise.race([ackWait, timeout]);
+      if (!gotAck && sessionId) {
+        process.stderr.write(
+          'fairfox pair: no pair-ack from the issuer — closing anyway. If they had the pair tab open, the mesh may still sync on the next command.\n'
+        );
       }
+      await flushOutgoing(1500);
     } finally {
       await client.close();
     }

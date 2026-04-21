@@ -126,10 +126,15 @@ function subscribeToPairReturn(sessionId: string): void {
     }
     // The scanner's reciprocal token completes the ceremony from the
     // issuer's side. Apply it, drain both steps, advance — the remaining
-    // logic identical to the manual-paste path.
+    // logic identical to the manual-paste path. Before we do
+    // `advanceAfter` (which reloads this tab), send the scanner a
+    // `pair-ack` frame so a listener like the CLI knows the handshake
+    // is complete and can close its signalling connection immediately
+    // rather than waiting out a timer.
     (async () => {
       try {
         await applyScannedToken(token);
+        mesh?.signaling.sendCustom('pair-ack', { sessionId });
         drainStep('issue');
         advanceAfter('scan');
       } catch (err) {
