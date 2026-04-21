@@ -129,6 +129,14 @@ export function HelpView(): preact.JSX.Element {
           Holds a live QR open until ctrl-c. Elisa scans, her browser pairs + adopts her identity.{' '}
           <code>fairfox mesh invite list</code> shows pending / consumed invites.
         </p>
+        <p>
+          The invitee has three ways to feed the QR into their already-installed PWA, all behind{' '}
+          <strong>"I have a pairing link" → "Paste token"</strong>: tap <em>Scan with camera</em> to
+          open an in-app camera (the OS camera would otherwise launch the default browser, not the
+          PWA), click the dashed <em>Scan from a screenshot</em> zone to pick an image file, or just
+          Cmd/Ctrl-V an image that's already on the clipboard. All three feed the same decode
+          pipeline as the text paste box.
+        </p>
       </Section>
 
       <Section heading="Verify two devices are on the same mesh">
