@@ -447,7 +447,16 @@ echo "Fetching CLI bundle…"
 curl -fsSL ${JSON.stringify(bundleUrl)} -o "$SCRIPT_PATH"
 cat > "$BIN_PATH" <<'WRAPPER'
 #!/bin/sh
-exec bun "$HOME/.fairfox/fairfox.js" "$@"
+# NODE_NO_WARNINGS=1 silences Node's process-level warning stream.
+# Two upstream warnings bleed through every fairfox invocation and
+# carry no actionable signal: xstate inside polly schedules delayed
+# events whose target time is sometimes in the past, tripping
+# TimeoutNegativeWarning; and automerge-wasm calls the legacy
+# initSync() shape, tripping a DeprecationWarning. An in-bundle
+# process.on('warning') filter doesn't catch them because ES
+# module imports hoist above it — installing the filter here, at
+# the wrapper layer, runs before any JS.
+exec env NODE_NO_WARNINGS=1 bun "$HOME/.fairfox/fairfox.js" "$@"
 WRAPPER
 chmod +x "$BIN_PATH"
 

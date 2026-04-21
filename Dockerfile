@@ -5,7 +5,7 @@ WORKDIR /app
 # sticky about reusing the previous RUN-bundle layer even when the
 # packages COPY hash should have invalidated it; bump this any time a
 # deploy needs to re-run the CLI bundler.
-ARG CLI_CACHE_BUST=2026-04-21T17-15
+ARG CLI_CACHE_BUST=2026-04-21T17-30
 
 COPY package.json bun.lock ./
 COPY packages ./packages

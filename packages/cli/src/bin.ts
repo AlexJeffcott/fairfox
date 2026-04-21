@@ -1,25 +1,15 @@
-#!/usr/bin/env bun
-// Silence two noisy warnings that come from dependencies and carry no
-// actionable signal for a fairfox user:
-//   - `TimeoutNegativeWarning`: polly / automerge-repo occasionally
-//     schedules a setTimeout with a past deadline; Node emits a
-//     warning with a stack trace that dumps into every invocation.
-//   - `DeprecationWarning` for `initSync()`: automerge-wasm's current
-//     binding calls the old single-argument form; upstream fix lives
-//     outside this repo.
-// Other warnings still surface through the default formatter so a
-// genuinely new warning isn't hidden by this filter.
-process.removeAllListeners('warning');
-process.on('warning', (w) => {
-  if (w.name === 'TimeoutNegativeWarning') {
-    return;
-  }
-  const msg = String(w.message ?? '');
-  if (msg.includes('deprecated parameters for `initSync()`')) {
-    return;
-  }
-  process.stderr.write(`(node:warn) ${w.name}: ${msg}\n`);
-});
+#!/usr/bin/env -S NODE_NO_WARNINGS=1 bun
+// The shebang suppresses two upstream warnings that otherwise bleed
+// into every invocation with no actionable signal:
+//   - `TimeoutNegativeWarning`: xstate (inside polly) schedules
+//     delayed events whose target time is sometimes already in the
+//     past; Node clamps to 1ms and runs, but emits a stack trace.
+//   - `DeprecationWarning` on `initSync()`: automerge-wasm's current
+//     binding still calls the legacy single-arg shape.
+// Both fire during import, so an in-bundle `process.on('warning')`
+// filter would register too late (ES imports hoist above it).
+// Setting NODE_NO_WARNINGS at the wrapper boundary silences them
+// before any JS runs. The curl-installed shim passes the same env.
 
 // fairfox — CLI peer for the fairfox mesh.
 //
