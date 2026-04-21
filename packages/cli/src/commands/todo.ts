@@ -525,6 +525,111 @@ function captureDelete(id: string): Promise<number> {
   });
 }
 
+// --- Legacy import ---
+//
+// One-shot pull from the legacy REST `/todo` sub-app into the three
+// mesh documents. Mirrors the browser's `migrateFromLegacy` but runs
+// from the CLI so there's no click-through required. Idempotent:
+// re-running overwrites the three mesh docs with the latest legacy
+// state. Legacy records keep their original ids so anything
+// referencing a project by name or a task by tid still resolves.
+
+interface LegacyProject {
+  pid: string;
+  name: string;
+  parent: string | null;
+  category: string;
+  type: string;
+  status: string;
+  dirs: string;
+  skills: string;
+  notes: string;
+  sort_order: number;
+}
+
+interface LegacyTask {
+  tid: string;
+  done: number;
+  description: string;
+  project: string;
+  priority: string;
+  links: string;
+  notes: string;
+}
+
+interface LegacyCapture {
+  id: number;
+  text: string;
+  created_at: string;
+}
+
+function toProjectCategory(c: string): ProjectCategory {
+  return c === 'amboss' ? 'amboss' : 'personal';
+}
+
+function toProjectStatusOrActive(s: string): ProjectStatus {
+  return isProjectStatus(s) ? s : 'active';
+}
+
+function toTaskPriorityOrMed(p: string): TaskPriority {
+  return isTaskPriority(p) ? p : 'med';
+}
+
+function importLegacy(rest: readonly string[]): Promise<number> {
+  const baseArg = rest[0] ?? 'https://fairfox-production-8273.up.railway.app/todo';
+  const base = baseArg.replace(/\/$/, '');
+  return withMesh(async ({ projects, tasks, captures }, peered) => {
+    if (!peered) {
+      process.stderr.write(
+        'fairfox todo import-legacy: no mesh peers reachable; the mesh writes land locally and will propagate on next sync.\n'
+      );
+    }
+    const [legacyProjects, legacyTasks, legacyCaptures] = await Promise.all([
+      fetch(`${base}/api/projects`).then((r) => r.json() as Promise<LegacyProject[]>),
+      fetch(`${base}/api/tasks`).then((r) => r.json() as Promise<LegacyTask[]>),
+      fetch(`${base}/api/quick-capture`).then((r) => r.json() as Promise<LegacyCapture[]>),
+    ]);
+
+    const nextProjects: Project[] = legacyProjects.map((p) => ({
+      pid: p.pid,
+      name: p.name,
+      parent: p.parent,
+      category: toProjectCategory(p.category),
+      type: p.type,
+      status: toProjectStatusOrActive(p.status),
+      dirs: p.dirs,
+      skills: p.skills,
+      notes: p.notes,
+      sortOrder: p.sort_order,
+    }));
+    const nextTasks: Task[] = legacyTasks.map((t) => ({
+      tid: t.tid,
+      done: t.done === 1,
+      description: t.description,
+      project: t.project,
+      priority: toTaskPriorityOrMed(t.priority),
+      links: t.links,
+      notes: t.notes,
+    }));
+    const nextCaptures: QuickCapture[] = legacyCaptures.map((c) => ({
+      id: String(c.id),
+      text: c.text,
+      createdAt: c.created_at,
+    }));
+
+    projects.value = { projects: nextProjects };
+    tasks.value = { tasks: nextTasks };
+    captures.value = { captures: nextCaptures };
+
+    await flushOutgoing(2000);
+
+    process.stdout.write(
+      `imported ${nextProjects.length} projects, ${nextTasks.length} tasks, ${nextCaptures.length} captures from ${base}\n`
+    );
+    return 0;
+  });
+}
+
 // --- Dispatcher ---
 
 export function todoUsage(stream: NodeJS.WriteStream = process.stderr): void {
@@ -548,6 +653,10 @@ export function todoUsage(stream: NodeJS.WriteStream = process.stderr): void {
       '  fairfox todo capture add <text>',
       '  fairfox todo captures',
       '  fairfox todo capture delete <id>',
+      '',
+      '  fairfox todo import-legacy [base]   Pull the legacy REST /todo into the mesh.',
+      '                                      Default base: https://fairfox-production-8273',
+      '                                      .up.railway.app/todo',
       '',
     ].join('\n')
   );
@@ -600,6 +709,10 @@ export function todo(rest: readonly string[]): Promise<number> {
     }
     todoUsage();
     return Promise.resolve(1);
+  }
+
+  if (verb === 'import-legacy') {
+    return importLegacy(args);
   }
 
   if (verb === 'captures') {

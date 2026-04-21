@@ -5,6 +5,7 @@
 
 import { homedir, hostname } from 'node:os';
 import { join } from 'node:path';
+import { NodeFSStorageAdapter } from '@automerge/automerge-repo-storage-nodefs';
 import type { MeshClient } from '@fairfox/polly/mesh';
 import { createMeshClient } from '@fairfox/polly/mesh';
 import { fileKeyringStorage, type KeyringStorage } from '@fairfox/polly/mesh/node';
@@ -12,6 +13,7 @@ import { touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
 import { RTCPeerConnection } from 'werift';
 
 export const KEYRING_PATH = join(homedir(), '.fairfox', 'keyring.json');
+export const REPO_STORAGE_PATH = join(homedir(), '.fairfox', 'mesh');
 
 export function defaultSignalingUrl(): string {
   const base = process.env.FAIRFOX_URL ?? 'https://fairfox-production-8273.up.railway.app';
@@ -56,6 +58,10 @@ export async function openMeshClient(options: ConnectOptions): Promise<MeshClien
       onCustomFrame: options.onCustomFrame,
     },
     keyring: { storage: keyringStorage() },
+    // Persist the Automerge docs to disk so the CLI is a real peer
+    // — writes land in ~/.fairfox/mesh/ and survive process exit,
+    // even when no other peer is connected at write time.
+    repoStorage: new NodeFSStorageAdapter(REPO_STORAGE_PATH),
     // werift's RTCPeerConnection implements the subset polly needs but
     // doesn't declare the full DOM spec (e.g. `generateCertificate`),
     // so the cast bridges the structural gap. The rtc field only uses
