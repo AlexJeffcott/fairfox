@@ -2,7 +2,17 @@
 
 import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
-import { setActiveTab, setSelectedProjectId, setSelectedTaskId } from '#src/client/App.tsx';
+import {
+  filterPriority,
+  filterProjectName,
+  setActiveTab,
+  setFilterPriority,
+  setFilterProjectName,
+  setSelectedProjectId,
+  setSelectedTaskId,
+  showDone,
+  toggleShowDone,
+} from '#src/client/App.tsx';
 import { migrateFromLegacy } from '#src/client/migrate.ts';
 import type {
   Project,
@@ -393,6 +403,22 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (id) {
       setActiveTab(id);
     }
+  },
+
+  // --- Tasks-view filters ---
+  'tasks.set-filter-project': (ctx) => {
+    setFilterProjectName(ctx.data.value ?? '');
+  },
+  'tasks.set-filter-priority': (ctx) => {
+    setFilterPriority(ctx.data.value ?? '');
+  },
+  'tasks.toggle-show-done': () => {
+    toggleShowDone();
+  },
+  'tasks.clear-filters': () => {
+    filterProjectName.value = '';
+    filterPriority.value = '';
+    showDone.value = false;
   },
 
   // --- One-shot migration from the legacy todo REST API. Writes

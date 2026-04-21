@@ -4,7 +4,7 @@
 
 import { ActionInput, Badge, Button, Checkbox, Layout, Tabs } from '@fairfox/polly/ui';
 import { HubBack } from '@fairfox/shared/hub-back';
-import { signal, useSignal } from '@preact/signals';
+import { signal } from '@preact/signals';
 import { capturesState, projectsState, tasksState } from '#src/client/state.ts';
 
 export type ViewId = 'projects' | 'tasks' | 'capture';
@@ -38,6 +38,34 @@ export const selectedProjectId = signal<string | null>(null);
 
 export function setSelectedProjectId(v: string | null): void {
   selectedProjectId.value = v;
+}
+
+/**
+ * Filter state for the Tasks pane. Module-level so the selector UI
+ * can drive it through `data-action` handlers without inline
+ * onChange props (which the lint rule bans).
+ *
+ * `filterProjectName` is empty-string for "any project"; otherwise
+ * the exact project name — tasks carry their parent as a string,
+ * not a pid, so we match on name. `filterPriority` is '' for any.
+ * `showDone` toggles whether completed tasks appear in the list.
+ */
+export const filterProjectName = signal<string>('');
+export const filterPriority = signal<'' | 'high' | 'med' | 'low'>('');
+export const showDone = signal<boolean>(false);
+
+export function setFilterProjectName(v: string): void {
+  filterProjectName.value = v;
+}
+
+export function setFilterPriority(v: string): void {
+  if (v === '' || v === 'high' || v === 'med' || v === 'low') {
+    filterPriority.value = v;
+  }
+}
+
+export function toggleShowDone(): void {
+  showDone.value = !showDone.value;
 }
 
 const TAB_LIST = [
@@ -137,15 +165,79 @@ function ProjectsView() {
   );
 }
 
-function TasksView() {
-  const filterProject = useSignal('');
-  const showDone = useSignal(false);
+function TaskFilters({ projectNames }: { projectNames: string[] }) {
+  const SELECT_STYLE = {
+    font: 'inherit',
+    padding: 'var(--polly-space-xs) var(--polly-space-sm)',
+    border: '1px solid var(--polly-border)',
+    borderRadius: 'var(--polly-radius-md)',
+    background: 'var(--polly-surface)',
+    color: 'var(--polly-text)',
+  };
+  return (
+    <Layout
+      columns="auto auto auto"
+      gap="var(--polly-space-sm)"
+      alignItems="center"
+      justifyContent="start"
+    >
+      <Layout columns="auto auto" gap="var(--polly-space-xs)" alignItems="center">
+        <label
+          for="task-filter-project"
+          style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}
+        >
+          Project
+        </label>
+        <select
+          id="task-filter-project"
+          data-action="tasks.set-filter-project"
+          value={filterProjectName.value}
+          style={SELECT_STYLE}
+        >
+          <option value="">(any)</option>
+          {projectNames.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </Layout>
+      <Layout columns="auto auto" gap="var(--polly-space-xs)" alignItems="center">
+        <label
+          for="task-filter-priority"
+          style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}
+        >
+          Priority
+        </label>
+        <select
+          id="task-filter-priority"
+          data-action="tasks.set-filter-priority"
+          value={filterPriority.value}
+          style={SELECT_STYLE}
+        >
+          <option value="">(any)</option>
+          <option value="high">high</option>
+          <option value="med">med</option>
+          <option value="low">low</option>
+        </select>
+      </Layout>
+      <Layout columns="auto auto" gap="var(--polly-space-xs)" alignItems="center">
+        <Checkbox checked={showDone.value} data-action="tasks.toggle-show-done" />
+        <span style={{ fontSize: 'var(--polly-text-sm)' }}>Show done</span>
+      </Layout>
+    </Layout>
+  );
+}
 
+function TasksView() {
   const tasks = tasksState.value.tasks.filter((t) => {
     if (!showDone.value && t.done) {
       return false;
     }
-    if (filterProject.value && t.project !== filterProject.value) {
+    if (filterProjectName.value && t.project !== filterProjectName.value) {
+      return false;
+    }
+    if (filterPriority.value && t.priority !== filterPriority.value) {
       return false;
     }
     return true;
@@ -158,6 +250,10 @@ function TasksView() {
     done: tasks.filter((t) => t.done),
   };
 
+  const projectNames = Array.from(
+    new Set(projectsState.value.projects.map((p) => p.name).filter((n): n is string => Boolean(n)))
+  ).sort();
+
   return (
     <Layout rows="auto" gap="var(--polly-space-md)">
       <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
@@ -166,6 +262,16 @@ function TasksView() {
         </span>
         <Button label="+ New task" tier="primary" size="small" data-action="task.new" />
       </Layout>
+      <TaskFilters projectNames={projectNames} />
+      {filterProjectName.value || filterPriority.value || showDone.value ? (
+        <Layout columns="auto auto 1fr" gap="var(--polly-space-sm)" alignItems="center">
+          <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+            Filters on
+          </span>
+          <Button label="Clear" size="small" tier="tertiary" data-action="tasks.clear-filters" />
+          <span />
+        </Layout>
+      ) : null}
       {(['high', 'med', 'low'] as const).map((prio) => {
         const group = byPriority[prio];
         if (group.length === 0) {
@@ -593,6 +699,110 @@ function ProjectDetail({ pid }: { pid: string }) {
           />
         </Layout>
       </Layout>
+
+      <ProjectTasks projectName={project.name} />
+    </Layout>
+  );
+}
+
+function ProjectTasks({ projectName }: { projectName: string }) {
+  // Tasks carry their parent as a project *name*, not a pid. Match
+  // on name — this is the same shape the Tasks tab uses — and split
+  // open/done so the detail view reads as a focused punch list.
+  const matches = tasksState.value.tasks.filter((t) => t.project === projectName);
+  const open = matches.filter((t) => !t.done);
+  const done = matches.filter((t) => t.done);
+
+  if (matches.length === 0) {
+    return (
+      <Layout rows="auto" gap="var(--polly-space-sm)">
+        <h3 style={{ margin: 0 }}>Tasks</h3>
+        <p style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+          No tasks yet. Add one from the Tasks tab and set this project as its parent.
+        </p>
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout rows="auto" gap="var(--polly-space-sm)">
+      <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
+        <h3 style={{ margin: 0 }}>
+          Tasks ({open.length} open{done.length > 0 ? `, ${done.length} done` : ''})
+        </h3>
+      </Layout>
+      {open.map((t) => (
+        <Layout
+          key={t.tid}
+          columns="auto 1fr auto auto"
+          gap="var(--polly-space-sm)"
+          alignItems="center"
+        >
+          <Checkbox checked={t.done} data-action="task.toggle-done" data-action-tid={t.tid} />
+          <span
+            data-polly-truncate={true}
+            data-action="task.open"
+            data-action-tid={t.tid}
+            style={{ cursor: 'pointer' }}
+          >
+            {t.description || '(untitled)'}
+          </span>
+          <Badge variant={PRIORITY_COLORS[t.priority]}>{t.priority}</Badge>
+          <Button
+            label="×"
+            size="small"
+            tier="tertiary"
+            color="danger"
+            data-action="task.delete"
+            data-action-tid={t.tid}
+          />
+        </Layout>
+      ))}
+      {done.length > 0 && (
+        <details>
+          <summary
+            style={{
+              cursor: 'pointer',
+              color: 'var(--polly-text-muted)',
+              fontSize: 'var(--polly-text-sm)',
+            }}
+          >
+            Done ({done.length})
+          </summary>
+          <Layout rows="auto" gap="var(--polly-space-xs)" padding="var(--polly-space-xs) 0 0 0">
+            {done.map((t) => (
+              <Layout
+                key={t.tid}
+                columns="auto 1fr auto"
+                gap="var(--polly-space-sm)"
+                alignItems="center"
+              >
+                <Checkbox checked={t.done} data-action="task.toggle-done" data-action-tid={t.tid} />
+                <span
+                  data-polly-truncate={true}
+                  data-action="task.open"
+                  data-action-tid={t.tid}
+                  style={{
+                    textDecoration: 'line-through',
+                    color: 'var(--polly-text-muted)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {t.description || '(untitled)'}
+                </span>
+                <Button
+                  label="×"
+                  size="small"
+                  tier="tertiary"
+                  color="danger"
+                  data-action="task.delete"
+                  data-action-tid={t.tid}
+                />
+              </Layout>
+            ))}
+          </Layout>
+        </details>
+      )}
     </Layout>
   );
 }
