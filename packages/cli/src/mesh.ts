@@ -9,7 +9,7 @@ import { NodeFSStorageAdapter } from '@automerge/automerge-repo-storage-nodefs';
 import type { MeshClient } from '@fairfox/polly/mesh';
 import { createMeshClient } from '@fairfox/polly/mesh';
 import { fileKeyringStorage, type KeyringStorage } from '@fairfox/polly/mesh/node';
-import { harvestPeerKeys, touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
+import { devicesState, harvestPeerKeys, touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
 import { RTCPeerConnection } from 'werift';
 
 export const KEYRING_PATH = join(homedir(), '.fairfox', 'keyring.json');
@@ -75,6 +75,12 @@ export async function openMeshClient(options: ConnectOptions): Promise<MeshClien
   // returns. The write runs fire-and-forget — the document handle
   // buffers locally and flushes on `flushOutgoing` at command exit.
   try {
+    // Wait for the primitive's storage-hydration to complete before
+    // writing. Otherwise a fresh CLI touches the self-row into the
+    // in-memory signal, storage then loads its (older) copy over the
+    // top, and the self-row never reaches the Automerge doc at all —
+    // which is why `fairfox peers` saw every peer but itself.
+    await devicesState.loaded;
     // Publish our pubkey in mesh:devices so other peers can harvest
     // it and add us to their keyring without a pair-token exchange.
     const storage = keyringStorage();

@@ -118,8 +118,16 @@ async function selfHealIdentity(): Promise<void> {
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
   const deviceRow = devicesState.value.devices[peerId];
-  const alreadyEndorsed = (deviceRow?.ownerUserIds ?? []).includes(identity.userId);
-  if (!alreadyEndorsed) {
+  // Gate on the endorsement *signature* being present, not just on
+  // the userId appearing in ownerUserIds. If the two drift (the
+  // laptop's "Add me" writes both, but a CRDT merge keeps
+  // ownerUserIds while the endorsements array on the phone's copy
+  // of the row remained empty), the old check short-circuits and
+  // the phone stays read-only with "no endorsed user has any
+  // permissions" forever. Re-endorsing is idempotent.
+  const endorsements = deviceRow?.endorsements ?? [];
+  const signedByMe = endorsements.some((e) => e.userId === identity.userId);
+  if (!signedByMe) {
     touchSelfDeviceEntry(peerId, { agent: 'browser' });
     addEndorsementToDevice(peerId, signEndorsement(identity, peerId));
   }
