@@ -406,11 +406,21 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
   },
 
   // --- Tasks-view filters ---
+  // Native <select> doesn't surface its value through data-action-*
+  // attributes, so we read it off event.target like `project.update`
+  // does. ctx.data.value is only populated for ActionInput-style
+  // primitives that set data-action-value in the dispatched event.
   'tasks.set-filter-project': (ctx) => {
-    setFilterProjectName(ctx.data.value ?? '');
+    const target = ctx.event.target;
+    if (target instanceof HTMLSelectElement) {
+      setFilterProjectName(target.value);
+    }
   },
   'tasks.set-filter-priority': (ctx) => {
-    setFilterPriority(ctx.data.value ?? '');
+    const target = ctx.event.target;
+    if (target instanceof HTMLSelectElement) {
+      setFilterPriority(target.value);
+    }
   },
   'tasks.toggle-show-done': () => {
     toggleShowDone();

@@ -107,8 +107,12 @@ function ProjectsView() {
                 gap="var(--polly-space-sm)"
                 alignItems="center"
               >
-                <Layout rows="auto" gap="0" data-action="project.open" data-action-pid={p.pid}>
-                  <strong style={{ cursor: 'pointer' }}>{p.name || '(untitled)'}</strong>
+                <div
+                  data-action="project.open"
+                  data-action-pid={p.pid}
+                  style={{ cursor: 'pointer', display: 'grid', gap: 0 }}
+                >
+                  <strong>{p.name || '(untitled)'}</strong>
                   {p.notes && (
                     <span
                       data-polly-clamp={true}
@@ -121,7 +125,7 @@ function ProjectsView() {
                       {p.notes}
                     </span>
                   )}
-                </Layout>
+                </div>
                 <Badge variant="default">{taskCount} tasks</Badge>
                 <Button
                   label="Pause"
@@ -222,7 +226,9 @@ function TaskFilters({ projectNames }: { projectNames: string[] }) {
         </select>
       </Layout>
       <Layout columns="auto auto" gap="var(--polly-space-xs)" alignItems="center">
-        <Checkbox checked={showDone.value} data-action="tasks.toggle-show-done" />
+        <span data-action="tasks.toggle-show-done">
+          <Checkbox checked={showDone.value} />
+        </span>
         <span style={{ fontSize: 'var(--polly-text-sm)' }}>Show done</span>
       </Layout>
     </Layout>
@@ -289,7 +295,9 @@ function TasksView() {
                 gap="var(--polly-space-sm)"
                 alignItems="center"
               >
-                <Checkbox checked={t.done} data-action="task.toggle-done" data-action-tid={t.tid} />
+                <span data-action="task.toggle-done" data-action-tid={t.tid}>
+                  <Checkbox checked={t.done} />
+                </span>
                 <span
                   data-polly-truncate={true}
                   data-action="task.open"
@@ -467,7 +475,9 @@ function TaskDetail({ tid }: { tid: string }) {
       </Layout>
 
       <Layout columns="auto 1fr" gap="var(--polly-space-sm)" alignItems="center">
-        <Checkbox checked={task.done} data-action="task.toggle-done" data-action-tid={task.tid} />
+        <span data-action="task.toggle-done" data-action-tid={task.tid}>
+          <Checkbox checked={task.done} />
+        </span>
         <span>Done</span>
       </Layout>
 
@@ -777,7 +787,9 @@ function ProjectTasks({ projectName }: { projectName: string }) {
                 gap="var(--polly-space-sm)"
                 alignItems="center"
               >
-                <Checkbox checked={t.done} data-action="task.toggle-done" data-action-tid={t.tid} />
+                <span data-action="task.toggle-done" data-action-tid={t.tid}>
+                  <Checkbox checked={t.done} />
+                </span>
                 <span
                   data-polly-truncate={true}
                   data-action="task.open"
