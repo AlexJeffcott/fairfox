@@ -22,7 +22,7 @@ import { useSignalEffect } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { useEffect } from 'preact/hooks';
 import { BuildFreshnessBanner } from '#src/build-freshness.tsx';
-import { touchSelfDeviceEntry } from '#src/devices-state.ts';
+import { addEndorsementToDevice, devicesState, touchSelfDeviceEntry } from '#src/devices-state.ts';
 import { loadOrCreateKeyring } from '#src/keyring.ts';
 import { LoginPage } from '#src/login-page.tsx';
 import { consumePairingHash } from '#src/pairing-actions.ts';
@@ -32,7 +32,9 @@ import {
   pairingMode,
   soloDeviceMode,
 } from '#src/pairing-state.ts';
+import { signEndorsement } from '#src/user-identity.ts';
 import { hydrateUserIdentity, userIdentity } from '#src/user-identity-state.ts';
+import { createBootstrapUser, upsertUser, usersState } from '#src/users-state.ts';
 
 async function refreshKeyringState(): Promise<void> {
   try {
@@ -53,6 +55,43 @@ interface MeshGateProps {
   children: ComponentChildren;
 }
 
+/** Self-heal for the split-brain where a device has a loaded user
+ * identity (via recovery-blob import or CLI-signed add-device QR)
+ * but `mesh:users` doesn't yet carry that user's row. Causes: CLI
+ * minted the mesh and closed before the WebRTC handshake
+ * synchronized full doc state to the browser. Effect: canDo() returns
+ * false on everything because `liveUser()` can't find the id. The
+ * repair is idempotent — if someone else's copy of the entry shows
+ * up later via sync, CRDT merge handles the duplicate. */
+async function selfHealIdentity(): Promise<void> {
+  const identity = userIdentity.value;
+  if (!identity) {
+    return;
+  }
+  await Promise.all([usersState.loaded, devicesState.loaded]);
+  if (!usersState.value.users[identity.userId]) {
+    upsertUser({
+      entry: createBootstrapUser({
+        displayName: identity.displayName,
+        userKey: identity.keypair,
+      }),
+    });
+  }
+  // Also make sure this device's mesh:devices row endorses the
+  // local user; without that endorsement the intersection gate
+  // returns empty even when the user's row IS present.
+  const keyring = await loadOrCreateKeyring();
+  const peerId = Array.from(keyring.identity.publicKey.slice(0, 8))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  const deviceRow = devicesState.value.devices[peerId];
+  const alreadyEndorsed = (deviceRow?.ownerUserIds ?? []).includes(identity.userId);
+  if (!alreadyEndorsed) {
+    touchSelfDeviceEntry(peerId, { agent: 'browser' });
+    addEndorsementToDevice(peerId, signEndorsement(identity, peerId));
+  }
+}
+
 export function MeshGate({ children }: MeshGateProps): preact.JSX.Element | null {
   useSignalEffect(() => {
     if (knownPeerCount.value === null) {
@@ -65,6 +104,9 @@ export function MeshGate({ children }: MeshGateProps): preact.JSX.Element | null
     }
     if (userIdentity.value === undefined) {
       void hydrateUserIdentity();
+    }
+    if (userIdentity.value) {
+      void selfHealIdentity();
     }
   });
 
