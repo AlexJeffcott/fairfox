@@ -296,6 +296,21 @@ function handleSignalingClose(ws: ServerWebSocket<WsData>): void {
 // --- Static assets ---
 
 const CLI_BUNDLE = Bun.file(`${import.meta.dir}/../../cli/dist/fairfox.js`);
+// SHA-256 of the CLI bundle bytes. Computed once at startup and served
+// from `/cli/version` so the installed CLI can opportunistically notice
+// drift and offer `fairfox update` rather than asking every user to
+// remember to re-run the curl installer.
+const CLI_BUNDLE_SHA = await (async () => {
+  try {
+    const bytes = new Uint8Array(await CLI_BUNDLE.arrayBuffer());
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  } catch {
+    return '';
+  }
+})();
 
 // The Chrome side-panel extension is pre-built at image time
 // (`packages/extension/dist/`). The server reads every file of that
@@ -536,6 +551,14 @@ const server = Bun.serve<WsData>({
       return new Response(CLI_BUNDLE, {
         headers: {
           'Content-Type': 'application/javascript; charset=utf-8',
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+    if (p === '/cli/version') {
+      return new Response(JSON.stringify({ sha256: CLI_BUNDLE_SHA }), {
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
           'Cache-Control': 'no-store',
         },
       });

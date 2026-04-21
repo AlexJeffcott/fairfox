@@ -25,6 +25,7 @@ import { mesh } from '#src/commands/mesh.ts';
 import { pair } from '#src/commands/pair.ts';
 import { peers } from '#src/commands/peers.ts';
 import { todo } from '#src/commands/todo.ts';
+import { maybeNoticeUpdate, update } from '#src/commands/update.ts';
 import { users } from '#src/commands/users.ts';
 
 function printUsage(): void {
@@ -58,6 +59,7 @@ function printUsage(): void {
       '  fairfox deploy [push]         `railway up --detach` from the fairfox repo.',
       '  fairfox deploy status         List recent Railway deployments.',
       '  fairfox deploy logs           Tail Railway logs for the current service.',
+      '  fairfox update                Fetch the latest CLI bundle if it has drifted.',
       '',
       'The keyring is stored at ~/.fairfox/keyring.json and is created on',
       'first run. The signalling URL defaults to the fairfox production',
@@ -122,6 +124,10 @@ function main(): Promise<number> {
     return mesh(rest);
   }
 
+  if (subcommand === 'update') {
+    return update();
+  }
+
   process.stderr.write(`fairfox: unknown subcommand "${subcommand}".\n\n`);
   printUsage();
   return Promise.resolve(1);
@@ -141,7 +147,18 @@ process.on('unhandledRejection', (reason) => {
   process.exit(1);
 });
 
-main()
+async function runWithUpdateNotice(): Promise<number> {
+  const code = await main();
+  // Skip the update banner on the update command itself — running
+  // `fairfox update` already prints a before/after line and the stamp
+  // refresh there supersedes the notice.
+  if (process.argv[2] !== 'update') {
+    await maybeNoticeUpdate();
+  }
+  return code;
+}
+
+runWithUpdateNotice()
   .then((code) => process.exit(code))
   .catch((err) => {
     process.stderr.write(
