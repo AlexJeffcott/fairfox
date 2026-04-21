@@ -376,7 +376,7 @@ const STATIC_ASSETS: Record<string, { path: string; contentType: string; cacheCo
 // Pipe-to-bash script served from /cli/install. Takes an optional
 // pairing token so a single copy-paste both installs and pairs.
 
-function renderInstallScript(origin: string, token: string): string {
+function renderInstallScript(origin: string, token: string, sessionId: string): string {
   // Pair tokens are standard base64 (`+`, `/`, `=`), arrived here
   // already URL-decoded by `searchParams.get`. The whitelist covers
   // that alphabet plus the URL-encoding / URL-safe-base64 characters
@@ -384,6 +384,11 @@ function renderInstallScript(origin: string, token: string): string {
   // handles shell-quoting via double quotes; we don't need to strip
   // any of these characters to keep the generated script safe.
   const safeToken = token.replace(/[^A-Za-z0-9%+/=._~-]/g, '');
+  // The session id is a short URL-safe base64 string, so a tighter
+  // whitelist is fine. Used by the installer to pass --session to
+  // `fairfox pair` so the CLI can emit a pair-return frame that
+  // tells the issuer's browser tab about the CLI's identity.
+  const safeSessionId = sessionId.replace(/[^A-Za-z0-9_-]/g, '');
   const bundleUrl = `${origin}/cli/fairfox.js`;
   return `#!/bin/sh
 # fairfox CLI installer. Drops the fairfox binary at
@@ -395,6 +400,7 @@ BIN_DIR="$HOME/.local/bin"
 SCRIPT_PATH="$HOME/.fairfox/fairfox.js"
 BIN_PATH="$BIN_DIR/fairfox"
 TOKEN=${JSON.stringify(safeToken)}
+SESSION_ID=${JSON.stringify(safeSessionId)}
 
 if ! command -v bun >/dev/null 2>&1; then
   echo "fairfox install: bun is required. Install it first:" >&2
@@ -418,7 +424,11 @@ case ":$PATH:" in
 esac
 
 if [ -n "$TOKEN" ]; then
-  "$BIN_PATH" pair "$TOKEN"
+  if [ -n "$SESSION_ID" ]; then
+    "$BIN_PATH" pair "$TOKEN" --session "$SESSION_ID"
+  else
+    "$BIN_PATH" pair "$TOKEN"
+  fi
 fi
 `;
 }
@@ -564,9 +574,11 @@ const server = Bun.serve<WsData>({
       });
     }
     if (p === '/cli/install.sh' || p === '/cli/install') {
-      const token = new URL(req.url).searchParams.get('token') ?? '';
+      const params = new URL(req.url).searchParams;
+      const token = params.get('token') ?? '';
+      const sessionId = params.get('s') ?? '';
       const origin = publicOrigin(req);
-      const script = renderInstallScript(origin, token);
+      const script = renderInstallScript(origin, token, sessionId);
       return new Response(script, {
         headers: {
           'Content-Type': 'text/x-shellscript; charset=utf-8',

@@ -25,6 +25,7 @@ import {
   issuerWaitingForReturn,
   pairingError,
   pairingMode,
+  pairingSessionId,
   pairingStepsRemaining,
   scanInput,
 } from '#src/pairing-state.ts';
@@ -62,7 +63,17 @@ function CliPairReveal({ token }: { token: string }): preact.JSX.Element | null 
   if (typeof window === 'undefined') {
     return null;
   }
-  const installUrl = `${window.location.origin}/cli/install?token=${encodeURIComponent(token)}`;
+  // Include the signalling session id so the CLI can emit a
+  // pair-return frame back to this tab after it applies the token.
+  // Without the return, the laptop never adds the CLI's identity to
+  // its keyring and every op the CLI signs gets rejected at sync,
+  // leaving the CLI invisible despite the pair appearing to succeed.
+  const sessionId = pairingSessionId.value;
+  const params = new URLSearchParams({ token });
+  if (sessionId) {
+    params.set('s', sessionId);
+  }
+  const installUrl = `${window.location.origin}/cli/install?${params.toString()}`;
   const command = `curl -fsSL "${installUrl}" | sh`;
   return (
     <details style={{ marginTop: 'var(--polly-space-sm, 0.5rem)' }}>

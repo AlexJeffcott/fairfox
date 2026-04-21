@@ -77,14 +77,7 @@ function main(): Promise<number> {
   }
 
   if (subcommand === 'pair') {
-    const token = rest[0];
-    if (!token) {
-      process.stderr.write(
-        'fairfox pair: expected a pairing token or URL as the first argument.\n'
-      );
-      return Promise.resolve(1);
-    }
-    return pair(token);
+    return pair(rest);
   }
 
   if (subcommand === 'agenda') {

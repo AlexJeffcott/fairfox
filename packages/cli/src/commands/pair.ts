@@ -1,13 +1,22 @@
-// `fairfox pair <token>` — apply a pairing token to the CLI keyring and
-// print this device's own share URL so the browser side can scan it
-// back. The token argument accepts either a bare base64 payload or a
+// `fairfox pair <token> [--session <sid>]` — apply a pairing token to
+// the CLI keyring, publish this device's row into the mesh, and
+// (optionally) send the issuer a pair-return frame so their browser
+// tab learns the CLI's identity.
+//
+// The token argument accepts either a bare base64 payload or a
 // `#pair=<encoded>` fragment lifted from a share URL; either shape
 // round-trips through `decodePairingToken` after a URL-decode.
 //
-// No network traffic at this stage — pairing is a pure keyring
-// mutation. The reciprocal "scan" from the browser side happens later,
-// when the browser's own mesh client sees the CLI on the signalling
-// server. This command's only I/O is reading/writing the keyring file.
+// Why the pair-return matters: pairing is asymmetric. The token the
+// issuer emits carries only the issuer's identity, so after the CLI
+// applies it the *CLI* trusts the laptop but the laptop knows nothing
+// about the CLI. Until the laptop learns the CLI's device pubkey, it
+// rejects every op the CLI signs at sync — the CLI stays invisible in
+// the laptop's peers list, even though the pair "succeeded". The
+// pair-return path mirrors the browser-to-browser ceremony: the CLI
+// mints its own pair token, sends it back through the signalling
+// relay against the issuer's session id, and the issuer's
+// pair-return handler calls applyPairingToken on that token.
 
 import {
   applyPairingToken,
@@ -56,7 +65,32 @@ async function loadOrCreateKeyring(storage: KeyringStorage): Promise<MeshKeyring
   return fresh;
 }
 
-export async function pair(tokenInput: string): Promise<number> {
+function parseArgs(rest: readonly string[]): {
+  token: string | undefined;
+  sessionId: string | undefined;
+} {
+  let token: string | undefined;
+  let sessionId: string | undefined;
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i];
+    if (arg === '--session' || arg === '-s') {
+      sessionId = rest[i + 1];
+      i += 1;
+    } else if (arg && !token) {
+      token = arg;
+    }
+  }
+  return { token, sessionId };
+}
+
+export async function pair(tokenInputOrArgs: string | readonly string[]): Promise<number> {
+  const rest = typeof tokenInputOrArgs === 'string' ? [tokenInputOrArgs] : tokenInputOrArgs;
+  const { token: tokenInput, sessionId } = parseArgs(rest);
+  if (!tokenInput) {
+    process.stderr.write('fairfox pair: expected a pairing token or URL as the first argument.\n');
+    return 1;
+  }
+
   const storage = keyringStorage();
   const keyring = await loadOrCreateKeyring(storage);
   const encoded = extractToken(tokenInput);
@@ -74,31 +108,13 @@ export async function pair(tokenInput: string): Promise<number> {
   applyPairingToken(decoded, keyring);
   await storage.save(keyring);
 
-  // Open the mesh briefly and publish this CLI's `mesh:devices` row so
-  // the user's laptop / phone can see the fresh peer immediately. Before
-  // we added this, `fairfox pair` only wrote the keyring — the self-row
-  // didn't land until the next command ran, which felt broken ("I paired
-  // the CLI but it's not in my peers list"). The open is short-lived:
-  // touchSelfDeviceEntry fires on mesh-client open, flushOutgoing gives
-  // Automerge 1.5s to push the write to the issuer, then we close.
+  // Mint our own pair token BEFORE we open the mesh. We'll both
+  // print it (for manual paste) and, if we have a session id, ship
+  // it to the issuer as a pair-return frame so they add us to
+  // *their* keyring. Without that reciprocal apply the laptop stays
+  // blind to the CLI's identity and every op we sign gets rejected
+  // at sync.
   const ownPeerId = derivePeerId(keyring.identity.publicKey);
-  try {
-    const client = await openMeshClient({ peerId: ownPeerId });
-    try {
-      const peered = await waitForPeer(client, 4000);
-      if (peered) {
-        await flushOutgoing(1500);
-      }
-    } finally {
-      await client.close();
-    }
-  } catch {
-    // The pair itself already succeeded; publishing the self-row is a
-    // best-effort sweetener. A later command will re-publish.
-  }
-
-  // Mint our own share URL so the user can paste it into the browser's
-  // Step 2 to complete the asymmetric ceremony.
   const documentKey = keyring.documentKeys.get(DEFAULT_MESH_KEY_ID);
   const ownToken = createPairingToken({
     identity: keyring.identity,
@@ -108,11 +124,45 @@ export async function pair(tokenInput: string): Promise<number> {
   });
   const ownEncoded = encodePairingToken(ownToken);
 
+  // Open the mesh briefly: publish the CLI's mesh:devices row, send
+  // the pair-return frame if we have a session id, then flush so
+  // Automerge pushes the row and the server relays the return before
+  // we close. `openMeshClient` awaits devicesState.loaded and writes
+  // the self-row as a side effect.
+  try {
+    const client = await openMeshClient({ peerId: ownPeerId });
+    try {
+      const peered = await waitForPeer(client, 4000);
+      if (sessionId) {
+        const sent = client.signaling.sendCustom('pair-return', {
+          sessionId,
+          token: ownEncoded,
+        });
+        if (!sent) {
+          process.stderr.write(
+            'fairfox pair: could not reach the signalling relay — the issuer will have to paste your token manually (printed below).\n'
+          );
+        }
+      }
+      if (peered) {
+        await flushOutgoing(1500);
+      }
+    } finally {
+      await client.close();
+    }
+  } catch {
+    // Pair already succeeded — the self-row publish and pair-return
+    // are convenience; a later command will re-publish and the user
+    // can still hand-paste the printed token.
+  }
+
   process.stdout.write(
     [
       `Paired. Keyring written to ${KEYRING_PATH}.`,
       '',
-      'Now give the other device this URL so it can scan you back:',
+      sessionId
+        ? "Sent a pair-return frame to the issuer. If their tab was open and the signalling relay was up, they've already added this CLI to their keyring."
+        : 'Now give the other device this URL so it can scan you back:',
       '',
       `  #pair=${encodeURIComponent(ownEncoded)}`,
       '',
