@@ -29,6 +29,7 @@ import {
   touchSelfDeviceEntry,
 } from '@fairfox/shared/devices-state';
 import { createInvite } from '@fairfox/shared/invite';
+import { meshFingerprint, meshMetaState, setMeshName } from '@fairfox/shared/mesh-meta-state';
 import { signEndorsement } from '@fairfox/shared/user-identity';
 import {
   createBootstrapUser,
@@ -72,6 +73,7 @@ interface InitUser {
 
 interface InitArgs {
   admin: string | undefined;
+  name: string | undefined;
   users: InitUser[];
   force: boolean;
 }
@@ -81,13 +83,16 @@ function isValidRole(s: string): s is Role {
 }
 
 function parseInitArgs(rest: readonly string[]): InitArgs {
-  const args: InitArgs = { admin: undefined, users: [], force: false };
+  const args: InitArgs = { admin: undefined, name: undefined, users: [], force: false };
   for (let i = 0; i < rest.length; i += 1) {
     const arg = rest[i];
     if (arg === '--force') {
       args.force = true;
     } else if (arg === '--admin') {
       args.admin = rest[i + 1];
+      i += 1;
+    } else if (arg === '--name') {
+      args.name = rest[i + 1];
       i += 1;
     } else if (arg === '--user') {
       const raw = rest[i + 1];
@@ -164,7 +169,14 @@ async function meshInit(rest: readonly string[]): Promise<number> {
   const client = await openMeshClient({ peerId });
   try {
     const users = $meshState<UsersDoc>('mesh:users', USERS_INITIAL);
-    await Promise.all([users.loaded, devicesState.loaded]);
+    await Promise.all([users.loaded, devicesState.loaded, meshMetaState.loaded]);
+
+    // Optional mesh name — renders on the home view next to the
+    // fingerprint so devices can eyeball-verify they're on the same
+    // mesh. Skip when the flag wasn't passed.
+    if (args.name?.trim()) {
+      setMeshName(args.name.trim());
+    }
 
     // Write the admin's self-signed UserEntry into mesh:users.
     createBootstrapUser({ displayName: adminName, userKey: adminUserKey });
@@ -221,9 +233,17 @@ async function meshInit(rest: readonly string[]): Promise<number> {
     // Tell the user what just happened. Plain text, not JSON — the
     // admin reads this once.
     const recovery = exportRecoveryBlob(adminIdentity);
+    const documentKey = deviceKeyring.documentKeys.get(DEFAULT_MESH_KEY_ID);
+    const fingerprint = documentKey ? await meshFingerprint(documentKey) : '(no key?)';
+    const displayName = args.name?.trim();
     process.stdout.write(
       [
         `New mesh created. This device is paired and "${adminName}" is its admin.`,
+        displayName
+          ? `  name:        ${displayName}`
+          : '  name:        (unset — pass --name next time)',
+        `  fingerprint: ${fingerprint}`,
+        '',
         '',
         'Admin recovery blob (save this somewhere safe — losing every device',
         'that holds this user key means losing the admin):',
@@ -429,6 +449,47 @@ async function acceptReturnToken(
   await storage.save(keyring);
 }
 
+async function meshWhoami(): Promise<number> {
+  const storage = keyringStorage();
+  const keyring = await storage.load();
+  if (!keyring) {
+    process.stderr.write('fairfox mesh whoami: no keyring — run `fairfox mesh init` first.\n');
+    return 1;
+  }
+  const documentKey = keyring.documentKeys.get(DEFAULT_MESH_KEY_ID);
+  const fingerprint = documentKey ? await meshFingerprint(documentKey) : '(missing document key)';
+  const peerId = derivePeerId(keyring.identity.publicKey);
+
+  // Open the mesh briefly to read the name. It's fine if no peer
+  // reaches us — the local copy of mesh:meta is the authoritative
+  // "what this CLI thinks the mesh is called".
+  const client = await openMeshClient({ peerId });
+  try {
+    await meshMetaState.loaded;
+    const name = meshMetaState.value.name || '(unset)';
+    process.stdout.write(
+      [
+        `name:        ${name}`,
+        `fingerprint: ${fingerprint}`,
+        `peerId:      ${peerId}`,
+        `knownPeers:  ${keyring.knownPeers.size}`,
+        '',
+      ].join('\n')
+    );
+    return 0;
+  } finally {
+    // polly's client.close() pokes every DocHandle and throws on
+    // ones still mid-load; whoami reads only from in-memory /
+    // NodeFS so the close can't contribute anything we need. Swallow
+    // a failure here rather than mask the successful read above.
+    try {
+      await client.close();
+    } catch {
+      // intentional
+    }
+  }
+}
+
 async function meshAddDevice(): Promise<number> {
   const identity = loadUserIdentityFile();
   if (!identity) {
@@ -531,10 +592,13 @@ export function meshUsage(stream: NodeJS.WriteStream = process.stderr): void {
       'fairfox mesh — named-mesh lifecycle',
       '',
       'Usage:',
-      '  fairfox mesh init --admin <name> [--user <name>:<role>]... [--force]',
+      '  fairfox mesh init --admin <n> [--name <mesh-name>]',
+      '                   [--user <name>:<role>]... [--force]',
       '                                     Create a new mesh. --force wipes',
       "                                     this machine's keyring + user",
       '                                     identity + pending invites.',
+      "  fairfox mesh whoami                Print this mesh's name, fingerprint,",
+      "                                     and this device's peer id.",
       '  fairfox mesh invite list           Show pending and consumed invites.',
       '  fairfox mesh invite open <name>    Live QR for an invite — held open',
       '                                     until ctrl-c. --reopen to re-emit',
@@ -573,6 +637,9 @@ export function mesh(rest: readonly string[]): Promise<number> {
   }
   if (verb === 'add-device') {
     return meshAddDevice();
+  }
+  if (verb === 'whoami') {
+    return meshWhoami();
   }
   meshUsage();
   return Promise.resolve(1);

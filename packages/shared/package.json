@@ -15,6 +15,7 @@
     "./pwa-install": "./src/pwa-install.tsx",
     "./devices-state": "./src/devices-state.ts",
     "./users-state": "./src/users-state.ts",
+    "./mesh-meta-state": "./src/mesh-meta-state.ts",
     "./user-identity": "./src/user-identity.ts",
     "./user-identity-state": "./src/user-identity-state.ts",
     "./invite": "./src/invite.ts",

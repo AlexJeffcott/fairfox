@@ -8,11 +8,31 @@
 // pairing already lives on this sub-app.
 
 import { Layout, Tabs } from '@fairfox/polly/ui';
+import { meshFingerprint, meshMetaState } from '@fairfox/shared/mesh-meta-state';
 import { canDo } from '@fairfox/shared/policy';
 import { PwaInstallPrompt } from '@fairfox/shared/pwa-install';
-import { signal } from '@preact/signals';
+import { signal, useSignalEffect } from '@preact/signals';
 import { PeersView } from '#src/client/PeersView.tsx';
 import { UsersView } from '#src/client/UsersView.tsx';
+
+const meshFingerprintText = signal<string>('');
+
+async function loadFingerprint(): Promise<void> {
+  if (meshFingerprintText.value !== '') {
+    return;
+  }
+  try {
+    const { loadOrCreateKeyring } = await import('@fairfox/shared/keyring');
+    const { DEFAULT_MESH_KEY_ID } = await import('@fairfox/polly/mesh');
+    const keyring = await loadOrCreateKeyring();
+    const docKey = keyring.documentKeys.get(DEFAULT_MESH_KEY_ID);
+    if (docKey) {
+      meshFingerprintText.value = await meshFingerprint(docKey);
+    }
+  } catch {
+    // Leave empty; the header just hides the fingerprint.
+  }
+}
 
 export type HomeView = 'apps' | 'peers' | 'users';
 
@@ -119,6 +139,11 @@ function AppsGrid() {
 }
 
 export function Home() {
+  useSignalEffect(() => {
+    void loadFingerprint();
+  });
+  const meshName = meshMetaState.value.name;
+  const fp = meshFingerprintText.value;
   return (
     <Layout
       rows="auto auto 1fr"
@@ -127,8 +152,29 @@ export function Home() {
       maxInlineSize="var(--polly-measure-page)"
     >
       <header>
-        <h1>fairfox</h1>
-        <p style={{ color: 'var(--polly-text-muted)' }}>A small monorepo of things.</p>
+        <h1 style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--polly-space-sm)' }}>
+          <span>fairfox</span>
+          {meshName && (
+            <span style={{ color: 'var(--polly-text-muted)', fontSize: '1rem' }}>· {meshName}</span>
+          )}
+        </h1>
+        <p style={{ color: 'var(--polly-text-muted)' }}>
+          A small monorepo of things.
+          {fp && (
+            <>
+              {' '}
+              <span
+                style={{
+                  fontFamily: 'var(--polly-font-mono)',
+                  fontSize: 'var(--polly-text-sm)',
+                }}
+                title="Mesh fingerprint — first 8 hex of SHA-256 over the document key. Two devices on the same mesh share this value."
+              >
+                ({fp})
+              </span>
+            </>
+          )}
+        </p>
         <PwaInstallPrompt />
       </header>
 
