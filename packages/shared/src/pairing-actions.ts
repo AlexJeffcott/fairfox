@@ -432,6 +432,24 @@ async function acceptRecoveryBlob(blob: string): Promise<void> {
   const identity = decodeRecoveryBlob(blob);
   await saveUserIdentity(identity);
   userIdentity.value = identity;
+  // If mesh:users doesn't yet know about this user locally, write a
+  // self-signed UserEntry. Two situations hit this:
+  //   - CLI minted the mesh but the browser hasn't received the
+  //     doc-state sync yet (the CLI may have closed its QR before
+  //     the Automerge handshake finished).
+  //   - Browser first, CLI second — the browser's identity is
+  //     authoritative.
+  // CRDT merge handles the duplicate cleanly — the eventual sync
+  // from the CLI lands last-write-wins on identical content.
+  await usersState.loaded;
+  if (!usersState.value.users[identity.userId]) {
+    upsertUser({
+      entry: createBootstrapUser({
+        displayName: identity.displayName,
+        userKey: identity.keypair,
+      }),
+    });
+  }
   await selfEndorseDevice(identity);
 }
 
