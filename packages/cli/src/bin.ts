@@ -1,15 +1,16 @@
 #!/usr/bin/env -S NODE_NO_WARNINGS=1 bun
-// The shebang suppresses two upstream warnings that otherwise bleed
-// into every invocation with no actionable signal:
-//   - `TimeoutNegativeWarning`: xstate (inside polly) schedules
-//     delayed events whose target time is sometimes already in the
-//     past; Node clamps to 1ms and runs, but emits a stack trace.
-//   - `DeprecationWarning` on `initSync()`: automerge-wasm's current
-//     binding still calls the legacy single-arg shape.
-// Both fire during import, so an in-bundle `process.on('warning')`
-// filter would register too late (ES imports hoist above it).
-// Setting NODE_NO_WARNINGS at the wrapper boundary silences them
-// before any JS runs. The curl-installed shim passes the same env.
+// Two upstream warnings bleed into every invocation:
+//   - `TimeoutNegativeWarning` (xstate in polly): a Node process
+//     warning. NODE_NO_WARNINGS=1 on the wrapper suppresses it
+//     before any JS runs.
+//   - "using deprecated parameters for `initSync()`" (automerge-
+//     wasm): a plain `console.warn`, not a process warning, so the
+//     env var has no effect. The preload import below patches
+//     console.warn before any other module imports can fire. It
+//     has to be the very first import so its side effect runs
+//     before the transitive import of polly → automerge-wasm.
+
+import '#src/preload.ts';
 
 // fairfox — CLI peer for the fairfox mesh.
 //
