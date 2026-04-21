@@ -362,7 +362,13 @@ const STATIC_ASSETS: Record<string, { path: string; contentType: string; cacheCo
 // pairing token so a single copy-paste both installs and pairs.
 
 function renderInstallScript(origin: string, token: string): string {
-  const safeToken = token.replace(/[^A-Za-z0-9%._~-]/g, '');
+  // Pair tokens are standard base64 (`+`, `/`, `=`), arrived here
+  // already URL-decoded by `searchParams.get`. The whitelist covers
+  // that alphabet plus the URL-encoding / URL-safe-base64 characters
+  // in case a double-encoded token reaches us. `JSON.stringify` below
+  // handles shell-quoting via double quotes; we don't need to strip
+  // any of these characters to keep the generated script safe.
+  const safeToken = token.replace(/[^A-Za-z0-9%+/=._~-]/g, '');
   const bundleUrl = `${origin}/cli/fairfox.js`;
   return `#!/bin/sh
 # fairfox CLI installer. Drops the fairfox binary at
