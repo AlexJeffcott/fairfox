@@ -1,6 +1,12 @@
 FROM oven/bun:1 AS base
 WORKDIR /app
 
+# Cache-bust token for the CLI build. Railway's buildkit has been
+# sticky about reusing the previous RUN-bundle layer even when the
+# packages COPY hash should have invalidated it; bump this any time a
+# deploy needs to re-run the CLI bundler.
+ARG CLI_CACHE_BUST=2026-04-21T16-42
+
 COPY package.json bun.lock ./
 COPY packages ./packages
 
@@ -9,7 +15,7 @@ RUN bun install --frozen-lockfile
 # The web server streams the CLI bundle at /cli/fairfox.js, which the
 # installer script wraps with a tiny shell launcher. Bundle it at image
 # build so the served file always matches the server it talks to.
-RUN bun run --cwd packages/cli build
+RUN echo "cli cache-bust $CLI_CACHE_BUST" && bun run --cwd packages/cli build
 
 # Pre-build the Chrome side-panel extension so the server can stream
 # per-request zips with a pairing token baked in, parallel to the CLI
