@@ -22,7 +22,7 @@
     "puppeteer": "^24.18.0",
     "elysia": "^1.4.28",
     "@elysiajs/static": "^1.4.7",
-    "@fairfox/polly": "0.29.3",
+    "@fairfox/polly": "0.29.4",
     "@automerge/automerge": "^3.2.0",
     "@automerge/automerge-repo": "^2.5.0",
     "@automerge/automerge-repo-storage-indexeddb": "^2.5.0",
@@ -55,7 +55,7 @@
   "scripts": {
     "dev": "DATA_DIR=./data bun packages/web/src/server.ts",
     "start": "bun packages/web/src/server.ts",
-    "check": "biome check --write . && bun scripts/check-no-as-casting.ts && bun scripts/check-no-inline-handlers.ts && bun scripts/check-shared-components.ts && bun scripts/check-no-relative-imports.ts && bun scripts/check-mesh-state.ts && bun scripts/check-no-server-state.ts && bun scripts/check-no-require.ts",
+    "check": "biome check --write . && bun scripts/check-no-as-casting.ts && bun scripts/check-no-inline-handlers.ts && bun scripts/check-shared-components.ts && bun scripts/check-no-relative-imports.ts && bun scripts/check-mesh-state.ts && bun scripts/check-no-server-state.ts && bun scripts/check-no-require.ts && bun scripts/check-secrets.ts",
     "typecheck": "bun --filter='@fairfox/*' run typecheck",
     "test": "bun test",
     "test:browser": "bun node_modules/@fairfox/polly/dist/tools/test/src/browser/run.js tests/browser",

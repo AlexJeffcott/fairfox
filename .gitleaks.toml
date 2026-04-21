@@ -1,0 +1,27 @@
+# Gitleaks configuration — extends default rules
+# https://github.com/gitleaks/gitleaks
+
+title = "fairfox secret scanning"
+
+[extend]
+useDefault = true
+
+[allowlist]
+paths = [
+  # Gitignored files (secrets belong here, not in source)
+  '''\.env$''',
+  '''\.env\.local$''',
+  # Test fixtures with intentionally fake credentials
+  '''tests/''',
+  '''__tests__/''',
+  '''packages/shared/tests/''',
+  # Not committed but present on disk — gitleaks --no-git scans the
+  # whole filesystem, so these need to be allowlisted even though
+  # .gitignore already covers them.
+  '''node_modules/''',
+  '''dist/''',
+  '''packages/.+/dist/''',
+  '''scripts/artifacts/''',
+  '''data/''',
+  '''backups/''',
+]
