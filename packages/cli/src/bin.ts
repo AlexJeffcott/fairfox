@@ -1,4 +1,26 @@
 #!/usr/bin/env bun
+// Silence two noisy warnings that come from dependencies and carry no
+// actionable signal for a fairfox user:
+//   - `TimeoutNegativeWarning`: polly / automerge-repo occasionally
+//     schedules a setTimeout with a past deadline; Node emits a
+//     warning with a stack trace that dumps into every invocation.
+//   - `DeprecationWarning` for `initSync()`: automerge-wasm's current
+//     binding calls the old single-argument form; upstream fix lives
+//     outside this repo.
+// Other warnings still surface through the default formatter so a
+// genuinely new warning isn't hidden by this filter.
+process.removeAllListeners('warning');
+process.on('warning', (w) => {
+  if (w.name === 'TimeoutNegativeWarning') {
+    return;
+  }
+  const msg = String(w.message ?? '');
+  if (msg.includes('deprecated parameters for `initSync()`')) {
+    return;
+  }
+  process.stderr.write(`(node:warn) ${w.name}: ${msg}\n`);
+});
+
 // fairfox — CLI peer for the fairfox mesh.
 //
 // Participates in the same mesh the browser sub-apps do, reads and

@@ -141,6 +141,11 @@ const signalingPeers = new Map<string, ServerWebSocket<WsData>>();
 const PAIR_SESSION_TTL_MS = 5 * 60_000;
 interface PairSession {
   issuerSocket: ServerWebSocket<WsData>;
+  /** Set once a pair-return arrives — the socket that sent it. The
+   * issuer uses it to route a `pair-ack` back to the scanner so the
+   * scanner (typically `fairfox pair`) knows the handshake completed
+   * without having to wait on a timer. */
+  scannerSocket?: ServerWebSocket<WsData>;
   createdAt: number;
 }
 const pairSessions = new Map<string, PairSession>();
@@ -177,10 +182,35 @@ function handlePairReturn(ws: ServerWebSocket<WsData>, sessionId: string, token:
     }
     return;
   }
+  // Remember the scanner's socket so a subsequent pair-ack from the
+  // issuer can route back to it. Don't delete the session yet — the
+  // ack completes the handshake.
+  session.scannerSocket = ws;
   try {
     session.issuerSocket.send(JSON.stringify({ type: 'pair-return', sessionId, token }));
   } catch {
     // issuer socket is gone; the scanner's own fallback path still works.
+  }
+}
+
+function handlePairAck(ws: ServerWebSocket<WsData>, sessionId: string): void {
+  sweepExpiredPairSessions(Date.now());
+  const session = pairSessions.get(sessionId);
+  if (!session) {
+    return;
+  }
+  // Only accept the ack from the socket that issued the pair-issue —
+  // otherwise any peer who knows the session id could forge it.
+  if (session.issuerSocket !== ws) {
+    return;
+  }
+  const scanner = session.scannerSocket;
+  if (scanner) {
+    try {
+      scanner.send(JSON.stringify({ type: 'pair-ack', sessionId }));
+    } catch {
+      // scanner already closed; nothing further to do.
+    }
   }
   pairSessions.delete(sessionId);
   socketPairSessions.delete(session.issuerSocket);
@@ -211,6 +241,10 @@ function handleSignalingMessage(ws: ServerWebSocket<WsData>, msg: string): void 
       typeof parsed.token === 'string'
     ) {
       handlePairReturn(ws, parsed.sessionId, parsed.token);
+      return;
+    }
+    if (parsed.type === 'pair-ack' && typeof parsed.sessionId === 'string') {
+      handlePairAck(ws, parsed.sessionId);
     }
   } catch {
     // Malformed messages are silently dropped.
