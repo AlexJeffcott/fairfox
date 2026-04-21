@@ -171,7 +171,12 @@ function handlePairIssue(ws: ServerWebSocket<WsData>, sessionId: string): void {
   socketPairSessions.set(ws, sessionId);
 }
 
-function handlePairReturn(ws: ServerWebSocket<WsData>, sessionId: string, token: string): void {
+function handlePairReturn(
+  ws: ServerWebSocket<WsData>,
+  sessionId: string,
+  token: string,
+  extras: { agent?: string; name?: string }
+): void {
   sweepExpiredPairSessions(Date.now());
   const session = pairSessions.get(sessionId);
   if (!session) {
@@ -186,8 +191,15 @@ function handlePairReturn(ws: ServerWebSocket<WsData>, sessionId: string, token:
   // issuer can route back to it. Don't delete the session yet — the
   // ack completes the handshake.
   session.scannerSocket = ws;
+  const forwarded: Record<string, unknown> = { type: 'pair-return', sessionId, token };
+  if (typeof extras.agent === 'string') {
+    forwarded.agent = extras.agent;
+  }
+  if (typeof extras.name === 'string') {
+    forwarded.name = extras.name;
+  }
   try {
-    session.issuerSocket.send(JSON.stringify({ type: 'pair-return', sessionId, token }));
+    session.issuerSocket.send(JSON.stringify(forwarded));
   } catch {
     // issuer socket is gone; the scanner's own fallback path still works.
   }
@@ -240,7 +252,10 @@ function handleSignalingMessage(ws: ServerWebSocket<WsData>, msg: string): void 
       typeof parsed.sessionId === 'string' &&
       typeof parsed.token === 'string'
     ) {
-      handlePairReturn(ws, parsed.sessionId, parsed.token);
+      handlePairReturn(ws, parsed.sessionId, parsed.token, {
+        agent: typeof parsed.agent === 'string' ? parsed.agent : undefined,
+        name: typeof parsed.name === 'string' ? parsed.name : undefined,
+      });
       return;
     }
     if (parsed.type === 'pair-ack' && typeof parsed.sessionId === 'string') {

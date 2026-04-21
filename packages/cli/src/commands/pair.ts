@@ -18,6 +18,7 @@
 // relay against the issuer's session id, and the issuer's
 // pair-return handler calls applyPairingToken on that token.
 
+import { hostname } from 'node:os';
 import {
   applyPairingToken,
   createPairingToken,
@@ -153,9 +154,15 @@ export async function pair(tokenInputOrArgs: string | readonly string[]): Promis
     });
     try {
       if (sessionId) {
+        // Hand the issuer everything it needs to write our
+        // mesh:devices row directly, so the UI shows us immediately
+        // without depending on a post-reload WebRTC sync that
+        // polly's current adapter can't promise in a tight window.
         const sent = client.signaling.sendCustom('pair-return', {
           sessionId,
           token: ownEncoded,
+          agent: 'cli',
+          name: hostname(),
         });
         if (!sent) {
           process.stderr.write(
@@ -163,34 +170,19 @@ export async function pair(tokenInputOrArgs: string | readonly string[]): Promis
           );
         }
       }
-      // Race the ack against the safety timeout. On ack we have proof
-      // the issuer applied our token — but that fires *before* the
-      // issuer's tab reloads, and polly's current MeshClient only
-      // picks up new peers from the keyring on a fresh module load.
-      // So after the reload the laptop comes back up, dials us via
-      // signalling, and only *then* does Automerge sync our row into
-      // its mesh:devices doc. We have to stay online long enough for
-      // that second connection to happen and the initial sync to
-      // complete, otherwise our row is stuck in local storage and
-      // the laptop's Peers tab stays empty of us.
+      // Wait for ack (proof the issuer applied our token and wrote
+      // our mesh:devices row). No arbitrary hold after that — the
+      // issuer's row-write is what matters, and it's already done by
+      // the time the ack arrives. A small flush lets any pending
+      // local Automerge writes settle before teardown.
       const timeout = new Promise<void>((r) => setTimeout(r, ACK_TIMEOUT_MS));
       await Promise.race([ackWait, timeout]);
       if (!gotAck && sessionId) {
         process.stderr.write(
-          'fairfox pair: no pair-ack from the issuer — closing anyway. If they had the pair tab open, the mesh may still sync on the next command.\n'
+          'fairfox pair: no pair-ack from the issuer — closing anyway. If their pair tab was open, the row may still land.\n'
         );
-        await flushOutgoing(1500);
-      } else if (sessionId) {
-        process.stdout.write('Waiting for the issuer tab to reload and sync…\n');
-        // Give the laptop time to reload (~1-2s), re-establish
-        // signalling (~1-2s), dial WebRTC (~1-2s), and flush initial
-        // Automerge sync (~1-3s). 8 seconds covers the common case;
-        // the upstream cure is a polly MeshClient that accepts
-        // dynamic keyring additions without a reload.
-        await flushOutgoing(8000);
-      } else {
-        await flushOutgoing(1500);
       }
+      await flushOutgoing(500);
     } finally {
       await client.close();
     }

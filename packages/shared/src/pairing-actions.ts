@@ -12,9 +12,14 @@
 // still owes and routes the wizard to the next unfinished step after
 // each success.
 
+import { decodePairingToken } from '@fairfox/polly/mesh';
 import QRCode from 'qrcode';
 import { type CustomFrame, subscribeCustomFrames } from '#src/custom-frames.ts';
-import { addEndorsementToDevice, touchSelfDeviceEntry } from '#src/devices-state.ts';
+import {
+  addEndorsementToDevice,
+  touchSelfDeviceEntry,
+  upsertDeviceEntry,
+} from '#src/devices-state.ts';
 import { mesh } from '#src/ensure-mesh.ts';
 import {
   createInvite,
@@ -124,16 +129,20 @@ function subscribeToPairReturn(sessionId: string): void {
     if (!token) {
       return;
     }
+    const agentHint = typeof frame.agent === 'string' ? frame.agent : null;
+    const nameHint = typeof frame.name === 'string' ? frame.name : null;
     // The scanner's reciprocal token completes the ceremony from the
-    // issuer's side. Apply it, drain both steps, advance — the remaining
-    // logic identical to the manual-paste path. Before we do
-    // `advanceAfter` (which reloads this tab), send the scanner a
-    // `pair-ack` frame so a listener like the CLI knows the handshake
-    // is complete and can close its signalling connection immediately
-    // rather than waiting out a timer.
+    // issuer's side. Apply it, write a mesh:devices row for the
+    // scanner directly (so the UI shows them without waiting for a
+    // post-reload WebRTC sync), drain both steps, advance — the
+    // remaining logic is identical to the manual-paste path. Before
+    // we do `advanceAfter` (which reloads this tab), send the scanner
+    // a `pair-ack` frame so a listener like the CLI knows the
+    // handshake is complete.
     (async () => {
       try {
         await applyScannedToken(token);
+        writeScannerDeviceRow(token, agentHint, nameHint);
         mesh?.signaling.sendCustom('pair-ack', { sessionId });
         drainStep('issue');
         advanceAfter('scan');
@@ -260,6 +269,39 @@ async function generateIssueArtefacts(): Promise<void> {
   } catch {
     issuedQr.value = null;
   }
+}
+
+/** Decode the scanner's pair token and seed a `mesh:devices` row
+ * for them locally. Uses the `agent` / `name` hints that rode along
+ * on the `pair-return` signalling frame so the row shows up with a
+ * sensible label instead of "(unnamed)". Works without waiting for
+ * WebRTC sync with the scanner — critical when polly's MeshClient
+ * only picks up new peers on reload, which otherwise opens a race
+ * window where the scanner could close before any sync completes.
+ * CRDT merge resolves any later self-writes the scanner makes
+ * cleanly. */
+function writeScannerDeviceRow(
+  returnToken: string,
+  agentHint: string | null,
+  nameHint: string | null
+): void {
+  let decoded: ReturnType<typeof decodePairingToken>;
+  try {
+    decoded = decodePairingToken(returnToken);
+  } catch {
+    return;
+  }
+  const agent: 'cli' | 'browser' | 'extension' =
+    agentHint === 'cli' || agentHint === 'extension' ? agentHint : 'browser';
+  const peerId = decoded.issuerPeerId;
+  const patch: Parameters<typeof upsertDeviceEntry>[1] = {
+    agent,
+    publicKey: Array.from(decoded.issuerPublicKey),
+  };
+  if (nameHint) {
+    patch.name = nameHint;
+  }
+  upsertDeviceEntry(peerId, patch);
 }
 
 async function applyScannedToken(token: string): Promise<boolean> {
