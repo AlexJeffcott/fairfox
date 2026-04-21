@@ -206,9 +206,23 @@ export function exportRecoveryBlob(identity: UserIdentity): string {
 
 /** Decode a recovery blob into a `UserIdentity` without touching
  * IndexedDB. Pure function — safe to call in tests and on the CLI.
- * Throws on malformed input. */
+ * Throws on malformed input.
+ *
+ * Accepts the raw `fairfox-user-v1:<hex>:<name>` format *and* the
+ * URL-encoded form `fairfox-user-v1%3A<hex>%3A<name>` that you get
+ * if you lift the blob out of a share URL's fragment; we decode
+ * URI components idempotently so a raw blob passes through
+ * unchanged. */
 export function decodeRecoveryBlob(blob: string): UserIdentity {
-  const trimmed = blob.trim();
+  let trimmed = blob.trim();
+  if (trimmed.includes('%3A')) {
+    try {
+      trimmed = decodeURIComponent(trimmed);
+    } catch {
+      // leave the input as-is; split below will fail with a
+      // specific error the caller can show.
+    }
+  }
   const parts = trimmed.split(':');
   const prefix = parts[0];
   const secretHex = parts[1];
