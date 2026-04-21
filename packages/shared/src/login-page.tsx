@@ -535,6 +535,7 @@ export function LoginPage(): preact.JSX.Element {
         <div style={CARD_STYLE}>
           <WhoAreYouHeader />
           <RecoveryBlobView />
+          <PwaInstallPrompt />
         </div>
       </div>
     );
@@ -545,6 +546,7 @@ export function LoginPage(): preact.JSX.Element {
         <div style={CARD_STYLE}>
           <WhoAreYouHeader />
           <WhoAreYouView />
+          <PwaInstallPrompt />
         </div>
       </div>
     );
