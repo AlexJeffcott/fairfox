@@ -20,7 +20,14 @@ import {
   type MeshKeyring,
 } from '@fairfox/polly/mesh';
 import type { KeyringStorage } from '@fairfox/polly/mesh/node';
-import { derivePeerId, KEYRING_PATH, keyringStorage } from '#src/mesh.ts';
+import {
+  derivePeerId,
+  flushOutgoing,
+  KEYRING_PATH,
+  keyringStorage,
+  openMeshClient,
+  waitForPeer,
+} from '#src/mesh.ts';
 
 function extractToken(input: string): string {
   const trimmed = input.trim();
@@ -67,9 +74,31 @@ export async function pair(tokenInput: string): Promise<number> {
   applyPairingToken(decoded, keyring);
   await storage.save(keyring);
 
+  // Open the mesh briefly and publish this CLI's `mesh:devices` row so
+  // the user's laptop / phone can see the fresh peer immediately. Before
+  // we added this, `fairfox pair` only wrote the keyring — the self-row
+  // didn't land until the next command ran, which felt broken ("I paired
+  // the CLI but it's not in my peers list"). The open is short-lived:
+  // touchSelfDeviceEntry fires on mesh-client open, flushOutgoing gives
+  // Automerge 1.5s to push the write to the issuer, then we close.
+  const ownPeerId = derivePeerId(keyring.identity.publicKey);
+  try {
+    const client = await openMeshClient({ peerId: ownPeerId });
+    try {
+      const peered = await waitForPeer(client, 4000);
+      if (peered) {
+        await flushOutgoing(1500);
+      }
+    } finally {
+      await client.close();
+    }
+  } catch {
+    // The pair itself already succeeded; publishing the self-row is a
+    // best-effort sweetener. A later command will re-publish.
+  }
+
   // Mint our own share URL so the user can paste it into the browser's
   // Step 2 to complete the asymmetric ceremony.
-  const ownPeerId = derivePeerId(keyring.identity.publicKey);
   const documentKey = keyring.documentKeys.get(DEFAULT_MESH_KEY_ID);
   const ownToken = createPairingToken({
     identity: keyring.identity,
