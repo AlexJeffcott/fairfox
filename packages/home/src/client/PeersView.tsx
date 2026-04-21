@@ -92,7 +92,10 @@ function capabilityPillColor(cap: string): 'info' | 'success' | 'warning' | 'def
 
 export function PeersView() {
   const selfId = selfPeerId.value;
-  const entries = Object.values(devicesState.value.devices);
+  // Revoked rows are kept in mesh:devices as tombstones so every peer
+  // honours the revocation, but we don't render them — the list is
+  // the live roster, not an audit log.
+  const entries = Object.values(devicesState.value.devices).filter((e) => !e.revokedAt);
   const online = peersPresent.value;
   const canRevoke = canDo('device.revoke');
   const canPair = canDo('device.pair');

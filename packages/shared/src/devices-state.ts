@@ -304,6 +304,10 @@ export function touchSelfDeviceEntry(
  * see in the doc — the fact that the doc synced to us is evidence
  * that the introducer was trusted upstream.
  *
+ * Revoked rows (`revokedAt` set) are skipped: the whole point of
+ * revocation is that the peer's key should not be re-added to any
+ * peer's keyring, even if the row is still present in the doc.
+ *
  * Callers must `saveKeyring` afterwards; this helper mutates
  * keyring.knownPeers in place but leaves persistence to the
  * caller. */
@@ -319,6 +323,9 @@ export function harvestPeerKeys(keyring: {
     if (entry.peerId === selfPeerId) {
       continue;
     }
+    if (entry.revokedAt) {
+      continue;
+    }
     if (keyring.knownPeers.has(entry.peerId)) {
       continue;
     }
@@ -329,4 +336,32 @@ export function harvestPeerKeys(keyring: {
     added.push(entry.peerId);
   }
   return added;
+}
+
+/** Tombstone a device row in `mesh:devices` so every peer on the
+ * mesh sees it as revoked. Unlike `forgetPeer` (keyring-local
+ * only), this write syncs via CRDT to everyone, prevents future
+ * trust-harvests from re-adding the peer's pubkey, and collapses
+ * the device's effective permissions to empty. The caller supplies
+ * the revocation record — already signed over
+ * `{ peerId, revokedAt, revokedByUserId }` with a user key that
+ * held `device.revoke` at the time — so that a Phase-F accept hook
+ * on every other peer can verify the signature against the stored
+ * timestamp. */
+export function revokeDeviceEntry(
+  peerId: string,
+  revocation: { userId: string; signature: Uint8Array; revokedAt: string }
+): void {
+  const existing = devicesState.value.devices[peerId];
+  if (!existing) {
+    throw new Error(`revokeDeviceEntry: unknown peer ${peerId}`);
+  }
+  if (existing.revokedAt) {
+    return;
+  }
+  upsertDeviceEntry(peerId, {
+    revokedAt: revocation.revokedAt,
+    revokedByUserId: revocation.userId,
+    revocationSignature: Array.from(revocation.signature),
+  });
 }

@@ -288,3 +288,22 @@ export function signEndorsement(identity: UserIdentity, deviceId: string): Endor
     addedAt,
   };
 }
+
+/** Produce a signed revocation of `deviceId` by this user identity.
+ * Written onto the target's `mesh:devices` row as `revokedAt +
+ * revokedByUserId + revocationSignature`; Phase F's accept-hook
+ * will verify the signer held `device.revoke` at the time. */
+export function signDeviceRevocation(
+  identity: UserIdentity,
+  deviceId: string
+): { userId: string; signature: Uint8Array; revokedAt: string } {
+  const revokedAt = new Date().toISOString();
+  const payload = new TextEncoder().encode(
+    JSON.stringify({ peerId: deviceId, revokedAt, revokedByUserId: identity.userId })
+  );
+  return {
+    userId: identity.userId,
+    signature: sign(payload, identity.keypair.secretKey),
+    revokedAt,
+  };
+}

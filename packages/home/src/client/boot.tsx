@@ -21,6 +21,7 @@ import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import {
   addEndorsementToDevice,
   removeEndorsementFromDevice,
+  revokeDeviceEntry,
   touchSelfDeviceEntry,
   upsertDeviceEntry,
 } from '@fairfox/shared/devices-state';
@@ -29,7 +30,7 @@ import { MeshGate } from '@fairfox/shared/mesh-gate';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
 import { canDo } from '@fairfox/shared/policy';
 import { pwaInstallActions } from '@fairfox/shared/pwa-install';
-import { signEndorsement } from '@fairfox/shared/user-identity';
+import { signDeviceRevocation, signEndorsement } from '@fairfox/shared/user-identity';
 import { userIdentity } from '@fairfox/shared/user-identity-state';
 import {
   type Permission,
@@ -133,12 +134,24 @@ const homeActions: Record<string, (ctx: HandlerContext) => void> = {
     if (!peerId) {
       return;
     }
+    const identity = userIdentity.value;
+    if (!identity) {
+      console.warn('[peers.forget-local] no user identity — cannot sign revocation');
+      return;
+    }
     void (async () => {
+      // Tombstone the device in mesh:devices so every peer sees the
+      // revocation via CRDT sync — harvestPeerKeys now skips revoked
+      // rows, so the peer can't be re-added to anyone's keyring on
+      // reload. Then drop it from the local keyring + reload so this
+      // device's mesh adapter stops dialling it.
+      try {
+        revokeDeviceEntry(peerId, signDeviceRevocation(identity, peerId));
+      } catch (err) {
+        console.error('[peers.forget-local] revoke failed:', err);
+      }
       const keyring = await loadOrCreateKeyring();
       await forgetPeer(keyring, peerId);
-      // Reload so the mesh client drops the forgotten peer from its
-      // adapter's known-peer set. Without the reload the adapter keeps
-      // dialling until the next natural page load.
       if (typeof window !== 'undefined') {
         window.location.reload();
       }
