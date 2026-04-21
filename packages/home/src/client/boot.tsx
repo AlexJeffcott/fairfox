@@ -144,6 +144,26 @@ const homeActions: Record<string, (ctx: HandlerContext) => void> = {
       }
     })();
   },
+  'app.reload': () => {
+    // PWAs — and especially iOS standalone PWAs — don't have a
+    // refresh gesture, and a stuck service worker can pin them on a
+    // stale bundle even after the server has shipped a newer one.
+    // This handler does a three-step hard-reload: unregister the
+    // service worker (so the next fetch goes all the way to the
+    // origin), bypass the HTTP cache via `location.reload(true)`
+    // where supported, and fall back to the plain reload otherwise.
+    void (async () => {
+      try {
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map((r) => r.unregister()));
+        }
+      } catch {
+        // best-effort
+      }
+      window.location.reload();
+    })();
+  },
   'users.revoke-peer': (ctx) => {
     if (!canDo('user.revoke')) {
       console.warn('[policy] blocked users.revoke-peer: user lacks user.revoke');

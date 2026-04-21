@@ -7,7 +7,7 @@
 // is the natural home for pairing-adjacent administration since
 // pairing already lives on this sub-app.
 
-import { Layout, Tabs } from '@fairfox/polly/ui';
+import { Button, Layout, Tabs } from '@fairfox/polly/ui';
 import { meshFingerprint, meshMetaState } from '@fairfox/shared/mesh-meta-state';
 import { canDo } from '@fairfox/shared/policy';
 import { PwaInstallPrompt } from '@fairfox/shared/pwa-install';
@@ -154,29 +154,42 @@ export function Home() {
       maxInlineSize="var(--polly-measure-page)"
     >
       <header>
-        <h1 style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--polly-space-sm)' }}>
-          <span>fairfox</span>
-          {meshName && (
-            <span style={{ color: 'var(--polly-text-muted)', fontSize: '1rem' }}>· {meshName}</span>
-          )}
-        </h1>
-        <p style={{ color: 'var(--polly-text-muted)' }}>
-          A small monorepo of things.
-          {fp && (
-            <>
-              {' '}
-              <span
-                style={{
-                  fontFamily: 'var(--polly-font-mono)',
-                  fontSize: 'var(--polly-text-sm)',
-                }}
-                title="Mesh fingerprint — first 8 hex of SHA-256 over the document key. Two devices on the same mesh share this value."
-              >
-                ({fp})
-              </span>
-            </>
-          )}
-        </p>
+        <Layout columns="1fr auto" gap="var(--polly-space-md)" alignItems="center">
+          <div>
+            <h1 style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--polly-space-sm)' }}>
+              <span>fairfox</span>
+              {meshName && (
+                <span style={{ color: 'var(--polly-text-muted)', fontSize: '1rem' }}>
+                  · {meshName}
+                </span>
+              )}
+            </h1>
+            <p style={{ color: 'var(--polly-text-muted)' }}>
+              A small monorepo of things.
+              {fp && (
+                <>
+                  {' '}
+                  <span
+                    style={{
+                      fontFamily: 'var(--polly-font-mono)',
+                      fontSize: 'var(--polly-text-sm)',
+                    }}
+                    title="Mesh fingerprint — first 8 hex of SHA-256 over the document key. Two devices on the same mesh share this value."
+                  >
+                    ({fp})
+                  </span>
+                </>
+              )}
+            </p>
+          </div>
+          <Button
+            label="Reload"
+            tier="tertiary"
+            size="small"
+            data-action="app.reload"
+            title="Re-fetch the latest bundle and re-run the boot-time trust harvest. PWAs don't have a refresh gesture; this button replaces one."
+          />
+        </Layout>
         <PwaInstallPrompt />
       </header>
 

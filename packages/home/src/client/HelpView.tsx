@@ -48,6 +48,35 @@ export function HelpView(): preact.JSX.Element {
         pairing relay, not the data path. This page is a quick tour of the moving parts.
       </p>
 
+      <Section heading="Install fairfox as an app">
+        <p>
+          <strong>Desktop Chrome / Edge:</strong> when the browser decides the site qualifies, it
+          fires <code>beforeinstallprompt</code> and an "Install fairfox" button appears under this
+          header. A first visit may not fire it — scroll, click, wait ~30s, or reload once to nudge
+          it.
+        </p>
+        <p>
+          <strong>Safari on macOS or iOS:</strong> Chromium's install event doesn't fire in Safari.
+          Install via the share menu instead:
+        </p>
+        <ol>
+          <li>Open Safari (not Chrome — iOS only lets Safari install PWAs).</li>
+          <li>
+            Tap the Share button (<span aria-hidden="true">⬆</span>) in the toolbar.
+          </li>
+          <li>
+            Scroll down in the share sheet and tap "Add to Home Screen" (iOS) or "Add to Dock"
+            (macOS).
+          </li>
+          <li>Name it, tap Add.</li>
+        </ol>
+        <p>
+          Launching from the home-screen icon opens fairfox in standalone PWA mode, no browser
+          chrome. The <strong>Reload</strong> button in this page's header substitutes for the
+          refresh gesture you lose in that mode.
+        </p>
+      </Section>
+
       <Section heading="Install the CLI">
         <p>
           The CLI is a full peer — same keyring, same documents as this browser. From a fresh
