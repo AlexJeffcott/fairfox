@@ -438,7 +438,11 @@ function renderInstallScript(origin: string, token: string, sessionId: string): 
   // `fairfox pair` so the CLI can emit a pair-return frame that
   // tells the issuer's browser tab about the CLI's identity.
   const safeSessionId = sessionId.replace(/[^A-Za-z0-9_-]/g, '');
-  const bundleUrl = `${origin}/cli/fairfox.js`;
+  // Bundle lives on GitHub Releases so CLI-only changes don't need
+  // a Railway deploy. /releases/latest/download is GitHub's stable
+  // redirect to the newest release's asset of the same filename.
+  const bundleUrl = 'https://github.com/AlexJeffcott/fairfox/releases/latest/download/fairfox.js';
+  void origin;
   return `#!/bin/sh
 # fairfox CLI installer. Drops the fairfox binary at
 # $HOME/.local/bin/fairfox and, if a pairing token was handed to the

@@ -1,40 +1,56 @@
 // `fairfox update` + the post-command update-check banner.
 //
-// The CLI bundle is a single pinned-at-install file at
-// `~/.fairfox/fairfox.js`; unlike the PWA, nothing about running a
-// command reaches back to the server to pick up a newer version.
-// These two paths bridge that gap without making every invocation pay
-// a round-trip:
+// CLI bundles are published as GitHub Release assets on the repo, so
+// a CLI change doesn't need a Railway deploy at all — a git tag
+// triggers the `cli-release` workflow which attaches
+// `fairfox.js` to the corresponding release, and this command pulls
+// from there.
 //
-//   - `fairfox update` (explicit): fetch /cli/fairfox.js, hash it,
-//     overwrite the local file if different. Also refreshes the
-//     stamp file so the banner stays quiet afterwards.
-//   - `maybeNoticeUpdate()` (opportunistic): called after every
-//     command. Rate-limited to once per 24h via a stamp file. Hits
-//     `/cli/version` for just the SHA, compares, prints a single
-//     banner line if drift. Misses (offline, 404, etc.) fail silent
-//     so the user's command doesn't feel slow or flaky.
+//   fairfox update       explicit: fetch latest release, compare
+//                         tag against the version baked into this
+//                         bundle, swap if different.
+//   maybeNoticeUpdate    at-the-end-of-every-command: cheap GET of
+//                         the latest-release JSON, rate-limited to
+//                         once per 24h via a stamp file, prints a
+//                         one-line banner if drift.
+//
+// Both paths silently absorb network failures so an offline `fairfox
+// peers` doesn't feel slow or flaky.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+declare const __FAIRFOX_CLI_VERSION__: string;
+
 const BUNDLE_PATH = join(homedir(), '.fairfox', 'fairfox.js');
 const STAMP_PATH = join(homedir(), '.fairfox', 'update-check.json');
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
-const FETCH_TIMEOUT_MS = 2500;
+const FETCH_TIMEOUT_MS = 4000;
+
+const GITHUB_OWNER = 'AlexJeffcott';
+const GITHUB_REPO = 'fairfox';
+const LATEST_RELEASE_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+// GitHub's stable redirect URL for the fairfox.js asset of the
+// newest release tagged on this repo. Preferred over parsing the
+// API JSON because it survives release rename + retains the same
+// path regardless of tag.
+const LATEST_BUNDLE_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest/download/fairfox.js`;
 
 interface Stamp {
   checkedAt: string;
-  lastSeenSha: string;
-}
-
-function defaultBase(): string {
-  return process.env.FAIRFOX_URL ?? 'https://fairfox-production-8273.up.railway.app';
+  lastSeenTag: string;
 }
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
+}
+
+function localVersion(): string {
+  if (typeof __FAIRFOX_CLI_VERSION__ === 'string') {
+    return __FAIRFOX_CLI_VERSION__;
+  }
+  return 'dev';
 }
 
 function readStamp(): Stamp | undefined {
@@ -44,9 +60,9 @@ function readStamp(): Stamp | undefined {
   try {
     const parsed: unknown = JSON.parse(readFileSync(STAMP_PATH, 'utf8'));
     if (isRecord(parsed)) {
-      const { checkedAt, lastSeenSha } = parsed;
-      if (typeof checkedAt === 'string' && typeof lastSeenSha === 'string') {
-        return { checkedAt, lastSeenSha };
+      const { checkedAt, lastSeenTag } = parsed;
+      if (typeof checkedAt === 'string' && typeof lastSeenTag === 'string') {
+        return { checkedAt, lastSeenTag };
       }
     }
   } catch {
@@ -59,23 +75,7 @@ function writeStamp(stamp: Stamp): void {
   try {
     writeFileSync(STAMP_PATH, JSON.stringify(stamp), 'utf8');
   } catch {
-    // Stamp persistence is best-effort; worst case we re-check next
-    // run.
-  }
-}
-
-async function hashFile(path: string): Promise<string | undefined> {
-  if (!existsSync(path)) {
-    return undefined;
-  }
-  try {
-    const bytes = new Uint8Array(readFileSync(path));
-    const digest = await crypto.subtle.digest('SHA-256', bytes);
-    return Array.from(new Uint8Array(digest))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-  } catch {
-    return undefined;
+    // Best-effort; we re-check next run on failure.
   }
 }
 
@@ -85,7 +85,10 @@ async function fetchWithTimeout(url: string): Promise<Response | undefined> {
     ctrl.abort();
   }, FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { signal: ctrl.signal });
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { Accept: 'application/vnd.github+json' },
+    });
     return res;
   } catch {
     return undefined;
@@ -94,48 +97,49 @@ async function fetchWithTimeout(url: string): Promise<Response | undefined> {
   }
 }
 
-async function fetchRemoteSha(): Promise<string | undefined> {
-  const res = await fetchWithTimeout(`${defaultBase().replace(/\/$/, '')}/cli/version`);
+async function fetchLatestTag(): Promise<string | undefined> {
+  const res = await fetchWithTimeout(LATEST_RELEASE_API);
   if (!res?.ok) {
     return undefined;
   }
   try {
     const parsed: unknown = await res.json();
     if (isRecord(parsed)) {
-      const sha = parsed.sha256;
-      if (typeof sha === 'string' && sha.length > 0) {
-        return sha;
+      const tag = parsed.tag_name;
+      if (typeof tag === 'string' && tag.length > 0) {
+        return tag;
       }
     }
   } catch {
-    // fall through to undefined
+    // fall through
   }
   return undefined;
 }
 
-/** Fetch the latest CLI bundle and overwrite the local copy if the
- * SHA differs. Idempotent — running against an already-current
- * install is a no-op and prints so. */
+/** Fetch the latest release bundle and overwrite the local copy if
+ * the tag differs from the one baked into this bundle at build
+ * time. */
 export async function update(): Promise<number> {
-  const localSha = await hashFile(BUNDLE_PATH);
-  if (!localSha) {
+  const local = localVersion();
+  const latestTag = await fetchLatestTag();
+  if (!latestTag) {
+    process.stderr.write(
+      'fairfox update: could not reach the GitHub release API. Try again later.\n'
+    );
+    return 1;
+  }
+  if (latestTag === local) {
+    process.stdout.write(`Already up to date (${local}).\n`);
+    writeStamp({ checkedAt: new Date().toISOString(), lastSeenTag: latestTag });
+    return 0;
+  }
+  if (!existsSync(BUNDLE_PATH)) {
     process.stderr.write(
       `fairfox update: no local bundle at ${BUNDLE_PATH} — run the install curl first.\n`
     );
     return 1;
   }
-  const base = defaultBase().replace(/\/$/, '');
-  const remoteSha = await fetchRemoteSha();
-  if (!remoteSha) {
-    process.stderr.write('fairfox update: could not reach the fairfox server. Try again later.\n');
-    return 1;
-  }
-  if (remoteSha === localSha) {
-    process.stdout.write(`Already up to date (${localSha.slice(0, 12)}).\n`);
-    writeStamp({ checkedAt: new Date().toISOString(), lastSeenSha: remoteSha });
-    return 0;
-  }
-  const res = await fetchWithTimeout(`${base}/cli/fairfox.js`);
+  const res = await fetchWithTimeout(LATEST_BUNDLE_URL);
   if (!res?.ok) {
     process.stderr.write('fairfox update: could not fetch the new bundle.\n');
     return 1;
@@ -149,17 +153,15 @@ export async function update(): Promise<number> {
     );
     return 1;
   }
-  writeStamp({ checkedAt: new Date().toISOString(), lastSeenSha: remoteSha });
-  process.stdout.write(
-    `Updated fairfox CLI\n  ${localSha.slice(0, 12)} → ${remoteSha.slice(0, 12)}\n`
-  );
+  writeStamp({ checkedAt: new Date().toISOString(), lastSeenTag: latestTag });
+  process.stdout.write(`Updated fairfox CLI\n  ${local} → ${latestTag}\n`);
   return 0;
 }
 
-/** End-of-command drift check. Returns quickly on offline/unreachable
- * paths. Rate-limited to once per 24h against a stamp file. Prints a
- * single line to stderr if the remote bundle SHA differs from the
- * local one. Never blocks the exit code. */
+/** End-of-command drift check. Rate-limited to once per 24h.
+ * Prints a one-line banner to stderr if the latest release tag
+ * differs from the version baked into this bundle. Never blocks
+ * the exit code. */
 export async function maybeNoticeUpdate(): Promise<void> {
   try {
     const stamp = readStamp();
@@ -170,17 +172,17 @@ export async function maybeNoticeUpdate(): Promise<void> {
         return;
       }
     }
-    const remoteSha = await fetchRemoteSha();
-    if (!remoteSha) {
+    const latestTag = await fetchLatestTag();
+    if (!latestTag) {
       return;
     }
-    const localSha = await hashFile(BUNDLE_PATH);
-    writeStamp({ checkedAt: new Date().toISOString(), lastSeenSha: remoteSha });
-    if (!localSha || localSha === remoteSha) {
+    writeStamp({ checkedAt: new Date().toISOString(), lastSeenTag: latestTag });
+    const local = localVersion();
+    if (latestTag === local || local === 'dev') {
       return;
     }
     process.stderr.write(
-      '\nA new fairfox CLI bundle is available. Run `fairfox update` to install it.\n'
+      `\nA new fairfox CLI (${latestTag}) is available. Run \`fairfox update\` to install it.\n`
     );
   } catch {
     // Notice is best-effort; never break the caller.

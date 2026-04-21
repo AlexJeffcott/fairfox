@@ -27,6 +27,12 @@ const automergeBase64Plugin: BunPlugin = {
   },
 };
 
+// Bake the release tag into the bundle so the update command can
+// compare it to the latest GitHub release. CI sets
+// FAIRFOX_CLI_VERSION from the git tag; local builds fall back to
+// "dev".
+const version = process.env.FAIRFOX_CLI_VERSION ?? 'dev';
+
 const result = await Bun.build({
   entrypoints: ['src/bin.ts'],
   target: 'bun',
@@ -34,6 +40,9 @@ const result = await Bun.build({
   minify: true,
   outdir: 'dist',
   naming: { entry: 'fairfox.js' },
+  define: {
+    __FAIRFOX_CLI_VERSION__: JSON.stringify(version),
+  },
   plugins: [automergeBase64Plugin],
 });
 
