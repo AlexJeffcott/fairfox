@@ -65,6 +65,13 @@ export interface DeviceEntry {
   /** Which kind of device wrote this entry. Drives the agent chip in
    * the peer-list row. */
   agent: DeviceAgent;
+  /** The device's signing public key (32 bytes as number[]). Each
+   * device writes its own row with its own pubkey on boot; every
+   * other device harvests this field into its local keyring so
+   * mutual trust propagates through the mesh without requiring N²
+   * pairwise pairings. Optional for migration — pre-harvest rows
+   * just don't contribute to trust propagation. */
+  publicKey?: number[];
   /** User ids endorsed on this device. Effective permissions are the
    * intersection of these users' permission sets (Phase E). Optional
    * for migration: pre-Phase-A rows don't have this field — a read
@@ -156,6 +163,10 @@ export function upsertDeviceEntry(
     lastSeenAt: patch.lastSeenAt ?? now,
     agent: patch.agent ?? existing?.agent ?? 'browser',
   };
+  const publicKey = patch.publicKey ?? existing?.publicKey;
+  if (publicKey !== undefined) {
+    next.publicKey = publicKey;
+  }
   const ownerUserIds = patch.ownerUserIds ?? existing?.ownerUserIds;
   if (ownerUserIds !== undefined) {
     next.ownerUserIds = ownerUserIds;
@@ -258,7 +269,12 @@ function defaultBrowserName(): string {
  * agent family — the peer list lets the user rename it later. */
 export function touchSelfDeviceEntry(
   peerId: string,
-  options: { agent?: DeviceAgent; defaultName?: string; capabilities?: Capability[] } = {}
+  options: {
+    agent?: DeviceAgent;
+    defaultName?: string;
+    capabilities?: Capability[];
+    publicKey?: Uint8Array;
+  } = {}
 ): void {
   const existing = devicesState.value.devices[peerId];
   const agent = options.agent ?? existing?.agent ?? 'browser';
@@ -272,5 +288,45 @@ export function touchSelfDeviceEntry(
   // after a permission change. Callers can override (e.g. the CLI
   // passes its own list since `detectCapabilities` is browser-only).
   const capabilities = options.capabilities ?? detectCapabilities();
-  upsertDeviceEntry(peerId, { agent, name: fallbackName, capabilities });
+  // Publish this device's signing pubkey in its own row so other
+  // peers can harvest it into their local knownPeers set without
+  // needing a direct pairwise pair ceremony — see `harvestPeerKeys`
+  // below. Only set when the caller supplies the key; the row stays
+  // backward-compatible with rows written by pre-harvest clients.
+  const publicKey = options.publicKey ? Array.from(options.publicKey) : existing?.publicKey;
+  upsertDeviceEntry(peerId, { agent, name: fallbackName, capabilities, publicKey });
+}
+
+/** Walk every row in `mesh:devices`, pull the `publicKey` out, and
+ * compare to the supplied keyring's `knownPeers`. Returns the list
+ * of newly-added peers so the caller can decide whether to reload
+ * (browser) or log (CLI). Trust closure: we add every peer we can
+ * see in the doc — the fact that the doc synced to us is evidence
+ * that the introducer was trusted upstream.
+ *
+ * Callers must `saveKeyring` afterwards; this helper mutates
+ * keyring.knownPeers in place but leaves persistence to the
+ * caller. */
+export function harvestPeerKeys(keyring: {
+  knownPeers: Map<string, Uint8Array>;
+  identity: { publicKey: Uint8Array };
+}): string[] {
+  const selfPeerId = Array.from(keyring.identity.publicKey.slice(0, 8))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  const added: string[] = [];
+  for (const entry of Object.values(devicesState.value.devices)) {
+    if (entry.peerId === selfPeerId) {
+      continue;
+    }
+    if (keyring.knownPeers.has(entry.peerId)) {
+      continue;
+    }
+    if (!entry.publicKey || entry.publicKey.length !== 32) {
+      continue;
+    }
+    keyring.knownPeers.set(entry.peerId, new Uint8Array(entry.publicKey));
+    added.push(entry.peerId);
+  }
+  return added;
 }

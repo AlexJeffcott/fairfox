@@ -9,7 +9,7 @@ import { NodeFSStorageAdapter } from '@automerge/automerge-repo-storage-nodefs';
 import type { MeshClient } from '@fairfox/polly/mesh';
 import { createMeshClient } from '@fairfox/polly/mesh';
 import { fileKeyringStorage, type KeyringStorage } from '@fairfox/polly/mesh/node';
-import { touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
+import { harvestPeerKeys, touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
 import { RTCPeerConnection } from 'werift';
 
 export const KEYRING_PATH = join(homedir(), '.fairfox', 'keyring.json');
@@ -75,7 +75,26 @@ export async function openMeshClient(options: ConnectOptions): Promise<MeshClien
   // returns. The write runs fire-and-forget — the document handle
   // buffers locally and flushes on `flushOutgoing` at command exit.
   try {
-    touchSelfDeviceEntry(options.peerId, { agent: 'cli', defaultName: hostname() });
+    // Publish our pubkey in mesh:devices so other peers can harvest
+    // it and add us to their keyring without a pair-token exchange.
+    const storage = keyringStorage();
+    const keyring = await storage.load();
+    const publicKey = keyring?.identity.publicKey;
+    touchSelfDeviceEntry(options.peerId, {
+      agent: 'cli',
+      defaultName: hostname(),
+      ...(publicKey ? { publicKey } : {}),
+    });
+    // Harvest unknown pubkeys from mesh:devices into the CLI's
+    // keyring. If any land, persist them — the running MeshClient
+    // won't pick them up without a restart, but the next CLI
+    // invocation will be a full-trust peer.
+    if (keyring) {
+      const added = harvestPeerKeys(keyring);
+      if (added.length > 0) {
+        await storage.save(keyring);
+      }
+    }
   } catch {
     // Never block a CLI invocation on device-entry housekeeping.
   }

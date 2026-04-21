@@ -22,8 +22,13 @@ import { useSignalEffect } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { useEffect } from 'preact/hooks';
 import { BuildFreshnessBanner } from '#src/build-freshness.tsx';
-import { addEndorsementToDevice, devicesState, touchSelfDeviceEntry } from '#src/devices-state.ts';
-import { loadOrCreateKeyring } from '#src/keyring.ts';
+import {
+  addEndorsementToDevice,
+  devicesState,
+  harvestPeerKeys,
+  touchSelfDeviceEntry,
+} from '#src/devices-state.ts';
+import { loadOrCreateKeyring, saveKeyring } from '#src/keyring.ts';
 import { LoginPage } from '#src/login-page.tsx';
 import { consumePairingHash } from '#src/pairing-actions.ts';
 import {
@@ -44,10 +49,38 @@ async function refreshKeyringState(): Promise<void> {
       const peerId = Array.from(keyring.identity.publicKey.slice(0, 8))
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
-      touchSelfDeviceEntry(peerId, { agent: 'browser' });
+      // Publish our own pubkey in mesh:devices so other peers can
+      // harvest it into their keyring without a direct pair-token
+      // exchange.
+      touchSelfDeviceEntry(peerId, { agent: 'browser', publicKey: keyring.identity.publicKey });
     }
   } catch {
     knownPeerCount.value = null;
+  }
+}
+
+/** Read every device row in mesh:devices, pull out pubkeys we
+ * don't yet trust, add them to the local keyring, and reload so
+ * MeshClient's adapter picks up the new trust set. Runs every time
+ * the devices doc changes — a fresh row landing in sync fans out
+ * to all browsers that see it. */
+async function harvestAndMaybeReload(): Promise<void> {
+  try {
+    const keyring = await loadOrCreateKeyring();
+    const added = harvestPeerKeys(keyring);
+    if (added.length === 0) {
+      return;
+    }
+    await saveKeyring(keyring);
+    if (typeof window !== 'undefined') {
+      // Small fence so the mesh:devices write + save settle before
+      // the page tears down.
+      setTimeout(() => {
+        window.location.reload();
+      }, 300);
+    }
+  } catch {
+    // Best-effort — harvest failures shouldn't break the gate.
   }
 }
 
@@ -108,6 +141,12 @@ export function MeshGate({ children }: MeshGateProps): preact.JSX.Element | null
     if (userIdentity.value) {
       void selfHealIdentity();
     }
+    // Reactive harvest: whenever mesh:devices changes (including
+    // the initial load), pull any unknown pubkeys into our keyring.
+    // `devicesState.value` is the dependency — reading it here
+    // subscribes this effect to doc-state changes.
+    void devicesState.value;
+    void harvestAndMaybeReload();
   });
 
   // A `#pair=…` URL pasted into an already-open tab changes only the
