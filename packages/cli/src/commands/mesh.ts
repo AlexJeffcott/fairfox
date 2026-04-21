@@ -29,7 +29,12 @@ import {
   touchSelfDeviceEntry,
 } from '@fairfox/shared/devices-state';
 import { createInvite } from '@fairfox/shared/invite';
-import { meshFingerprint, meshMetaState, setMeshName } from '@fairfox/shared/mesh-meta-state';
+import {
+  generateMeshName,
+  meshFingerprint,
+  meshMetaState,
+  setMeshName,
+} from '@fairfox/shared/mesh-meta-state';
 import { signEndorsement } from '@fairfox/shared/user-identity';
 import {
   createBootstrapUser,
@@ -171,12 +176,12 @@ async function meshInit(rest: readonly string[]): Promise<number> {
     const users = $meshState<UsersDoc>('mesh:users', USERS_INITIAL);
     await Promise.all([users.loaded, devicesState.loaded, meshMetaState.loaded]);
 
-    // Optional mesh name — renders on the home view next to the
-    // fingerprint so devices can eyeball-verify they're on the same
-    // mesh. Skip when the flag wasn't passed.
-    if (args.name?.trim()) {
-      setMeshName(args.name.trim());
-    }
+    // Mesh name renders on the home view next to the fingerprint
+    // so devices can eyeball-verify they're on the same mesh.
+    // `--name` wins; otherwise a random Dylan-Thomas-flavoured line
+    // feels less like a server and more like a place.
+    const chosenName = args.name?.trim() || generateMeshName();
+    setMeshName(chosenName);
 
     // Write the admin's self-signed UserEntry into mesh:users.
     createBootstrapUser({ displayName: adminName, userKey: adminUserKey });
@@ -235,13 +240,10 @@ async function meshInit(rest: readonly string[]): Promise<number> {
     const recovery = exportRecoveryBlob(adminIdentity);
     const documentKey = deviceKeyring.documentKeys.get(DEFAULT_MESH_KEY_ID);
     const fingerprint = documentKey ? await meshFingerprint(documentKey) : '(no key?)';
-    const displayName = args.name?.trim();
     process.stdout.write(
       [
         `New mesh created. This device is paired and "${adminName}" is its admin.`,
-        displayName
-          ? `  name:        ${displayName}`
-          : '  name:        (unset — pass --name next time)',
+        `  name:        ${chosenName}`,
         `  fingerprint: ${fingerprint}`,
         '',
         '',

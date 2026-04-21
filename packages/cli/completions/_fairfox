@@ -1,0 +1,102 @@
+#compdef fairfox
+# zsh completion for the fairfox CLI.
+# Source with: autoload -U compinit; compinit
+# or place alongside your other _foo completion files on $fpath.
+
+_fairfox() {
+  local -a verbs
+  verbs=(
+    'mesh:named-mesh lifecycle (init, whoami, invite, add-device)'
+    'pair:apply a pairing token'
+    'users:read and mutate mesh:users'
+    'peers:list and manage mesh:devices'
+    'todo:read and mutate the todo mesh docs'
+    'agenda:read and mutate the agenda mesh doc'
+    'deploy:wrap railway up --detach'
+    'help:show the full usage'
+  )
+
+  if (( CURRENT == 2 )); then
+    _describe 'verb' verbs
+    return
+  fi
+
+  case "$words[2]" in
+    mesh)
+      local -a mesh_verbs
+      mesh_verbs=(
+        'init:create a new mesh'
+        'whoami:print name + fingerprint + peerId'
+        'invite:list/open pending invites'
+        'add-device:open a QR to add another device under this user'
+      )
+      if (( CURRENT == 3 )); then
+        _describe 'mesh verb' mesh_verbs
+        return
+      fi
+      case "$words[3]" in
+        init)
+          _arguments \
+            '--admin[admin display name]:name' \
+            '--name[human-chosen mesh name]:name' \
+            '--user[invitee as name:role]:user' \
+            '--force[wipe local state before init]'
+          ;;
+        invite)
+          if (( CURRENT == 4 )); then
+            _values 'invite verb' list open
+          fi
+          ;;
+      esac
+      ;;
+    users)
+      local -a users_verbs
+      users_verbs=(
+        'whoami:print the local identity + effective permissions'
+        'bootstrap:create the first admin (prefer `mesh init`)'
+        'import:load a recovery blob'
+        'export:print the local recovery blob'
+        'invite:invite a user by name (admin-gated)'
+        'revoke:revoke a user by userId (admin-gated)'
+      )
+      if (( CURRENT == 3 )); then
+        _describe 'users verb' users_verbs
+      fi
+      ;;
+    peers)
+      local -a peers_verbs
+      peers_verbs=('rename:rename this device' 'forget:forget a peer (admin-gated)')
+      if (( CURRENT == 3 )); then
+        _describe 'peers verb' peers_verbs
+      fi
+      ;;
+    todo)
+      local -a todo_verbs
+      todo_verbs=(
+        'tasks:list open tasks'
+        'task:add/done/reopen/delete/update'
+        'projects:list projects'
+        'project:add/update/delete'
+        'captures:list quick captures'
+        'capture:add/delete'
+        'import-legacy:pull the legacy REST /todo into the mesh'
+        'help:full todo usage'
+      )
+      if (( CURRENT == 3 )); then
+        _describe 'todo verb' todo_verbs
+      fi
+      ;;
+    agenda)
+      if (( CURRENT == 3 )); then
+        _values 'agenda verb' list add
+      fi
+      ;;
+    deploy)
+      if (( CURRENT == 3 )); then
+        _values 'deploy verb' push status logs
+      fi
+      ;;
+  esac
+}
+
+_fairfox "$@"

@@ -12,6 +12,7 @@ import { meshFingerprint, meshMetaState } from '@fairfox/shared/mesh-meta-state'
 import { canDo } from '@fairfox/shared/policy';
 import { PwaInstallPrompt } from '@fairfox/shared/pwa-install';
 import { signal, useSignalEffect } from '@preact/signals';
+import { HelpView } from '#src/client/HelpView.tsx';
 import { PeersView } from '#src/client/PeersView.tsx';
 import { UsersView } from '#src/client/UsersView.tsx';
 
@@ -34,12 +35,12 @@ async function loadFingerprint(): Promise<void> {
   }
 }
 
-export type HomeView = 'apps' | 'peers' | 'users';
+export type HomeView = 'apps' | 'peers' | 'users' | 'help';
 
 export const activeView = signal<HomeView>('apps');
 
 function isHomeView(v: string): v is HomeView {
-  return v === 'apps' || v === 'peers' || v === 'users';
+  return v === 'apps' || v === 'peers' || v === 'users' || v === 'help';
 }
 
 export function setActiveView(v: string): void {
@@ -60,6 +61,7 @@ function tabList(): { id: string; label: string }[] {
   if (canDo('user.invite') || canDo('user.revoke') || canDo('user.grant-role')) {
     tabs.push({ id: 'users', label: 'Users' });
   }
+  tabs.push({ id: 'help', label: 'Help' });
   return tabs;
 }
 
@@ -184,6 +186,7 @@ export function Home() {
         {activeView.value === 'apps' && <AppsGrid />}
         {activeView.value === 'peers' && <PeersView />}
         {activeView.value === 'users' && <UsersView />}
+        {activeView.value === 'help' && <HelpView />}
       </div>
     </Layout>
   );
