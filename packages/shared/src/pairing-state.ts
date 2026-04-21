@@ -45,6 +45,11 @@ export const pairingSessionId = signal<string | null>(null);
  * line under the QR. */
 export const issuerWaitingForReturn = signal<boolean>(false);
 
+/** True while the in-app camera QR scanner modal is open. Lives in
+ * this file rather than `qr-scan.tsx` so the `pairingActions` handler
+ * can toggle it without a circular import. */
+export const cameraScanOpen = signal<boolean>(false);
+
 export type InviteRole = 'admin' | 'member' | 'guest';
 
 /** Draft state for the "also invite a user" toggle in the issue

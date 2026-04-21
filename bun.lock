@@ -153,6 +153,7 @@
         "@fairfox/polly": "catalog:",
         "@preact/signals": "catalog:",
         "elysia": "catalog:",
+        "jsqr": "catalog:",
         "preact": "catalog:",
         "qrcode": "catalog:",
         "tweetnacl": "catalog:",
@@ -281,6 +282,7 @@
     "dompurify": "^3.2.4",
     "elysia": "^1.4.28",
     "htm": "^3.1.1",
+    "jsqr": "^1.4.0",
     "marked": "^18.0.0",
     "preact": "^10.29.1",
     "puppeteer": "^24.18.0",
@@ -659,6 +661,8 @@
     "js-yaml": ["js-yaml@4.1.1", "", { "dependencies": { "argparse": "^2.0.1" }, "bin": { "js-yaml": "bin/js-yaml.js" } }, "sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA=="],
 
     "json-parse-even-better-errors": ["json-parse-even-better-errors@2.3.1", "", {}, "sha512-xyFwyhro/JEof6Ghe2iz2NcXoj2sloNsWr/XsERDK/oiPCfaNhl5ONfp+jQdAZRQQ0IJWNzH9zIZF7li91kh2w=="],
+
+    "jsqr": ["jsqr@1.4.0", "", {}, "sha512-dxLob7q65Xg2DvstYkRpkYtmKm2sPJ9oFhrhmudT1dZvNFFTlroai3AWSpLey/w5vMcLBXRgOJsbXpdN9HzU/A=="],
 
     "lines-and-columns": ["lines-and-columns@1.2.4", "", {}, "sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg=="],
 

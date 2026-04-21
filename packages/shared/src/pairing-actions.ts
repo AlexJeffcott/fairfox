@@ -25,6 +25,7 @@ import {
 import { loadOrCreateKeyring } from '#src/keyring.ts';
 import { completePairing, initiatePairing } from '#src/pairing.ts';
 import {
+  cameraScanOpen,
   type InviteRole,
   inviteDraftEnabled,
   inviteDraftName,
@@ -560,6 +561,29 @@ async function acceptInviteBlob(blob: string): Promise<void> {
   await selfEndorseDevice(identity);
 }
 
+/** Apply a scanned / pasted value through the same pipeline as the
+ * `pairing.submit-scan` action handler. Exported so the in-app camera
+ * scanner can feed decoded QR payloads straight in without having to
+ * round-trip through the action-dispatch system. */
+export async function submitScannedValue(raw: string): Promise<void> {
+  const parsed = parseScanPaste(raw);
+  try {
+    await applyScannedToken(parsed.token);
+    if (parsed.invite) {
+      await acceptInviteBlob(parsed.invite);
+    } else if (parsed.recovery) {
+      await acceptRecoveryBlob(parsed.recovery);
+    }
+    if (parsed.sessionId) {
+      await sendPairReturnForSession(parsed.sessionId);
+      drainStep('issue');
+    }
+    advanceAfter('scan');
+  } catch (err) {
+    pairingError.value = err instanceof Error ? err.message : String(err);
+  }
+}
+
 export const pairingActions: Record<string, (ctx: PairingHandlerContext) => void> = {
   'pairing.start-issue': () => {
     resetCeremony();
@@ -590,36 +614,20 @@ export const pairingActions: Record<string, (ctx: PairingHandlerContext) => void
     if (!raw) {
       return;
     }
-    // The paste box is forgiving: a raw base64 token, a URL-encoded
-    // token, or a whole share URL / hash fragment
-    // (`https://…/#pair=…&s=…&invite=…` or just `pair=…&s=…`) all
-    // resolve to the same thing. If an invite / recovery blob rides
-    // along, honour it through the same code path as
-    // consumePairingHash; otherwise fall back to the raw-token
-    // shape.
-    const parsed = parseScanPaste(raw);
-    (async () => {
-      try {
-        await applyScannedToken(parsed.token);
-        if (parsed.invite) {
-          await acceptInviteBlob(parsed.invite);
-        } else if (parsed.recovery) {
-          await acceptRecoveryBlob(parsed.recovery);
-        }
-        if (parsed.sessionId) {
-          await sendPairReturnForSession(parsed.sessionId);
-          drainStep('issue');
-        }
-        advanceAfter('scan');
-      } catch (err) {
-        pairingError.value = err instanceof Error ? err.message : String(err);
-      }
-    })();
+    void submitScannedValue(raw);
   },
 
   'pairing.cancel': () => {
     resetCeremony();
     pairingMode.value = 'idle';
+  },
+
+  'pairing.open-camera': () => {
+    cameraScanOpen.value = true;
+  },
+
+  'pairing.close-camera': () => {
+    cameraScanOpen.value = false;
   },
 
   'pairing.start-solo': () => {

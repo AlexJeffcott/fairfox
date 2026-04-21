@@ -423,6 +423,12 @@ async function meshInviteOpen(rest: readonly string[]): Promise<number> {
     const qr = await QRCode.toString(shareUrl, { type: 'terminal', small: true });
     process.stdout.write(`\n${qr}\n`);
     process.stdout.write(`${shareUrl}\n\n`);
+    process.stdout.write('Individual fields (if you want to inspect or paste by hand):\n\n');
+    process.stdout.write(`  pair token:  ${pairToken}\n`);
+    process.stdout.write(`  session id:  ${sessionId}\n`);
+    process.stdout.write(`  invite blob: ${stored.blob}\n\n`);
+    process.stdout.write('Paste-box fragment (everything after the `#` of the URL above):\n\n');
+    process.stdout.write(`  ${fragment}\n\n`);
     process.stdout.write(
       `Invite open for "${stored.name}" (${stored.role}). Waiting for scan — ctrl-c to close.\n`
     );
@@ -554,12 +560,18 @@ async function meshAddDevice(): Promise<number> {
     const qr = await QRCode.toString(shareUrl, { type: 'terminal', small: true });
     process.stdout.write(`\n${qr}\n`);
     process.stdout.write(`${shareUrl}\n\n`);
+    process.stdout.write('Individual fields (if you want to inspect or paste by hand):\n\n');
+    process.stdout.write(`  pair token:    ${pairToken}\n`);
+    process.stdout.write(`  session id:    ${sessionId}\n`);
+    process.stdout.write(`  recovery blob: ${recovery}\n\n`);
+    process.stdout.write('Paste-box fragment (everything after the `#` of the URL above):\n\n');
+    process.stdout.write(`  ${fragment}\n\n`);
     process.stdout.write(
       `Add-device open for "${identity.displayName}". Waiting for scan — ctrl-c to close.\n\n`
     );
     process.stdout.write(
-      'Treat the URL above like a password — it carries your user secret key.\n' +
-        'Anyone who scans it becomes another device of yours.\n'
+      'Treat the URL and recovery blob above like a password — they carry\n' +
+        'your user secret key. Anyone who uses them becomes another device of yours.\n'
     );
 
     await new Promise<void>((resolve) => {

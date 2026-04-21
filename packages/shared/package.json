@@ -30,6 +30,7 @@
     "./ensure-mesh": "./src/ensure-mesh.ts",
     "./pairing-state": "./src/pairing-state.ts",
     "./pairing-actions": "./src/pairing-actions.ts",
+    "./qr-scan": "./src/qr-scan.tsx",
     "./signaling": "./src/signaling.ts"
   },
   "imports": {
@@ -46,6 +47,7 @@
     "elysia": "catalog:",
     "preact": "catalog:",
     "qrcode": "catalog:",
+    "jsqr": "catalog:",
     "tweetnacl": "catalog:"
   },
   "devDependencies": {

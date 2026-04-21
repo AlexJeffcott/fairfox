@@ -29,6 +29,7 @@ import {
   scanInput,
 } from '#src/pairing-state.ts';
 import { PwaInstallPrompt } from '#src/pwa-install.tsx';
+import { canScanWithCamera, QrImageDropzone, QrScanDialog } from '#src/qr-scan.tsx';
 import {
   displayNameDraft,
   pendingRecoveryBlob,
@@ -339,17 +340,39 @@ function ScanView(): preact.JSX.Element {
   const remaining = pairingStepsRemaining.value;
   const issuePending = remaining.has('issue');
   const instruction = issuePending
-    ? "Paste the token from the other device and press Enter. After we accept it we'll show this device's own link for them to open."
-    : 'Paste the token from the other device and press Enter.';
+    ? "Scan the QR on the admin device with the camera button below, or paste its token and press Enter. After we accept it we'll show this device's own link for them to open."
+    : 'Scan the QR on the admin device with the camera button below, or paste its token and press Enter.';
+  const cameraAvailable = canScanWithCamera();
   return (
     <div>
       <p style={{ margin: '0 0 var(--polly-space-md, 1rem)' }}>{instruction}</p>
+      {cameraAvailable && (
+        <Layout
+          columns="1fr"
+          gap="var(--polly-space-sm, 0.5rem)"
+          padding="0 0 var(--polly-space-sm, 0.5rem) 0"
+        >
+          <Button
+            label="Scan with camera"
+            tier="primary"
+            fullWidth={true}
+            data-action="pairing.open-camera"
+          />
+        </Layout>
+      )}
+      <Layout
+        columns="1fr"
+        gap="var(--polly-space-sm, 0.5rem)"
+        padding="0 0 var(--polly-space-sm, 0.5rem) 0"
+      >
+        <QrImageDropzone />
+      </Layout>
       <ActionInput
         value={scanInput.value}
         variant="single"
         action="pairing.submit-scan"
         saveOn="enter"
-        placeholder="Paste token here..."
+        placeholder="…or paste token here"
       />
       <Layout
         columns="1fr"
@@ -560,6 +583,7 @@ export function LoginPage(): preact.JSX.Element {
         {pairingMode.value === 'wizard-scan' && <ScanView />}
         <PwaInstallPrompt />
       </div>
+      <QrScanDialog />
     </div>
   );
 }
