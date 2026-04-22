@@ -518,6 +518,40 @@ function WhoAreYouView(): preact.JSX.Element {
           />
         </Layout>
       </div>
+      <div>
+        <p
+          style={{
+            margin: '0 0 var(--polly-space-xs, 0.25rem)',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+          }}
+        >
+          Pair device — accept an invite
+        </p>
+        <p
+          style={{
+            margin: '0 0 var(--polly-space-sm, 0.5rem)',
+            fontSize: '0.85rem',
+            color: 'var(--polly-text-muted, #57534e)',
+          }}
+        >
+          An admin already ran <code>fairfox mesh invite open &lt;name&gt;</code> (or{' '}
+          <code>mesh add-device</code>) and showed you a QR. Scan it to join their mesh as this
+          device — the invite carries your user identity.
+        </p>
+        <Layout
+          columns="1fr"
+          gap="var(--polly-space-sm, 0.5rem)"
+          padding="0 0 var(--polly-space-sm, 0.5rem) 0"
+        >
+          <Button
+            label="Pair this device"
+            tier="secondary"
+            fullWidth={true}
+            data-action="pairing.start-scan"
+          />
+        </Layout>
+      </div>
       {userSetupError.value && (
         <p style={{ color: '#b91c1c', fontSize: '0.85rem' }}>{userSetupError.value}</p>
       )}
@@ -601,7 +635,7 @@ export function LoginPage(): preact.JSX.Element {
       <div style={PAGE_STYLE}>
         <div style={CARD_STYLE}>
           <WhoAreYouHeader />
-          <WhoAreYouView />
+          {pairingMode.value === 'wizard-scan' ? <ScanView /> : <WhoAreYouView />}
           <PwaInstallPrompt />
         </div>
         <QrScanDialog />

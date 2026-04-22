@@ -42,3 +42,21 @@ jobs:
           files: dist/fairfox-web.zip
           generate_release_notes: true
           tag_name: ${{ github.ref_name }}
+
+      # Nudge the running Railway server to re-fetch the new bundle
+      # without a redeploy. If the token secret isn't set or the
+      # server is down, the step prints a warning and succeeds — the
+      # server will catch up on its next cold-start or manual refresh.
+      - name: Refresh deployed server bundle
+        env:
+          FAIRFOX_REFRESH_TOKEN: ${{ secrets.FAIRFOX_REFRESH_TOKEN }}
+          FAIRFOX_SERVER_URL: ${{ vars.FAIRFOX_SERVER_URL || 'https://fairfox-production-8273.up.railway.app' }}
+        run: |
+          if [ -z "$FAIRFOX_REFRESH_TOKEN" ]; then
+            echo "::warning::FAIRFOX_REFRESH_TOKEN secret not set — skipping server refresh"
+            exit 0
+          fi
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $FAIRFOX_REFRESH_TOKEN" \
+            "$FAIRFOX_SERVER_URL/admin/refresh-web-bundle" \
+            || echo "::warning::refresh endpoint non-2xx; server will catch up on next cold-start"

@@ -589,7 +589,16 @@ const server = Bun.serve<WsData>({
     }
 
     if (p === '/build-hash') {
-      return Response.json({ hash: BUILD_HASH }, { headers: { 'Cache-Control': 'no-store' } });
+      // The HTML shell bakes `appBundle.tag` into the meta tag the
+      // freshness banner reads; serve the same value here so the two
+      // agree once the client is on the latest bundle. Using
+      // BUILD_HASH (Railway commit SHA) here made the banner loop —
+      // the two signals were tracking different things and could
+      // never converge.
+      return Response.json(
+        { hash: appBundle?.tag ?? BUILD_HASH },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
     }
 
     // Admin — inspect or refresh the currently-loaded SPA bundle.
@@ -748,7 +757,12 @@ const server = Bun.serve<WsData>({
         if (!artefact) {
           return new Response('Not Found', { status: 404 });
         }
-        return new Response(artefact.body, {
+        // fflate returns Uint8Array<ArrayBufferLike>; Response/Blob
+        // need Uint8Array<ArrayBuffer>. Copy into a fresh, narrower
+        // buffer rather than casting.
+        const body = new Uint8Array(artefact.body.byteLength);
+        body.set(artefact.body);
+        return new Response(body, {
           headers: { 'Content-Type': artefact.contentType },
         });
       }
