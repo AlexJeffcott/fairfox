@@ -18,7 +18,12 @@
 // No cross-origin requests are cached. Signalling WebSocket upgrades
 // and POSTs to the legacy todo/struggle APIs pass through untouched.
 
-const CACHE_VERSION = 'v2';
+// v3: the mesh-app cutover — every mesh route now returns the same
+// unified SPA shell, so sub-app JS under /todo-v2, /agenda, etc. no
+// longer exists. Bumping the version evicts any stale per-sub-app
+// entries from previous installs on the first activate after the
+// deploy lands.
+const CACHE_VERSION = 'v3';
 const CACHE_NAME = `fairfox-${CACHE_VERSION}`;
 const PRECACHE = ['/', '/manifest.webmanifest', '/icon.svg', '/icon-maskable.svg'];
 

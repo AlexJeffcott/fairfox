@@ -65,17 +65,30 @@ export const BUILD_HASH =
   (await readBakedBuildHash()) ??
   `dev-${process.pid}-${Date.now()}`;
 
-// --- Mesh sub-app bundles built at startup ---
+// --- Mesh SPA bundle built at startup ---
+//
+// After Phase 3 the whole mesh UI ships as one Preact SPA mounted
+// from `packages/home`'s boot. The sub-app routes (/todo-v2,
+// /agenda, /library, /family-phone-admin, /speakwell,
+// /the-struggle) all serve the same HTML shell and JS bundle; the
+// client-side router reads `location.pathname` and renders the
+// right sub-app. MESH_ROUTES below is the list the server
+// recognises as "this belongs to the SPA" — any request for one of
+// these paths returns home's HTML. Asset requests still go through
+// `/home/*.js` and `/home/*.css`.
 
-const MESH_SUBAPPS = [
-  'home',
-  'agenda',
-  'todo-v2',
-  'the-struggle',
-  'library',
-  'speakwell',
-  'family-phone-admin',
-] as const;
+const MESH_SUBAPPS = ['home'] as const;
+
+const MESH_ROUTES: ReadonlySet<string> = new Set([
+  '/',
+  '/index.html',
+  '/todo-v2',
+  '/agenda',
+  '/library',
+  '/family-phone-admin',
+  '/speakwell',
+  '/the-struggle',
+]);
 
 const bundles = await buildAllSubApps(MESH_SUBAPPS, BUILD_HASH);
 
@@ -584,7 +597,11 @@ const server = Bun.serve<WsData>({
       return Response.json({ ok: true });
     }
 
-    if (p === '/' || p === '/index.html') {
+    // Any route recognised by the mesh SPA returns the same HTML
+    // shell; the client-side router reads location.pathname and
+    // swaps the right sub-app in without a document fetch on
+    // subsequent navigations.
+    if (MESH_ROUTES.has(p)) {
       const homeBundle = bundles.get('home');
       if (!homeBundle) {
         return new Response('home bundle not available', { status: 503 });
