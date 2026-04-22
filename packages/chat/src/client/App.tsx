@@ -65,11 +65,13 @@ function formatTime(iso: string): string {
 function MessageRow({ message, selfDeviceId }: { message: Message; selfDeviceId: string | null }) {
   const isAssistant = message.sender === 'assistant';
   const isSelf = !isAssistant && message.senderDeviceId === selfDeviceId;
-  const bg = isAssistant
-    ? 'var(--polly-surface-muted, #f5f5f4)'
-    : isSelf
-      ? 'var(--polly-primary-soft, #dbeafe)'
-      : 'var(--polly-surface, #ffffff)';
+  // Hard-coded readable palette rather than polly vars that don't
+  // cover "muted surface for assistant" / "soft primary for self" in
+  // every theme. Earlier the assistant bubble inherited white text
+  // on an almost-white background, which is the report.
+  const bg = isAssistant ? '#e8edf3' : isSelf ? '#dbeafe' : '#ffffff';
+  const fg = '#1c1917';
+  const border = isAssistant ? '#c6cfd9' : isSelf ? '#bcd5f5' : '#e7e5e4';
   const label = isAssistant
     ? 'Claude'
     : `${displayNameFor(message.senderUserId)} · ${deviceNameFor(message.senderDeviceId)}`;
@@ -106,6 +108,8 @@ function MessageRow({ message, selfDeviceId }: { message: Message; selfDeviceId:
       <div
         style={{
           background: bg,
+          color: fg,
+          border: `1px solid ${border}`,
           padding: 'var(--polly-space-sm) var(--polly-space-md)',
           borderRadius: '6px',
           whiteSpace: 'pre-wrap',
