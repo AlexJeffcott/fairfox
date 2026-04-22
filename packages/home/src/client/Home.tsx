@@ -153,13 +153,23 @@ export function Home() {
               )}
             </p>
           </div>
-          <Button
-            label="Reload"
-            tier="tertiary"
-            size="small"
-            data-action="app.reload"
-            title="Re-fetch the latest bundle and re-run the boot-time trust harvest. PWAs don't have a refresh gesture; this button replaces one."
-          />
+          <Layout columns="auto auto" gap="var(--polly-space-xs)" alignItems="center">
+            <Button
+              label="Reload"
+              tier="tertiary"
+              size="small"
+              data-action="app.reload"
+              title="Re-fetch the latest bundle and re-run the boot-time trust harvest. PWAs don't have a refresh gesture; this button replaces one."
+            />
+            <Button
+              label="Reset"
+              tier="tertiary"
+              size="small"
+              color="danger"
+              data-action="app.reset-local"
+              title="Clear this device's IndexedDB (mesh docs, keyring, user identity) and reload. Use when the PWA is stuck on a broken sync message or corrupted state. You'll need to re-pair afterwards."
+            />
+          </Layout>
         </Layout>
         <PwaInstallPrompt />
       </header>

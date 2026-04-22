@@ -9,6 +9,31 @@
 import '@fairfox/polly/ui/styles.css';
 import '@fairfox/polly/ui/theme.css';
 
+// Swallow automerge-wasm OOM rejections so a single malformed sync
+// message doesn't crash the whole app. The `error inflating
+// document chunk ops` error comes from a sync message that the
+// WASM runtime can't expand — which can happen after a run of
+// degenerate writes produced huge ops (the bumpSelfLastSeen loop
+// that v0.29.x of polly + an earlier MeshGate bug triggered).
+// Surfacing it as an unhandled rejection crashed the page before
+// the user could use the "Reset local mesh state" escape hatch.
+// Here we log it and let the app keep rendering; the sync layer
+// drops the bad message and retries.
+if (typeof window !== 'undefined') {
+  window.addEventListener('unhandledrejection', (event) => {
+    const r = event.reason;
+    const msg = typeof r === 'object' && r !== null ? String(r.message ?? r) : String(r);
+    if (
+      msg.includes('inflating document chunk') ||
+      msg.includes('out of memory') ||
+      (r instanceof RangeError && msg.toLowerCase().includes('memory'))
+    ) {
+      console.warn('[fairfox] suppressed automerge OOM, dropping sync message:', msg);
+      event.preventDefault();
+    }
+  });
+}
+
 import { installEventDelegation } from '@fairfox/polly/actions';
 import { touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
 import { loadOrCreateKeyring } from '@fairfox/shared/keyring';

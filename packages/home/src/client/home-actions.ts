@@ -123,6 +123,79 @@ export const homeActions: Record<string, (ctx: HandlerContext) => void> = {
       }
     })();
   },
+  'app.reset-local': () => {
+    // Nuclear: wipe every IndexedDB the fairfox origin owns (keyring,
+    // user identity, mesh docs, automerge storage), unregister the
+    // service worker so the next fetch goes to origin, and reload.
+    // The user lands on the pairing login page and re-joins the mesh
+    // from a clean slate. Use when the local Automerge state is
+    // corrupt or a sync message is blowing out WASM memory.
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const ok = window.confirm(
+      'Reset this device?\n\n' +
+        'This clears every fairfox database on this browser (keyring, user identity, mesh documents) and reloads.\n' +
+        "You'll need to re-pair afterwards; other paired devices and the mesh data are unaffected."
+    );
+    if (!ok) {
+      return;
+    }
+    void (async () => {
+      try {
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map((r) => r.unregister()));
+        }
+      } catch {
+        // best-effort
+      }
+      try {
+        if (indexedDB.databases) {
+          const dbs = await indexedDB.databases();
+          await Promise.all(
+            dbs
+              .filter((db) => typeof db.name === 'string')
+              .map((db) => {
+                const name = db.name;
+                if (typeof name !== 'string') {
+                  return Promise.resolve();
+                }
+                return new Promise<void>((resolve) => {
+                  const req = indexedDB.deleteDatabase(name);
+                  req.onsuccess = () => {
+                    resolve();
+                  };
+                  req.onerror = () => {
+                    resolve();
+                  };
+                  req.onblocked = () => {
+                    resolve();
+                  };
+                });
+              })
+          );
+        }
+      } catch {
+        // best-effort
+      }
+      try {
+        if (caches) {
+          const names = await caches.keys();
+          await Promise.all(names.map((n) => caches.delete(n)));
+        }
+      } catch {
+        // best-effort
+      }
+      try {
+        window.localStorage?.clear();
+      } catch {
+        // best-effort
+      }
+      window.location.reload();
+    })();
+  },
+
   'app.reload': () => {
     // PWAs — and especially iOS standalone PWAs — don't have a
     // refresh gesture, and a stuck service worker can pin them on a
