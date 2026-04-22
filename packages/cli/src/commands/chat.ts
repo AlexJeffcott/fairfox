@@ -270,6 +270,20 @@ function buildPrompt(doc: ChatDoc, target: Message): string {
 }
 
 async function runClaude(prompt: string): Promise<string> {
+  // Test hook — when FAIRFOX_CLAUDE_STUB is set the relay short-circuits
+  // and returns the env value (or a default echo) instead of shelling out
+  // to `claude -p`. This lets scripts/e2e-chat-relay.ts exercise the
+  // full write-pending → reply → clear-pending loop without burning API
+  // tokens. Never used in production — the env is deliberately
+  // unfamiliar and no CI workflow sets it.
+  const stub = process.env.FAIRFOX_CLAUDE_STUB;
+  if (stub !== undefined) {
+    if (stub.length > 0) {
+      return stub;
+    }
+    const peek = prompt.split('\n').at(-2) ?? '';
+    return `[stub] acknowledged: ${peek.slice(0, 120)}`;
+  }
   const result =
     await $`cd ${CLAUDE_CWD} && claude -p ${prompt} --dangerously-skip-permissions`.text();
   return result.trim();
@@ -326,6 +340,90 @@ async function processOne(
     ],
   };
   process.stdout.write(`[chat serve] replied to ${target.id} (${replyText.length} chars)\n`);
+}
+
+/** `fairfox chat send <text>` — writes a pending user message into
+ * chat:main. Creates a fresh conversation when there is no active
+ * one (the CLI has no notion of "active conversation" the way the
+ * widget does, so every invocation starts a new one). Primarily for
+ * scripts/e2e-chat-relay.ts, but a useful standalone way to drop a
+ * message into the assistant thread from a shell. */
+export async function chatSend(text: string): Promise<number> {
+  const storage = keyringStorage();
+  const keyring = await storage.load();
+  if (!keyring) {
+    process.stderr.write('fairfox chat send: no keyring.\n');
+    return 1;
+  }
+  const identity = loadUserIdentityFile();
+  if (!identity) {
+    process.stderr.write('fairfox chat send: no user identity.\n');
+    return 1;
+  }
+  const peerId = derivePeerId(keyring.identity.publicKey);
+  const client = await openMeshClient({ peerId });
+  try {
+    const chatSignal = $meshState<ChatDoc>('chat:main', { conversations: [], messages: [] });
+    await chatSignal.loaded;
+    const now = new Date().toISOString();
+    const convo: Conversation = {
+      id: randomId(),
+      title: text.slice(0, 60),
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: identity.userId,
+      contextRefs: [],
+    };
+    const message: Message = {
+      id: randomId(),
+      conversationId: convo.id,
+      sender: 'user',
+      senderUserId: identity.userId,
+      senderDeviceId: peerId,
+      text,
+      pending: true,
+      createdAt: now,
+    };
+    chatSignal.value = {
+      conversations: [...chatSignal.value.conversations, convo],
+      messages: [...chatSignal.value.messages, message],
+    };
+    await flushOutgoing(500);
+    process.stdout.write(`wrote message ${message.id} in conversation ${convo.id}\n`);
+    return 0;
+  } finally {
+    try {
+      await client.close();
+    } catch {
+      // best-effort
+    }
+  }
+}
+
+/** `fairfox chat dump` — print chat:main as JSON. Useful after a
+ * test run for asserting on message contents; also handy as a plain
+ * debugging view. */
+export async function chatDump(): Promise<number> {
+  const storage = keyringStorage();
+  const keyring = await storage.load();
+  if (!keyring) {
+    process.stderr.write('fairfox chat dump: no keyring.\n');
+    return 1;
+  }
+  const peerId = derivePeerId(keyring.identity.publicKey);
+  const client = await openMeshClient({ peerId });
+  try {
+    const chatSignal = $meshState<ChatDoc>('chat:main', { conversations: [], messages: [] });
+    await chatSignal.loaded;
+    process.stdout.write(`${JSON.stringify(chatSignal.value, null, 2)}\n`);
+    return 0;
+  } finally {
+    try {
+      await client.close();
+    } catch {
+      // best-effort
+    }
+  }
 }
 
 export async function chatServe(): Promise<number> {

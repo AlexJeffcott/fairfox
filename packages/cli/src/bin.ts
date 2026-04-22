@@ -33,7 +33,7 @@ import '#src/preload.ts';
 
 import { parseArgs } from 'node:util';
 import { agendaAdd, agendaList } from '#src/commands/agenda.ts';
-import { chatServe } from '#src/commands/chat.ts';
+import { chatDump, chatSend, chatServe } from '#src/commands/chat.ts';
 import { deploy } from '#src/commands/deploy.ts';
 import { mesh } from '#src/commands/mesh.ts';
 import { pair } from '#src/commands/pair.ts';
@@ -141,7 +141,18 @@ function main(): Promise<number> {
     if (verb === 'serve') {
       return chatServe();
     }
-    process.stderr.write('fairfox chat: unknown verb. Try "serve".\n');
+    if (verb === 'send') {
+      const text = rest.slice(1).join(' ').trim();
+      if (!text) {
+        process.stderr.write('fairfox chat send: expected message text.\n');
+        return Promise.resolve(1);
+      }
+      return chatSend(text);
+    }
+    if (verb === 'dump') {
+      return chatDump();
+    }
+    process.stderr.write('fairfox chat: unknown verb. Try "serve", "send", or "dump".\n');
     return Promise.resolve(1);
   }
 
