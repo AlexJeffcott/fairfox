@@ -6,6 +6,7 @@
 // will be retired in Phase 3 once the server-side cutover lands.
 
 import { App as AgendaApp } from '@fairfox/agenda/client';
+import { App as DocsApp } from '@fairfox/docs/client';
 import { App as FamilyPhoneApp } from '@fairfox/family-phone-admin/client';
 import { App as LibraryApp } from '@fairfox/library/client';
 import { MeshGate } from '@fairfox/shared/mesh-gate';
@@ -36,6 +37,9 @@ function RouteView(): preact.JSX.Element {
   }
   if (path === '/library') {
     return <LibraryApp />;
+  }
+  if (path === '/docs') {
+    return <DocsApp />;
   }
   if (path === '/family-phone-admin') {
     return <FamilyPhoneApp />;

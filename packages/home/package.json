@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@fairfox/agenda": "workspace:*",
+    "@fairfox/docs": "workspace:*",
     "@fairfox/family-phone-admin": "workspace:*",
     "@fairfox/library": "workspace:*",
     "@fairfox/polly": "catalog:",

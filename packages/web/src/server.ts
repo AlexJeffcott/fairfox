@@ -79,6 +79,7 @@ const MESH_ROUTES: ReadonlySet<string> = new Set([
   '/index.html',
   '/todo-v2',
   '/agenda',
+  '/docs',
   '/library',
   '/family-phone-admin',
   '/speakwell',

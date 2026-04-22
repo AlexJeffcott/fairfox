@@ -10,6 +10,7 @@
 // consults `canDo()` before running any gated handler.
 
 import { AGENDA_WRITE_ACTIONS, registry as agendaRegistry } from '@fairfox/agenda/actions';
+import { DOCS_WRITE_ACTIONS, registry as docsRegistry } from '@fairfox/docs/actions';
 import { registry as familyPhoneRegistry } from '@fairfox/family-phone-admin/actions';
 import { registry as libraryRegistry } from '@fairfox/library/actions';
 import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
@@ -43,6 +44,7 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
   ...routerActions,
   ...todoRegistry,
   ...agendaRegistry,
+  ...docsRegistry,
   ...libraryRegistry,
   ...familyPhoneRegistry,
   ...speakwellRegistry,
@@ -66,5 +68,11 @@ export function dispatch(d: ActionDispatch): void {
     console.warn(`[policy] blocked ${d.action}: user lacks agenda.write`);
     return;
   }
+  // Docs writes are ungated for now — policy.ts doesn't yet carry a
+  // `docs.write` permission. The set is still exported so the gate
+  // can flip on without touching the dispatcher once the policy is
+  // extended. Reference the constant to silence unused-import
+  // checkers.
+  void DOCS_WRITE_ACTIONS;
   handler({ data: d.data, event: d.event, element: d.element });
 }
