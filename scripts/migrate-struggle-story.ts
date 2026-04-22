@@ -89,6 +89,7 @@ interface PassageRow {
   id: string;
   chapter_id: string;
   death: string | null;
+  next: string | null;
 }
 interface ContentRow {
   passage_id: string;
@@ -127,7 +128,7 @@ function loadFromDb(): {
     .query('SELECT id, title, start_passage FROM chapters')
     .all() as ChapterRow[];
   const passageRows = db
-    .query('SELECT id, chapter_id, death FROM passages ORDER BY id')
+    .query('SELECT id, chapter_id, death, next FROM passages ORDER BY id')
     .all() as PassageRow[];
   const contentRows = db
     .query('SELECT passage_id, chapter_id, context, html FROM passage_content')
@@ -180,7 +181,19 @@ function loadFromDb(): {
   for (const p of passageRows) {
     const key = `${p.chapter_id}:${p.id}`;
     const contents = contentByPassage.get(key) ?? new Map();
-    const content: PassageContent = { body: contents.get('body') ?? '' };
+    // Fall back to if_true (and then if_false) when there's no
+    // plain body. The new renderer only surfaces `content.body`;
+    // the legacy engine branches on passage.condition to pick
+    // between if_true / if_false variants. Without a condition
+    // evaluator in the new UI, the best we can do at seed time is
+    // surface SOMETHING. ifTrue stays on the record for any future
+    // condition renderer.
+    const body =
+      contents.get('body') ??
+      contents.get('if_true') ??
+      contents.get('if_false') ??
+      '';
+    const content: PassageContent = { body };
     const preamble = contents.get('preamble');
     if (preamble) {
       content.preamble = preamble;
@@ -193,12 +206,29 @@ function loadFromDb(): {
     if (ifFalse) {
       content.ifFalse = ifFalse;
     }
+    // Synthesise a "Continue" choice from passages.next when the
+    // legacy engine relied on auto-navigation. Without this, the
+    // chapter's title page (id=000, next=001) becomes a dead end
+    // because the new schema only models explicit choices.
+    const realChoices = choicesByPassage.get(key) ?? [];
+    const choices: Choice[] =
+      realChoices.length > 0 || !p.next
+        ? realChoices
+        : [
+            {
+              id: `${p.id}-continue`,
+              passageId: p.id,
+              targetPassageId: p.next,
+              label: 'Continue',
+              type: 'navigate',
+            },
+          ];
     const passage: Passage = {
       id: p.id,
       chapterId: p.chapter_id,
       title: titleByPassage.get(key) ?? '',
       content,
-      choices: choicesByPassage.get(key) ?? [],
+      choices,
       isDeath: p.death !== null && p.death !== '',
     };
     const list = passagesByChapter.get(p.chapter_id) ?? [];
