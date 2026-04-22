@@ -30,7 +30,7 @@ import {
 import { loadOrCreateKeyring } from '#src/keyring.ts';
 import { completePairing, initiatePairing } from '#src/pairing.ts';
 import {
-  cameraScanOpen,
+  cameraScanMode,
   type InviteRole,
   inviteDraftEnabled,
   inviteDraftName,
@@ -631,6 +631,38 @@ export async function submitScannedValue(raw: string): Promise<void> {
   }
 }
 
+/** Apply a raw recovery blob (from paste, scan, or image decode)
+ * as this device's user identity. Shared between the
+ * `users.import-recovery` paste-box action and the QR scanner
+ * dropzone / camera dispatch. Writes a self-signed UserEntry if
+ * the mesh doesn't already carry one for this identity, then
+ * self-endorses the device row. */
+export async function importRecoveryBlob(raw: string): Promise<void> {
+  const blob = raw.trim();
+  if (!blob) {
+    userSetupError.value = 'Paste your recovery blob first.';
+    return;
+  }
+  userSetupError.value = null;
+  try {
+    const identity = decodeRecoveryBlob(blob);
+    await saveUserIdentity(identity);
+    if (!usersState.value.users[identity.userId]) {
+      upsertUser({
+        entry: createBootstrapUser({
+          displayName: identity.displayName,
+          userKey: identity.keypair,
+        }),
+      });
+    }
+    await selfEndorseDevice(identity);
+    userIdentity.value = identity;
+    recoveryBlobDraft.value = '';
+  } catch (err) {
+    userSetupError.value = err instanceof Error ? err.message : String(err);
+  }
+}
+
 export const pairingActions: Record<string, (ctx: PairingHandlerContext) => void> = {
   'pairing.start-issue': () => {
     resetCeremony();
@@ -670,11 +702,19 @@ export const pairingActions: Record<string, (ctx: PairingHandlerContext) => void
   },
 
   'pairing.open-camera': () => {
-    cameraScanOpen.value = true;
+    cameraScanMode.value = 'pair';
   },
 
   'pairing.close-camera': () => {
-    cameraScanOpen.value = false;
+    cameraScanMode.value = null;
+  },
+
+  'users.open-recovery-camera': () => {
+    cameraScanMode.value = 'recovery';
+  },
+
+  'users.close-recovery-camera': () => {
+    cameraScanMode.value = null;
   },
 
   'pairing.start-solo': () => {
@@ -744,30 +784,7 @@ export const pairingActions: Record<string, (ctx: PairingHandlerContext) => void
       userSetupError.value = 'Paste your recovery blob first.';
       return;
     }
-    userSetupError.value = null;
-    (async () => {
-      try {
-        const identity = decodeRecoveryBlob(blob);
-        await saveUserIdentity(identity);
-        // If the imported user has no `UserEntry` yet in the mesh
-        // registry — i.e. the user was created on a device that never
-        // synced — write a self-signed row now. Otherwise the existing
-        // row already speaks for them.
-        if (!usersState.value.users[identity.userId]) {
-          upsertUser({
-            entry: createBootstrapUser({
-              displayName: identity.displayName,
-              userKey: identity.keypair,
-            }),
-          });
-        }
-        await selfEndorseDevice(identity);
-        userIdentity.value = identity;
-        recoveryBlobDraft.value = '';
-      } catch (err) {
-        userSetupError.value = err instanceof Error ? err.message : String(err);
-      }
-    })();
+    void importRecoveryBlob(blob);
   },
 
   'users.dismiss-recovery-blob': () => {

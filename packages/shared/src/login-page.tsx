@@ -473,14 +473,36 @@ function WhoAreYouView(): preact.JSX.Element {
             color: 'var(--polly-text-muted, #57534e)',
           }}
         >
-          Already have a recovery blob from another device? Paste it here.
+          Already have a recovery blob from another device? Scan the QR it printed, drop in a
+          screenshot, or paste the blob as text.
         </p>
+        {canScanWithCamera() && (
+          <Layout
+            columns="1fr"
+            gap="var(--polly-space-sm, 0.5rem)"
+            padding="0 0 var(--polly-space-sm, 0.5rem) 0"
+          >
+            <Button
+              label="Scan with camera"
+              tier="primary"
+              fullWidth={true}
+              data-action="users.open-recovery-camera"
+            />
+          </Layout>
+        )}
+        <Layout
+          columns="1fr"
+          gap="var(--polly-space-sm, 0.5rem)"
+          padding="0 0 var(--polly-space-sm, 0.5rem) 0"
+        >
+          <QrImageDropzone mode="recovery" />
+        </Layout>
         <ActionInput
           value={recoveryBlobDraft.value}
           variant="single"
           action="users.recovery-blob-input"
           saveOn="blur"
-          placeholder="fairfox-user-v1:..."
+          placeholder="…or paste fairfox-user-v1:…"
           ariaLabel="Recovery blob"
         />
         <Layout

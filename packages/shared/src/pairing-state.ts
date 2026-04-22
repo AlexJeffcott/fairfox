@@ -45,10 +45,14 @@ export const pairingSessionId = signal<string | null>(null);
  * line under the QR. */
 export const issuerWaitingForReturn = signal<boolean>(false);
 
-/** True while the in-app camera QR scanner modal is open. Lives in
- * this file rather than `qr-scan.tsx` so the `pairingActions` handler
- * can toggle it without a circular import. */
-export const cameraScanOpen = signal<boolean>(false);
+/** What the in-app camera QR scanner modal is scanning FOR. null =
+ * modal closed. 'pair' = decoded payload is fed into the pairing
+ * pipeline (token / invite / recovery URL fragments). 'recovery' =
+ * decoded payload is treated as a user recovery blob and imported
+ * directly. Lives in this file rather than `qr-scan.tsx` so the
+ * `pairingActions` handler can toggle it without a circular import. */
+export type CameraScanMode = 'pair' | 'recovery';
+export const cameraScanMode = signal<CameraScanMode | null>(null);
 
 export type InviteRole = 'admin' | 'member' | 'guest';
 

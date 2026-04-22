@@ -188,11 +188,7 @@ function loadFromDb(): {
     // evaluator in the new UI, the best we can do at seed time is
     // surface SOMETHING. ifTrue stays on the record for any future
     // condition renderer.
-    const body =
-      contents.get('body') ??
-      contents.get('if_true') ??
-      contents.get('if_false') ??
-      '';
+    const body = contents.get('body') ?? contents.get('if_true') ?? contents.get('if_false') ?? '';
     const content: PassageContent = { body };
     const preamble = contents.get('preamble');
     if (preamble) {

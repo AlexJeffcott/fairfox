@@ -22,8 +22,16 @@ import { Button } from '@fairfox/polly/ui';
 import { signal } from '@preact/signals';
 import jsQR from 'jsqr';
 import { useEffect, useRef } from 'preact/hooks';
-import { submitScannedValue } from '#src/pairing-actions.ts';
-import { cameraScanOpen, pairingError } from '#src/pairing-state.ts';
+import { importRecoveryBlob, submitScannedValue } from '#src/pairing-actions.ts';
+import { type CameraScanMode, cameraScanMode, pairingError } from '#src/pairing-state.ts';
+
+async function dispatchScanPayload(mode: CameraScanMode, payload: string): Promise<void> {
+  if (mode === 'recovery') {
+    await importRecoveryBlob(payload);
+    return;
+  }
+  await submitScannedValue(payload);
+}
 
 const cameraScanError = signal<string | null>(null);
 
@@ -94,14 +102,16 @@ const ERROR_STYLE = {
 };
 
 function closeCamera(): void {
-  cameraScanOpen.value = false;
+  cameraScanMode.value = null;
   cameraScanError.value = null;
 }
 
 export function QrScanDialog(): preact.JSX.Element | null {
-  if (!cameraScanOpen.value) {
+  const modeOrNull = cameraScanMode.value;
+  if (modeOrNull === null) {
     return null;
   }
+  const mode: CameraScanMode = modeOrNull;
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -159,7 +169,7 @@ export function QrScanDialog(): preact.JSX.Element | null {
               cancelled = true;
               pairingError.value = null;
               closeCamera();
-              void submitScannedValue(code.data);
+              void dispatchScanPayload(mode, code.data);
               return;
             }
           }
@@ -275,8 +285,14 @@ const DROPZONE_STYLE = {
 /** Screenshot-of-a-QR as an input. Renders a label-wrapped
  * `<input type="file">` (so clicks open the native picker without
  * needing an inline onClick) and also registers a window-level
- * paste listener for Cmd/Ctrl-V with an image on the clipboard. */
-export function QrImageDropzone(): preact.JSX.Element {
+ * paste listener for Cmd/Ctrl-V with an image on the clipboard.
+ * `mode` decides what the decoded payload feeds — the pair pipeline
+ * or the recovery-blob import. */
+export function QrImageDropzone({
+  mode = 'pair',
+}: {
+  mode?: CameraScanMode;
+} = {}): preact.JSX.Element {
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -289,7 +305,7 @@ export function QrImageDropzone(): preact.JSX.Element {
         const decoded = await decodeQrFromImageBlob(blob);
         if (decoded) {
           pairingError.value = null;
-          await submitScannedValue(decoded);
+          await dispatchScanPayload(mode, decoded);
         } else {
           pairingError.value = "Couldn't find a QR code in that image.";
         }
