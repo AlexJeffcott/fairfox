@@ -31,7 +31,8 @@
     "./pairing-actions": "./src/pairing-actions.ts",
     "./qr-scan": "./src/qr-scan.tsx",
     "./signaling": "./src/signaling.ts",
-    "./page-context": "./src/page-context.ts"
+    "./page-context": "./src/page-context.ts",
+    "./polly": "./src/polly-reexport.ts"
   },
   "imports": {
     "#src/*": "./src/*"

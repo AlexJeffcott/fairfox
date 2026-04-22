@@ -27,9 +27,9 @@ import {
   encodePairingToken,
   generateDocumentKey,
   generateSigningKeyPair,
+  type KeyringStorage,
   type MeshKeyring,
-} from '@fairfox/polly/mesh';
-import type { KeyringStorage } from '@fairfox/polly/mesh/node';
+} from '@fairfox/shared/polly';
 import {
   derivePeerId,
   flushOutgoing,

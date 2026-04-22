@@ -14,9 +14,9 @@
 // Invite / revoke require a local identity with the appropriate
 // role. List + whoami work without one.
 
-import { $meshState, generateSigningKeyPair } from '@fairfox/polly/mesh';
 import { createInvite } from '@fairfox/shared/invite';
 import { permissionsForEntry } from '@fairfox/shared/policy';
+import { $meshState, generateSigningKeyPair } from '@fairfox/shared/polly';
 import {
   createBootstrapUser,
   type Role,

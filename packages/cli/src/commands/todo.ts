@@ -15,7 +15,7 @@
 // long enough for a healthy signalling round-trip, short enough
 // that an offline CLI doesn't feel stuck.
 
-import { $meshState } from '@fairfox/polly/mesh';
+import { $meshState } from '@fairfox/shared/polly';
 import {
   derivePeerId,
   flushOutgoing,

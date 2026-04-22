@@ -11,17 +11,6 @@
 
 import { existsSync, unlinkSync } from 'node:fs';
 import { hostname } from 'node:os';
-import {
-  $meshState,
-  applyPairingToken,
-  createPairingToken,
-  DEFAULT_MESH_KEY_ID,
-  decodePairingToken,
-  encodePairingToken,
-  generateDocumentKey,
-  generateSigningKeyPair,
-  type MeshKeyring,
-} from '@fairfox/polly/mesh';
 import type { DevicesDoc } from '@fairfox/shared/devices-state';
 import {
   addEndorsementToDevice,
@@ -35,6 +24,17 @@ import {
   meshMetaState,
   setMeshName,
 } from '@fairfox/shared/mesh-meta-state';
+import {
+  $meshState,
+  applyPairingToken,
+  createPairingToken,
+  DEFAULT_MESH_KEY_ID,
+  decodePairingToken,
+  encodePairingToken,
+  generateDocumentKey,
+  generateSigningKeyPair,
+  type MeshKeyring,
+} from '@fairfox/shared/polly';
 import { signEndorsement } from '@fairfox/shared/user-identity';
 import {
   createBootstrapUser,

@@ -10,7 +10,7 @@
 // History window: messages in the SAME conversation, last 30
 // minutes up to the target, capped at 20 entries.
 
-import { $meshState } from '@fairfox/polly/mesh';
+import { $meshState } from '@fairfox/shared/polly';
 import { $ } from 'bun';
 import {
   derivePeerId,

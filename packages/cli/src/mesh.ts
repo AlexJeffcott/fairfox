@@ -6,10 +6,9 @@
 import { homedir, hostname } from 'node:os';
 import { join } from 'node:path';
 import { NodeFSStorageAdapter } from '@automerge/automerge-repo-storage-nodefs';
-import type { MeshClient } from '@fairfox/polly/mesh';
-import { createMeshClient } from '@fairfox/polly/mesh';
-import { fileKeyringStorage, type KeyringStorage } from '@fairfox/polly/mesh/node';
 import { devicesState, harvestPeerKeys, touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
+import type { KeyringStorage, MeshClient } from '@fairfox/shared/polly';
+import { createMeshClient, fileKeyringStorage } from '@fairfox/shared/polly';
 import { RTCPeerConnection } from 'werift';
 
 export const KEYRING_PATH = join(homedir(), '.fairfox', 'keyring.json');

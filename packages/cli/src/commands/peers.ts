@@ -4,13 +4,13 @@
 // pairing, one source of truth.
 
 import { hostname } from 'node:os';
-import { $meshState, revokePeerLocally } from '@fairfox/polly/mesh';
 import {
   type DeviceEntry,
   type DevicesDoc,
   touchSelfDeviceEntry,
   upsertDeviceEntry,
 } from '@fairfox/shared/devices-state';
+import { $meshState, revokePeerLocally } from '@fairfox/shared/polly';
 import {
   derivePeerId,
   flushOutgoing,

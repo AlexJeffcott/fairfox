@@ -22,8 +22,7 @@ import {
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { isRecord } from '@fairfox/polly/guards';
-import { type SigningKeyPair, signingKeyPairFromSecret } from '@fairfox/polly/mesh';
+import { isRecord, type SigningKeyPair, signingKeyPairFromSecret } from '@fairfox/shared/polly';
 import {
   decodeRecoveryBlob,
   exportRecoveryBlob,

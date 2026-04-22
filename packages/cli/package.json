@@ -18,7 +18,6 @@
     "@automerge/automerge-repo": "catalog:",
     "@automerge/automerge-repo-network-websocket": "catalog:",
     "@automerge/automerge-repo-storage-nodefs": "catalog:",
-    "@fairfox/polly": "catalog:",
     "@fairfox/shared": "workspace:*",
     "qrcode": "catalog:",
     "tweetnacl": "catalog:",

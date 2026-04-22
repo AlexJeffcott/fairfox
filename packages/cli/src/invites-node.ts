@@ -19,7 +19,7 @@ import {
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { isRecord } from '@fairfox/polly/guards';
+import { isRecord } from '@fairfox/shared/polly';
 import type { Role } from '@fairfox/shared/users-state';
 
 export const INVITES_PATH = join(homedir(), '.fairfox', 'invites.json');

@@ -13,7 +13,7 @@
 // that sub-app would drag along; shared structural types live in the
 // CRDT document itself, not in a typings package.
 
-import { $meshState } from '@fairfox/polly/mesh';
+import { $meshState } from '@fairfox/shared/polly';
 import {
   derivePeerId,
   flushOutgoing,
