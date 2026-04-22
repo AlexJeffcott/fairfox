@@ -501,8 +501,40 @@ async function meshWhoami(): Promise<number> {
 async function meshAddDevice(): Promise<number> {
   const identity = loadUserIdentityFile();
   if (!identity) {
+    const storage = keyringStorage();
+    const paired = (await storage.load()) !== null;
+    if (paired) {
+      // CLI is paired into a mesh but has no user identity (e.g. it
+      // paired via a `/cli/install?token=…` URL that didn't carry a
+      // recovery blob). The fix is to import the user key, not to
+      // wipe the mesh.
+      process.stderr.write(
+        [
+          'fairfox mesh add-device: this CLI is paired into a mesh but has no',
+          'local user identity. Import an existing user with:',
+          '',
+          '  fairfox users import <recovery-blob>',
+          '',
+          'or bootstrap a new admin user for this mesh with:',
+          '',
+          '  fairfox users bootstrap <display-name>',
+          '',
+          'Do NOT run `fairfox mesh init` — that starts a fresh mesh and',
+          'disconnects this device from the existing one.',
+          '',
+        ].join('\n')
+      );
+      return 1;
+    }
     process.stderr.write(
-      'fairfox mesh add-device: no local user identity. Run `fairfox mesh init` first.\n'
+      [
+        'fairfox mesh add-device: no keyring and no user identity on this',
+        'machine. Either:',
+        '',
+        '  fairfox mesh init --admin <name>   (start a new mesh)',
+        '  curl -fsSL https://…/cli/install?token=<token>  (join an existing one)',
+        '',
+      ].join('\n')
     );
     return 1;
   }

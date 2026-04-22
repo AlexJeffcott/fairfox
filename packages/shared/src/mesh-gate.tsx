@@ -153,7 +153,39 @@ async function bumpSelfLastSeen(): Promise<void> {
   touchSelfDeviceEntry(peerId, { agent: 'browser' });
 }
 
+/** Module-level guard so the once-per-mount heal/bump fires exactly
+ * once even under Preact StrictMode double-mounts or rapid remounts
+ * from the route switcher. */
+let selfHeartbeatFired = false;
+
 export function MeshGate({ children }: MeshGateProps): preact.JSX.Element | null {
+  // Bump the self device's lastSeenAt ONCE per process, out of band
+  // from the reactive signal-effect. Earlier this lived inside
+  // useSignalEffect, which caused an infinite write loop: the
+  // effect read devicesState.value, touchSelfDeviceEntry wrote to
+  // it, the write re-fired the effect, and round we went. That
+  // pinned WebRTC peers into constant tear-down and showed up as
+  // "all peers disconnected" on every paired device.
+  //
+  // The hydration fence for userIdentity is indirect: we wait for
+  // it to settle to something other than `undefined` before
+  // deciding which branch to run. The module-level flag guards
+  // against double-invocation from StrictMode remounts.
+  useSignalEffect(() => {
+    if (selfHeartbeatFired) {
+      return;
+    }
+    if (userIdentity.value === undefined) {
+      return;
+    }
+    selfHeartbeatFired = true;
+    if (userIdentity.value) {
+      void selfHealIdentity();
+    } else {
+      void bumpSelfLastSeen();
+    }
+  });
+
   useSignalEffect(() => {
     if (knownPeerCount.value === null) {
       void refreshKeyringState().then(() => {
@@ -165,16 +197,6 @@ export function MeshGate({ children }: MeshGateProps): preact.JSX.Element | null
     }
     if (userIdentity.value === undefined) {
       void hydrateUserIdentity();
-    }
-    if (userIdentity.value) {
-      void selfHealIdentity();
-    } else {
-      // Even without a user identity — e.g. a device that paired
-      // before the user-identity layer existed, or one that hasn't
-      // completed the WhoAreYou wizard — bump lastSeenAt so the
-      // Peers view isn't showing "last seen 16h ago" for the
-      // device you're literally looking at right now.
-      void bumpSelfLastSeen();
     }
     // Reactive harvest: whenever mesh:devices changes (including
     // the initial load), pull any unknown pubkeys into our keyring.
