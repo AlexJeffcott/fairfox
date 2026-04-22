@@ -14,7 +14,9 @@ import { SIGNALING_PATH } from '@fairfox/shared/signaling';
 import type { WsData } from '@fairfox/shared/subapp';
 import type { ServerWebSocket, WebSocketHandler } from 'bun';
 import { zipSync } from 'fflate';
-import { APP_PACKAGE, buildApp } from './bundle-app.ts';
+import { type AppBundle, fetchApp } from './fetch-app.ts';
+
+const APP_PACKAGE = 'home';
 
 const env = loadEnv();
 
@@ -83,13 +85,25 @@ const MESH_ROUTES: ReadonlySet<string> = new Set([
   '/the-struggle',
 ]);
 
-let appBundle: Awaited<ReturnType<typeof buildApp>> | null = null;
-try {
-  appBundle = await buildApp(BUILD_HASH);
-  console.log(`[bundle-app] ${appBundle.artefacts.size} artefact(s) ready`);
-} catch (err) {
-  console.error(`[bundle-app] ${err instanceof Error ? err.message : err}`);
+let appBundle: AppBundle | null = null;
+let lastBundleRefresh = 0;
+const REFRESH_DEBOUNCE_MS = 5_000;
+
+async function refreshAppBundle(): Promise<AppBundle | null> {
+  const next = await fetchApp();
+  if (next) {
+    appBundle = next;
+    lastBundleRefresh = Date.now();
+    console.log(`[fetch-app] ${appBundle.tag}: ${appBundle.artefacts.size} artefact(s) ready`);
+  } else {
+    console.error('[fetch-app] no bundle available (network and disk cache both failed)');
+  }
+  return appBundle;
 }
+
+await refreshAppBundle();
+
+const REFRESH_TOKEN = process.env.FAIRFOX_REFRESH_TOKEN?.trim() ?? '';
 
 // --- Legacy sub-app dispatch (remove in Phase 7) ---
 
@@ -576,6 +590,47 @@ const server = Bun.serve<WsData>({
 
     if (p === '/build-hash') {
       return Response.json({ hash: BUILD_HASH }, { headers: { 'Cache-Control': 'no-store' } });
+    }
+
+    // Admin — inspect or refresh the currently-loaded SPA bundle.
+    // The bundle itself lives as a GitHub Release asset
+    // (`web-v*` tags) and this endpoint tells Railway to re-fetch
+    // it without a restart.
+    if (p === '/admin/web-bundle') {
+      return Response.json(
+        {
+          tag: appBundle?.tag ?? null,
+          artefacts: appBundle?.artefacts.size ?? 0,
+          lastRefresh: lastBundleRefresh ? new Date(lastBundleRefresh).toISOString() : null,
+        },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
+    }
+    if (p === '/admin/refresh-web-bundle' && req.method === 'POST') {
+      if (!REFRESH_TOKEN) {
+        return new Response('refresh endpoint disabled — set FAIRFOX_REFRESH_TOKEN', {
+          status: 503,
+        });
+      }
+      const auth = req.headers.get('authorization') ?? '';
+      const provided = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+      if (provided !== REFRESH_TOKEN) {
+        return new Response('unauthorised', { status: 401 });
+      }
+      if (Date.now() - lastBundleRefresh < REFRESH_DEBOUNCE_MS) {
+        return new Response('too soon — wait a few seconds before refreshing again', {
+          status: 429,
+        });
+      }
+      await refreshAppBundle();
+      return Response.json(
+        {
+          tag: appBundle?.tag ?? null,
+          artefacts: appBundle?.artefacts.size ?? 0,
+          lastRefresh: new Date(lastBundleRefresh).toISOString(),
+        },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
     }
 
     const staticAsset = STATIC_ASSETS[p];

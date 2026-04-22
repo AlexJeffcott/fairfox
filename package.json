@@ -33,6 +33,7 @@
     "qrcode": "^1.5.4",
     "@types/qrcode": "^1.5.5",
     "jsqr": "^1.4.0",
+    "fflate": "^0.8.2",
     "werift": "^0.22.2",
     "@biomejs/biome": "2.4.8"
   },
@@ -46,6 +47,7 @@
     "@fairfox/polly": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
+    "fflate": "catalog:",
     "puppeteer": "^24.41.0",
     "qrcode": "catalog:",
     "tweetnacl": "catalog:",
