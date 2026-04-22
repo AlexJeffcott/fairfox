@@ -33,6 +33,7 @@ import '#src/preload.ts';
 
 import { parseArgs } from 'node:util';
 import { agendaAdd, agendaList } from '#src/commands/agenda.ts';
+import { chatServe } from '#src/commands/chat.ts';
 import { deploy } from '#src/commands/deploy.ts';
 import { mesh } from '#src/commands/mesh.ts';
 import { pair } from '#src/commands/pair.ts';
@@ -73,6 +74,7 @@ function printUsage(): void {
       '  fairfox deploy status         List recent Railway deployments.',
       '  fairfox deploy logs           Tail Railway logs for the current service.',
       '  fairfox update                Fetch the latest CLI bundle if it has drifted.',
+      '  fairfox chat serve            Reply to pending chat messages via `claude -p`.',
       '',
       'The keyring is stored at ~/.fairfox/keyring.json and is created on',
       'first run. The signalling URL defaults to the fairfox production',
@@ -132,6 +134,15 @@ function main(): Promise<number> {
 
   if (subcommand === 'update') {
     return update();
+  }
+
+  if (subcommand === 'chat') {
+    const verb = rest[0];
+    if (verb === 'serve') {
+      return chatServe();
+    }
+    process.stderr.write('fairfox chat: unknown verb. Try "serve".\n');
+    return Promise.resolve(1);
   }
 
   process.stderr.write(`fairfox: unknown subcommand "${subcommand}".\n\n`);

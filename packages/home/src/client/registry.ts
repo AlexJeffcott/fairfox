@@ -10,6 +10,7 @@
 // consults `canDo()` before running any gated handler.
 
 import { AGENDA_WRITE_ACTIONS, registry as agendaRegistry } from '@fairfox/agenda/actions';
+import { CHAT_WRITE_ACTIONS, registry as chatRegistry } from '@fairfox/chat/actions';
 import { DOCS_WRITE_ACTIONS, registry as docsRegistry } from '@fairfox/docs/actions';
 import { registry as familyPhoneRegistry } from '@fairfox/family-phone-admin/actions';
 import { registry as libraryRegistry } from '@fairfox/library/actions';
@@ -44,6 +45,7 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
   ...routerActions,
   ...todoRegistry,
   ...agendaRegistry,
+  ...chatRegistry,
   ...docsRegistry,
   ...libraryRegistry,
   ...familyPhoneRegistry,
@@ -74,5 +76,6 @@ export function dispatch(d: ActionDispatch): void {
   // extended. Reference the constant to silence unused-import
   // checkers.
   void DOCS_WRITE_ACTIONS;
+  void CHAT_WRITE_ACTIONS;
   handler({ data: d.data, event: d.event, element: d.element });
 }
