@@ -127,10 +127,30 @@ async function selfHealIdentity(): Promise<void> {
   // permissions" forever. Re-endorsing is idempotent.
   const endorsements = deviceRow?.endorsements ?? [];
   const signedByMe = endorsements.some((e) => e.userId === identity.userId);
-  if (!signedByMe) {
+  if (signedByMe) {
+    // Already endorsed: we still want to bump lastSeenAt on every
+    // mount so the Peers view shows a fresh timestamp for this
+    // device. Without this, a device that stays endorsed forever
+    // never updates its own row, and its Peers-tab entry reads as
+    // stale "last seen 16h ago" for as long as the PWA is open.
+    touchSelfDeviceEntry(peerId, { agent: 'browser' });
+  } else {
     touchSelfDeviceEntry(peerId, { agent: 'browser' });
     addEndorsementToDevice(peerId, signEndorsement(identity, peerId));
   }
+}
+
+/** Minimal "I'm still here" heartbeat for a device with no user
+ * identity yet. Just bumps lastSeenAt on the device row so the
+ * Peers view reflects that the PWA is actually open. Safe to
+ * call on every mount; idempotent. */
+async function bumpSelfLastSeen(): Promise<void> {
+  await devicesState.loaded;
+  const keyring = await loadOrCreateKeyring();
+  const peerId = Array.from(keyring.identity.publicKey.slice(0, 8))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  touchSelfDeviceEntry(peerId, { agent: 'browser' });
 }
 
 export function MeshGate({ children }: MeshGateProps): preact.JSX.Element | null {
@@ -148,6 +168,13 @@ export function MeshGate({ children }: MeshGateProps): preact.JSX.Element | null
     }
     if (userIdentity.value) {
       void selfHealIdentity();
+    } else {
+      // Even without a user identity — e.g. a device that paired
+      // before the user-identity layer existed, or one that hasn't
+      // completed the WhoAreYou wizard — bump lastSeenAt so the
+      // Peers view isn't showing "last seen 16h ago" for the
+      // device you're literally looking at right now.
+      void bumpSelfLastSeen();
     }
     // Reactive harvest: whenever mesh:devices changes (including
     // the initial load), pull any unknown pubkeys into our keyring.

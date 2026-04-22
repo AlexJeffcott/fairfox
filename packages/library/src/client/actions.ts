@@ -5,6 +5,7 @@
 
 import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
+import { setActiveTab, setSelectedDocId, setSelectedRefId } from '#src/client/App.tsx';
 import type { Doc, Ref } from '#src/client/state.ts';
 import { libraryState } from '#src/client/state.ts';
 
@@ -119,7 +120,49 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     };
   },
 
-  'library.tab': () => {
-    // Tab changes handled by local signal in App — no CRDT mutation.
+  'library.tab': (ctx) => {
+    if (ctx.data.id) {
+      setActiveTab(ctx.data.id);
+    }
+  },
+
+  'ref.open': (ctx) => {
+    if (ctx.data.id) {
+      setSelectedRefId(ctx.data.id);
+    }
+  },
+  'ref.close': () => {
+    setSelectedRefId(null);
+  },
+  'ref.delete-and-close': (ctx) => {
+    const id = ctx.data.id;
+    if (!id) {
+      return;
+    }
+    libraryState.value = {
+      ...libraryState.value,
+      refs: libraryState.value.refs.filter((r) => r.id !== id),
+    };
+    setSelectedRefId(null);
+  },
+
+  'doc.open': (ctx) => {
+    if (ctx.data.id) {
+      setSelectedDocId(ctx.data.id);
+    }
+  },
+  'doc.close': () => {
+    setSelectedDocId(null);
+  },
+  'doc.delete-and-close': (ctx) => {
+    const id = ctx.data.id;
+    if (!id) {
+      return;
+    }
+    libraryState.value = {
+      ...libraryState.value,
+      docs: libraryState.value.docs.filter((d) => d.id !== id),
+    };
+    setSelectedDocId(null);
   },
 };

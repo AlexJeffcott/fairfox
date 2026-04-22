@@ -5,11 +5,43 @@
 import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
 import { renderMarkdown } from '@fairfox/polly/ui/markdown';
 import { HubBack } from '@fairfox/shared/hub-back';
-import { useSignal } from '@preact/signals';
+import { signal } from '@preact/signals';
 import type { Doc, DocCategory } from '#src/client/state.ts';
 import { libraryState } from '#src/client/state.ts';
 
-type ViewId = 'refs' | 'docs';
+export type ViewId = 'refs' | 'docs';
+
+// Module-level view state so the unified dispatcher can flip tabs
+// and open/close the detail pane via `data-action` handlers. Earlier
+// these were `useSignal`s inside the App component, which the
+// dispatcher couldn't reach — clicking a tab or a "View" button
+// fired actions that no handler could actually consume.
+export const activeTab = signal<ViewId>('refs');
+export const selectedRefId = signal<string | null>(null);
+export const selectedDocId = signal<string | null>(null);
+
+function isViewId(v: string): v is ViewId {
+  return v === 'refs' || v === 'docs';
+}
+
+export function setActiveTab(v: string): void {
+  if (isViewId(v)) {
+    activeTab.value = v;
+    // Closing detail panes on tab switch keeps the URL-less view
+    // state consistent — otherwise switching tabs leaves a stale
+    // "selected" item ready to reappear on return.
+    selectedRefId.value = null;
+    selectedDocId.value = null;
+  }
+}
+
+export function setSelectedRefId(v: string | null): void {
+  selectedRefId.value = v;
+}
+
+export function setSelectedDocId(v: string | null): void {
+  selectedDocId.value = v;
+}
 
 const TAB_LIST = [
   { id: 'refs', label: 'Refs' },
@@ -28,9 +60,45 @@ const CATEGORY_LABELS: Record<DocCategory, string> = {
 };
 
 function RefsView() {
-  const selectedId = useSignal<string | null>(null);
   const refs = libraryState.value.refs;
-  const selected = refs.find((r) => r.id === selectedId.value);
+  const selected = refs.find((r) => r.id === selectedRefId.value);
+
+  if (selected) {
+    return (
+      <Layout rows="auto" gap="var(--polly-space-md)">
+        <Layout columns="auto 1fr auto" gap="var(--polly-space-sm)" alignItems="center">
+          <Button label="← Back" tier="tertiary" size="small" data-action="ref.close" />
+          <h3 style={{ margin: 0 }}>{selected.title}</h3>
+          <Button
+            label="Delete"
+            size="small"
+            tier="tertiary"
+            color="danger"
+            data-action="ref.delete-and-close"
+            data-action-id={selected.id}
+          />
+        </Layout>
+        {selected.author && (
+          <span style={{ color: 'var(--polly-text-muted)' }}>{selected.author}</span>
+        )}
+        <Layout columns="auto auto" gap="var(--polly-space-xs)" justifyContent="start">
+          <Badge variant={FORM_COLORS[selected.form]}>{selected.form}</Badge>
+          {selected.tags.map((t) => (
+            <Badge key={t} variant="default">
+              {t}
+            </Badge>
+          ))}
+        </Layout>
+        <div style={{ lineHeight: '1.6' }}>{renderMarkdown(selected.body)}</div>
+        {selected.notes && (
+          <Layout rows="auto" gap="var(--polly-space-xs)">
+            <h4 style={{ margin: 0 }}>Notes</h4>
+            <div style={{ color: 'var(--polly-text-muted)' }}>{renderMarkdown(selected.notes)}</div>
+          </Layout>
+        )}
+      </Layout>
+    );
+  }
 
   return (
     <Layout rows="auto" gap="var(--polly-space-md)">
@@ -61,7 +129,7 @@ function RefsView() {
             label="View"
             size="small"
             tier="tertiary"
-            data-action="game.inspect"
+            data-action="ref.open"
             data-action-id={ref.id}
           />
           <Button
@@ -74,27 +142,37 @@ function RefsView() {
           />
         </Layout>
       ))}
-      {selected && (
-        <Layout rows="auto" gap="var(--polly-space-sm)">
-          <h3>{selected.title}</h3>
-          <ActionInput
-            value={selected.body}
-            variant="multi"
-            action="noop"
-            disabled={true}
-            renderView={renderMarkdown}
-          />
-        </Layout>
-      )}
       {refs.length === 0 && <p style={{ color: 'var(--polly-text-muted)' }}>No references yet.</p>}
     </Layout>
   );
 }
 
 function DocsView() {
-  const selectedId = useSignal<string | null>(null);
   const docs = libraryState.value.docs;
-  const selected = docs.find((d) => d.id === selectedId.value);
+  const selected = docs.find((d) => d.id === selectedDocId.value);
+
+  if (selected) {
+    return (
+      <Layout rows="auto" gap="var(--polly-space-md)">
+        <Layout columns="auto 1fr auto" gap="var(--polly-space-sm)" alignItems="center">
+          <Button label="← Back" tier="tertiary" size="small" data-action="doc.close" />
+          <h3 style={{ margin: 0 }}>{selected.title}</h3>
+          <Button
+            label="Delete"
+            size="small"
+            tier="tertiary"
+            color="danger"
+            data-action="doc.delete-and-close"
+            data-action-id={selected.id}
+          />
+        </Layout>
+        <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+          {CATEGORY_LABELS[selected.category]} · {selected.path}
+        </span>
+        <div style={{ lineHeight: '1.6' }}>{renderMarkdown(selected.content)}</div>
+      </Layout>
+    );
+  }
 
   const grouped: Record<DocCategory, Doc[]> = {
     world: docs.filter((d) => d.category === 'world'),
@@ -124,11 +202,18 @@ function DocsView() {
             {group.map((doc) => (
               <Layout
                 key={doc.id}
-                columns="1fr auto"
+                columns="1fr auto auto"
                 gap="var(--polly-space-sm)"
                 alignItems="center"
               >
                 <span>{doc.title}</span>
+                <Button
+                  label="View"
+                  size="small"
+                  tier="tertiary"
+                  data-action="doc.open"
+                  data-action-id={doc.id}
+                />
                 <Button
                   label="Delete"
                   size="small"
@@ -142,26 +227,12 @@ function DocsView() {
           </Layout>
         );
       })}
-      {selected && (
-        <Layout rows="auto" gap="var(--polly-space-sm)">
-          <h3>{selected.title}</h3>
-          <ActionInput
-            value={selected.content}
-            variant="multi"
-            action="noop"
-            disabled={true}
-            renderView={renderMarkdown}
-          />
-        </Layout>
-      )}
       {docs.length === 0 && <p style={{ color: 'var(--polly-text-muted)' }}>No documents yet.</p>}
     </Layout>
   );
 }
 
 export function App() {
-  const activeTab = useSignal<ViewId>('refs');
-
   return (
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout rows="auto" gap="var(--polly-space-md)">
