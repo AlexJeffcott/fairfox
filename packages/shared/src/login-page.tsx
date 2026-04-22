@@ -604,6 +604,7 @@ export function LoginPage(): preact.JSX.Element {
           <WhoAreYouView />
           <PwaInstallPrompt />
         </div>
+        <QrScanDialog />
       </div>
     );
   }
