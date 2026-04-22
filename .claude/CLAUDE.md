@@ -130,3 +130,41 @@ doesn't (any change to real-time behaviour, any new cross-sub-app
 protocol, any authentication flow): build the equivalent before
 declaring the work done, commit it under `scripts/`, run it from a
 cold state.
+
+## Chat relay verification
+
+`scripts/e2e-chat-relay.ts` exercises the assistant loop — pending
+user message → relay pick-up → stubbed reply → pending cleared —
+against a disposable `/tmp/fairfox-test-chat` HOME. The relay's
+`FAIRFOX_CLAUDE_STUB` env short-circuits `claude -p` and returns
+the env value, so the test hits real `$meshState` writes, real
+polly storage, and real relay logic without burning API tokens.
+Three CLI verbs support the harness: `chat send <text>` writes a
+pending user message, `chat dump` prints `chat:main` as JSON, and
+`chat serve` with the stub env runs the relay deterministically.
+Run `bun scripts/e2e-chat-relay.ts`; PASS means the pending-reply
+loop is healthy.
+
+## CLI packaging — single polly instance
+
+The CLI's bundled `fairfox.js` collapses every `@fairfox/polly`
+import into one module instance, but running the CLI from source
+via `bun packages/cli/src/bin.ts …` can produce two copies. Each
+copy has its own module-global `configureMeshState` singleton, so
+`openMeshClient` (reached through one polly copy) configures a
+Repo that `@fairfox/shared/devices-state` (reached through the
+other) never sees — symptom: a fresh `fairfox mesh init` throws
+`Polly $meshState: no Repo configured` even though
+`createMeshClient` succeeded moments earlier.
+
+Rule: the CLI must not depend on `@fairfox/polly` directly. All
+polly symbols the CLI needs are re-exported from
+`@fairfox/shared/polly`; the CLI imports from there. Verify with
+`ls node_modules/.bun/ | grep polly` — only one hash should
+appear among the real packages (the `_template` scratch package
+can have its own).
+
+When writing a test that spawns the CLI, build a fresh bundle
+first (`bun run build.ts` in `packages/cli/`) and run that, not
+the from-source entry point. That matches what users run and
+avoids any residual from-source surprises.
