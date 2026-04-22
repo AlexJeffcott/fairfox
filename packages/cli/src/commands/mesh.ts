@@ -499,37 +499,13 @@ async function meshWhoami(): Promise<number> {
 }
 
 async function meshAddDevice(): Promise<number> {
-  const identity = loadUserIdentityFile();
-  if (!identity) {
-    const storage = keyringStorage();
-    const paired = (await storage.load()) !== null;
-    if (paired) {
-      // CLI is paired into a mesh but has no user identity (e.g. it
-      // paired via a `/cli/install?token=…` URL that didn't carry a
-      // recovery blob). The fix is to import the user key, not to
-      // wipe the mesh.
-      process.stderr.write(
-        [
-          'fairfox mesh add-device: this CLI is paired into a mesh but has no',
-          'local user identity. Import an existing user with:',
-          '',
-          '  fairfox users import <recovery-blob>',
-          '',
-          'or bootstrap a new admin user for this mesh with:',
-          '',
-          '  fairfox users bootstrap <display-name>',
-          '',
-          'Do NOT run `fairfox mesh init` — that starts a fresh mesh and',
-          'disconnects this device from the existing one.',
-          '',
-        ].join('\n')
-      );
-      return 1;
-    }
+  const peerId = await loadPeerId();
+  const storage = keyringStorage();
+  const keyring = await storage.load();
+  if (!keyring) {
     process.stderr.write(
       [
-        'fairfox mesh add-device: no keyring and no user identity on this',
-        'machine. Either:',
+        'fairfox mesh add-device: no keyring on this machine. Either:',
         '',
         '  fairfox mesh init --admin <name>   (start a new mesh)',
         '  curl -fsSL https://…/cli/install?token=<token>  (join an existing one)',
@@ -538,13 +514,7 @@ async function meshAddDevice(): Promise<number> {
     );
     return 1;
   }
-
-  const peerId = await loadPeerId();
-  const storage = keyringStorage();
-  const keyring = await storage.load();
-  if (!keyring) {
-    throw new Error('no keyring');
-  }
+  const identity = loadUserIdentityFile();
   const sessionId = randomBase64(16);
 
   const client = await openMeshClient({
@@ -558,9 +528,8 @@ async function meshAddDevice(): Promise<number> {
         return;
       }
       void acceptReturnToken(returnToken, keyring, storage).then(() => {
-        process.stdout.write(
-          `\n✓ Device paired under "${identity.displayName}". Close with ctrl-c, or stay open.\n`
-        );
+        const label = identity?.displayName ?? 'a new device';
+        process.stdout.write(`\n✓ Paired ${label}. Close with ctrl-c, or stay open.\n`);
       });
     },
   });
@@ -584,9 +553,22 @@ async function meshAddDevice(): Promise<number> {
       );
     }
 
-    const recovery = exportRecoveryBlob(identity);
+    // Embed the local user's recovery blob in the share URL when
+    // we have one — that gives the scanner a one-tap "pair +
+    // adopt my identity" experience. Without a local user
+    // identity we still emit a valid pair URL; the scanner lands
+    // on the Who-Are-You wizard afterwards to import their own
+    // identity or create a new one.
+    const recovery = identity ? exportRecoveryBlob(identity) : null;
     const base = process.env.FAIRFOX_URL ?? 'https://fairfox-production-8273.up.railway.app';
-    const fragment = `pair=${encodeURIComponent(pairToken)}&s=${encodeURIComponent(sessionId)}&recovery=${encodeURIComponent(recovery)}`;
+    const fragmentParts = [
+      `pair=${encodeURIComponent(pairToken)}`,
+      `s=${encodeURIComponent(sessionId)}`,
+    ];
+    if (recovery) {
+      fragmentParts.push(`recovery=${encodeURIComponent(recovery)}`);
+    }
+    const fragment = fragmentParts.join('&');
     const shareUrl = `${base.replace(/\/$/, '')}/#${fragment}`;
 
     const qr = await QRCode.toString(shareUrl, { type: 'terminal', small: true });
@@ -595,16 +577,28 @@ async function meshAddDevice(): Promise<number> {
     process.stdout.write('Individual fields (if you want to inspect or paste by hand):\n\n');
     process.stdout.write(`  pair token:    ${pairToken}\n`);
     process.stdout.write(`  session id:    ${sessionId}\n`);
-    process.stdout.write(`  recovery blob: ${recovery}\n\n`);
-    process.stdout.write('Paste-box fragment (everything after the `#` of the URL above):\n\n');
+    if (recovery) {
+      process.stdout.write(`  recovery blob: ${recovery}\n`);
+    } else {
+      process.stdout.write('  recovery blob: (none — this CLI has no local user identity)\n');
+    }
+    process.stdout.write('\nPaste-box fragment (everything after the `#` of the URL above):\n\n');
     process.stdout.write(`  ${fragment}\n\n`);
-    process.stdout.write(
-      `Add-device open for "${identity.displayName}". Waiting for scan — ctrl-c to close.\n\n`
-    );
-    process.stdout.write(
-      'Treat the URL and recovery blob above like a password — they carry\n' +
-        'your user secret key. Anyone who uses them becomes another device of yours.\n'
-    );
+    if (identity) {
+      process.stdout.write(
+        `Add-device open for "${identity.displayName}". Waiting for scan — ctrl-c to close.\n\n`
+      );
+      process.stdout.write(
+        'Treat the URL and recovery blob above like a password — they carry\n' +
+          'your user secret key. Anyone who uses them becomes another device of yours.\n'
+      );
+    } else {
+      process.stdout.write(
+        'Add-device open (device-pair only — no user identity on this CLI).\n' +
+          'The scanner will land on the "Who are you?" screen after pairing and\n' +
+          'can import their own recovery blob or create a new user. Ctrl-c to close.\n'
+      );
+    }
 
     await new Promise<void>((resolve) => {
       const done = (): void => {
