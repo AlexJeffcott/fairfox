@@ -17,7 +17,7 @@ import { SIGNALING_PATH } from '@fairfox/shared/signaling';
 import type { SubApp, WsData, WsSubApp } from '@fairfox/shared/subapp';
 import type { ServerWebSocket, WebSocketHandler } from 'bun';
 import { zipSync } from 'fflate';
-import { buildAllSubApps } from './bundle-subapp.ts';
+import { APP_PACKAGE, buildApp } from './bundle-app.ts';
 import { parseWsRole } from './parseWsRole.ts';
 import { strip } from './strip.ts';
 
@@ -67,17 +67,15 @@ export const BUILD_HASH =
 
 // --- Mesh SPA bundle built at startup ---
 //
-// After Phase 3 the whole mesh UI ships as one Preact SPA mounted
-// from `packages/home`'s boot. The sub-app routes (/todo-v2,
-// /agenda, /library, /family-phone-admin, /speakwell,
-// /the-struggle) all serve the same HTML shell and JS bundle; the
-// client-side router reads `location.pathname` and renders the
-// right sub-app. MESH_ROUTES below is the list the server
-// recognises as "this belongs to the SPA" — any request for one of
-// these paths returns home's HTML. Asset requests still go through
-// `/home/*.js` and `/home/*.css`.
-
-const MESH_SUBAPPS = ['home'] as const;
+// The whole mesh UI ships as one Preact SPA mounted from
+// `packages/home`'s boot. The sub-app routes (/todo-v2, /agenda,
+// /library, /family-phone-admin, /speakwell, /the-struggle) all
+// serve the same HTML shell and JS bundle; the client-side router
+// reads `location.pathname` and renders the right sub-app.
+// MESH_ROUTES enumerates the paths that belong to the SPA — any
+// request for one of these returns the unified HTML. Asset
+// requests go through `/<APP_PACKAGE>/*.js` / `*.css` where
+// APP_PACKAGE is the package the bundle was built from.
 
 const MESH_ROUTES: ReadonlySet<string> = new Set([
   '/',
@@ -90,7 +88,13 @@ const MESH_ROUTES: ReadonlySet<string> = new Set([
   '/the-struggle',
 ]);
 
-const bundles = await buildAllSubApps(MESH_SUBAPPS, BUILD_HASH);
+let appBundle: Awaited<ReturnType<typeof buildApp>> | null = null;
+try {
+  appBundle = await buildApp(BUILD_HASH);
+  console.log(`[bundle-app] ${appBundle.artefacts.size} artefact(s) ready`);
+} catch (err) {
+  console.error(`[bundle-app] ${err instanceof Error ? err.message : err}`);
+}
 
 // --- Legacy sub-app dispatch (remove in Phase 7) ---
 
@@ -602,11 +606,10 @@ const server = Bun.serve<WsData>({
     // swaps the right sub-app in without a document fetch on
     // subsequent navigations.
     if (MESH_ROUTES.has(p)) {
-      const homeBundle = bundles.get('home');
-      if (!homeBundle) {
-        return new Response('home bundle not available', { status: 503 });
+      if (!appBundle) {
+        return new Response('app bundle not available', { status: 503 });
       }
-      return new Response(homeBundle.html, {
+      return new Response(appBundle.html, {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'no-store',
@@ -723,36 +726,13 @@ const server = Bun.serve<WsData>({
       });
     }
 
-    // Mesh sub-app dispatch — serves the bundled client for any sub-app
-    // registered in MESH_SUBAPPS. The HTML shell is served for the root
-    // path of each sub-app; built artefacts (JS, CSS, source maps) are
-    // served under the sub-app prefix from the in-memory bundle manifest.
-    for (const name of MESH_SUBAPPS) {
-      const prefix = `/${name}`;
-      if (p === prefix || p === `${prefix}/`) {
-        const bundle = bundles.get(name);
-        if (!bundle) {
-          return new Response(`${name} bundle not available`, { status: 503 });
-        }
-        // The HTML shell carries the build-hash meta, which must match
-        // what `/build-hash` reports. Without `no-store` Railway's Fastly
-        // edge caches the shell for minutes while the endpoint stays
-        // fresh, and the BuildFreshnessBanner treats the permanent
-        // disagreement as a pending reload.
-        return new Response(bundle.html, {
-          headers: {
-            'Content-Type': 'text/html; charset=utf-8',
-            'Cache-Control': 'no-store',
-          },
-        });
-      }
-      if (p.startsWith(`${prefix}/`)) {
-        const bundle = bundles.get(name);
-        if (!bundle) {
-          return new Response('Not Found', { status: 404 });
-        }
+    // Mesh SPA asset dispatch — the bundle emits JS / CSS / source
+    // maps under the `/${APP_PACKAGE}/` prefix.
+    {
+      const prefix = `/${APP_PACKAGE}`;
+      if (p.startsWith(`${prefix}/`) && appBundle) {
         const artefactPath = p.slice(prefix.length);
-        const artefact = bundle.artefacts.get(artefactPath);
+        const artefact = appBundle.artefacts.get(artefactPath);
         if (!artefact) {
           return new Response('Not Found', { status: 404 });
         }

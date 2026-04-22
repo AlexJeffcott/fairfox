@@ -1,31 +1,33 @@
-// Build and cache a mesh sub-app's client bundle at server startup.
+// Build and cache the fairfox mesh SPA bundle at server startup.
 //
-// Each mesh sub-app ships a src/client/boot.tsx as its single entry
-// point. Bun.build walks its imports, produces a JS bundle plus any
-// asset chunks, and hands them back as an in-memory manifest. The
-// bundler runs once per sub-app at server startup so that subsequent
-// requests serve from the cached blobs rather than rebuilding.
+// The mesh UI ships as one Preact SPA whose entry is
+// `packages/home/src/client/boot.tsx`. Bun.build walks its imports,
+// produces a JS bundle plus any asset chunks, and hands them back
+// as an in-memory manifest the server serves from. This keeps the
+// architecture to a single Bun.serve with no separate frontend
+// build step and no static file dance in the Dockerfile.
 //
-// This keeps the architecture to a single Bun.serve with no separate
-// frontend build step and no static file dance in the Dockerfile.
+// Historically this file built every sub-app's own bundle in a
+// loop; Phase 3 collapsed the six mesh sub-apps into the unified
+// SPA, so only `home` gets built now. The public asset path stays
+// `/home/<name>-<hash>.<ext>` because the SPA still lives in the
+// home package.
 
 import { resolve } from 'node:path';
 
-export interface SubAppBundle {
+export interface AppBundle {
   readonly name: string;
   readonly html: string;
   readonly artefacts: Map<string, { body: Blob; contentType: string }>;
 }
 
 const REPO_ROOT = resolve(import.meta.dir, '..', '..', '..');
+export const APP_PACKAGE = 'home';
 
-function htmlShell(
-  name: string,
-  entryJs: string,
-  entryCss: string | null,
-  buildHash: string
-): string {
-  const cssLink = entryCss ? `    <link rel="stylesheet" href="/${name}${entryCss}" />\n` : '';
+function htmlShell(entryJs: string, entryCss: string | null, buildHash: string): string {
+  const cssLink = entryCss
+    ? `    <link rel="stylesheet" href="/${APP_PACKAGE}${entryCss}" />\n`
+    : '';
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -36,11 +38,11 @@ function htmlShell(
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/icon.svg" />
-    <title>fairfox · ${name}</title>
+    <title>fairfox</title>
 ${cssLink}  </head>
   <body>
     <div id="app"></div>
-    <script type="module" src="/${name}${entryJs}"></script>
+    <script type="module" src="/${APP_PACKAGE}${entryJs}"></script>
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function () {
@@ -53,8 +55,8 @@ ${cssLink}  </head>
 `;
 }
 
-export async function buildSubApp(name: string, buildHash: string): Promise<SubAppBundle> {
-  const entry = resolve(REPO_ROOT, 'packages', name, 'src', 'client', 'boot.tsx');
+export async function buildApp(buildHash: string): Promise<AppBundle> {
+  const entry = resolve(REPO_ROOT, 'packages', APP_PACKAGE, 'src', 'client', 'boot.tsx');
   const result = await Bun.build({
     entrypoints: [entry],
     target: 'browser',
@@ -65,9 +67,7 @@ export async function buildSubApp(name: string, buildHash: string): Promise<SubA
     naming: { entry: '[name]-[hash].[ext]', asset: '[name]-[hash].[ext]' },
   });
   if (!result.success) {
-    throw new Error(
-      `[bundle-subapp] ${name} build failed:\n${result.logs.map((l) => String(l)).join('\n')}`
-    );
+    throw new Error(`[bundle-app] build failed:\n${result.logs.map((l) => String(l)).join('\n')}`);
   }
 
   const artefacts = new Map<string, { body: Blob; contentType: string }>();
@@ -87,23 +87,6 @@ export async function buildSubApp(name: string, buildHash: string): Promise<SubA
     }
   }
 
-  const html = htmlShell(name, entryJs, entryCss, buildHash);
-  return { name, html, artefacts };
-}
-
-export async function buildAllSubApps(
-  names: readonly string[],
-  buildHash: string
-): Promise<Map<string, SubAppBundle>> {
-  const bundles = new Map<string, SubAppBundle>();
-  for (const name of names) {
-    try {
-      const bundle = await buildSubApp(name, buildHash);
-      bundles.set(name, bundle);
-      console.log(`[bundle-subapp] ${name}: ${bundle.artefacts.size} artefact(s) ready`);
-    } catch (err) {
-      console.error(`[bundle-subapp] ${name}: ${err instanceof Error ? err.message : err}`);
-    }
-  }
-  return bundles;
+  const html = htmlShell(entryJs, entryCss, buildHash);
+  return { name: APP_PACKAGE, html, artefacts };
 }
