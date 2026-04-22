@@ -25,9 +25,47 @@ import { useEffect, useRef } from 'preact/hooks';
 import { importRecoveryBlob, submitScannedValue } from '#src/pairing-actions.ts';
 import { type CameraScanMode, cameraScanMode, pairingError } from '#src/pairing-state.ts';
 
+/** Pull a recovery blob out of whatever the QR actually encoded.
+ * Accepts:
+ *   - a bare `fairfox-user-v1:<hex>:<name>` blob
+ *   - a URL with a `&recovery=<encoded-blob>` fragment param — this
+ *     is what `fairfox mesh add-device` emits, and scanning it
+ *     on the "Scan recovery blob" entry point used to fail with
+ *     "unrecognised blob format" because the whole URL went into
+ *     decodeRecoveryBlob as-is.
+ *   - an already URL-decoded form of either of the above.
+ * Returns the raw blob the decoder wants; otherwise the input
+ * unchanged (so decodeRecoveryBlob's error message is still what
+ * the user sees on genuinely malformed input). */
+function extractRecoveryBlob(raw: string): string {
+  const trimmed = raw.trim();
+  // URL form: fragment after `#` typically has `pair=…&s=…&recovery=…`
+  const hashIdx = trimmed.indexOf('#');
+  const searchIdx = trimmed.indexOf('?');
+  const afterMarker =
+    hashIdx >= 0
+      ? trimmed.slice(hashIdx + 1)
+      : searchIdx >= 0
+        ? trimmed.slice(searchIdx + 1)
+        : trimmed;
+  if (afterMarker.includes('recovery=')) {
+    for (const part of afterMarker.split('&')) {
+      if (part.startsWith('recovery=')) {
+        const encoded = part.slice('recovery='.length);
+        try {
+          return decodeURIComponent(encoded);
+        } catch {
+          return encoded;
+        }
+      }
+    }
+  }
+  return trimmed;
+}
+
 async function dispatchScanPayload(mode: CameraScanMode, payload: string): Promise<void> {
   if (mode === 'recovery') {
-    await importRecoveryBlob(payload);
+    await importRecoveryBlob(extractRecoveryBlob(payload));
     return;
   }
   await submitScannedValue(payload);
