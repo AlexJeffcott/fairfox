@@ -37,6 +37,7 @@ import {
   pairingMode,
   soloDeviceMode,
 } from '#src/pairing-state.ts';
+import { QrScanDialog } from '#src/qr-scan.tsx';
 import { signEndorsement } from '#src/user-identity.ts';
 import { hydrateUserIdentity, userIdentity } from '#src/user-identity-state.ts';
 import { createBootstrapUser, upsertUser, usersState } from '#src/users-state.ts';
@@ -233,6 +234,7 @@ export function MeshGate({ children }: MeshGateProps): preact.JSX.Element | null
       <>
         {children}
         <BuildFreshnessBanner />
+        <QrScanDialog />
       </>
     );
   }

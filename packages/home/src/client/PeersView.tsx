@@ -10,18 +10,104 @@ import { ActionInput, Badge, Button, Layout } from '@fairfox/polly/ui';
 import { devicesState } from '@fairfox/shared/devices-state';
 import { peersPresent } from '@fairfox/shared/peers-presence';
 import { canDo, effectivePermissionsForDevice } from '@fairfox/shared/policy';
-import { userIdentity } from '@fairfox/shared/user-identity-state';
+import { canScanWithCamera, QrImageDropzone } from '@fairfox/shared/qr-scan';
+import {
+  recoveryBlobDraft,
+  userIdentity,
+  userSetupError,
+} from '@fairfox/shared/user-identity-state';
 import { usersState } from '@fairfox/shared/users-state';
 import { selfPeerId } from '#src/client/self-peer.ts';
+
+function ConnectIdentityPanel() {
+  return (
+    <div
+      style={{
+        border: '1px solid var(--polly-border)',
+        borderRadius: '8px',
+        padding: 'var(--polly-space-md)',
+        background: 'var(--polly-surface-muted, #f5f5f4)',
+      }}
+    >
+      <p
+        style={{
+          margin: '0 0 var(--polly-space-xs, 0.25rem)',
+          fontSize: '0.9rem',
+          fontWeight: 600,
+        }}
+      >
+        Connect my identity
+      </p>
+      <p
+        style={{
+          margin: '0 0 var(--polly-space-sm, 0.5rem)',
+          fontSize: '0.85rem',
+          color: 'var(--polly-text-muted, #57534e)',
+        }}
+      >
+        This device is paired but not yet linked to a user — that's why pairing new peers and some
+        writes are blocked. Import your recovery blob to finish the hookup.
+      </p>
+      {canScanWithCamera() && (
+        <Layout
+          columns="1fr"
+          gap="var(--polly-space-sm, 0.5rem)"
+          padding="0 0 var(--polly-space-sm, 0.5rem) 0"
+        >
+          <Button
+            label="Scan with camera"
+            tier="primary"
+            fullWidth={true}
+            data-action="users.open-recovery-camera"
+          />
+        </Layout>
+      )}
+      <Layout
+        columns="1fr"
+        gap="var(--polly-space-sm, 0.5rem)"
+        padding="0 0 var(--polly-space-sm, 0.5rem) 0"
+      >
+        <QrImageDropzone mode="recovery" />
+      </Layout>
+      <ActionInput
+        value={recoveryBlobDraft.value}
+        variant="single"
+        action="users.recovery-blob-input"
+        saveOn="blur"
+        placeholder="…or paste fairfox-user-v1:…"
+        ariaLabel="Recovery blob"
+      />
+      <Layout
+        columns="1fr"
+        gap="var(--polly-space-sm, 0.5rem)"
+        padding="var(--polly-space-sm, 0.5rem) 0 0 0"
+      >
+        <Button
+          label="Import"
+          tier="secondary"
+          fullWidth={true}
+          data-action="users.import-recovery"
+        />
+      </Layout>
+      {userSetupError.value && (
+        <p
+          style={{
+            margin: 'var(--polly-space-sm, 0.5rem) 0 0',
+            color: '#b91c1c',
+            fontSize: '0.85rem',
+          }}
+        >
+          {userSetupError.value}
+        </p>
+      )}
+    </div>
+  );
+}
 
 function PairActions() {
   const canPair = canDo('device.pair');
   if (!canPair) {
-    return (
-      <p style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
-        This device isn't allowed to bring in new peers — ask an admin.
-      </p>
-    );
+    return <ConnectIdentityPanel />;
   }
   return (
     <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
