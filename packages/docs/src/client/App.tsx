@@ -10,6 +10,8 @@
 import { $meshState } from '@fairfox/polly/mesh';
 import { ActionInput, Badge, Button, Layout } from '@fairfox/polly/ui';
 import { HubBack } from '@fairfox/shared/hub-back';
+import { setPageContext } from '@fairfox/shared/page-context';
+import { useSignalEffect } from '@preact/signals';
 import type { Document } from '#src/client/state.ts';
 import {
   activeView,
@@ -269,6 +271,23 @@ function BodyEditor({ doc }: { doc: Document }) {
 }
 
 export function App() {
+  useSignalEffect(() => {
+    if (activeView.value === 'edit') {
+      const id = selectedDocId.value;
+      const doc = id ? docsState.value.docs.find((d) => d.id === id) : undefined;
+      if (doc) {
+        setPageContext({
+          kind: 'doc',
+          id: doc.id,
+          label: doc.title || doc.slug || 'untitled',
+        });
+        return;
+      }
+    }
+    const project = filterProject.value;
+    const label = project ? `Docs · project ${project}` : 'Docs';
+    setPageContext({ kind: 'docs-list', label });
+  });
   return (
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">

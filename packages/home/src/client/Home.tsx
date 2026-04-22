@@ -9,6 +9,7 @@
 
 import { Button, Layout, Tabs } from '@fairfox/polly/ui';
 import { meshFingerprint, meshMetaState } from '@fairfox/shared/mesh-meta-state';
+import { setPageContext } from '@fairfox/shared/page-context';
 import { canDo } from '@fairfox/shared/policy';
 import { PwaInstallPrompt } from '@fairfox/shared/pwa-install';
 import { signal, useSignalEffect } from '@preact/signals';
@@ -121,6 +122,9 @@ function AppsGrid() {
 export function Home() {
   useSignalEffect(() => {
     void loadFingerprint();
+  });
+  useSignalEffect(() => {
+    setPageContext({ kind: 'hub', label: `Hub · ${activeView.value}` });
   });
   const meshName = meshMetaState.value.name;
   const fp = meshFingerprintText.value;

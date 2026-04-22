@@ -5,7 +5,8 @@
 import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
 import { renderMarkdown } from '@fairfox/polly/ui/markdown';
 import { HubBack } from '@fairfox/shared/hub-back';
-import { signal } from '@preact/signals';
+import { setPageContext } from '@fairfox/shared/page-context';
+import { signal, useSignalEffect } from '@preact/signals';
 import type { Doc, DocCategory } from '#src/client/state.ts';
 import { libraryState } from '#src/client/state.ts';
 
@@ -233,6 +234,10 @@ function DocsView() {
 }
 
 export function App() {
+  useSignalEffect(() => {
+    const tab = activeTab.value;
+    setPageContext({ kind: 'library', label: `Library · ${tab}` });
+  });
   return (
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout rows="auto" gap="var(--polly-space-md)">

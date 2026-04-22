@@ -4,7 +4,8 @@
 
 import { ActionInput, Badge, Button, Checkbox, Layout, Tabs } from '@fairfox/polly/ui';
 import { HubBack } from '@fairfox/shared/hub-back';
-import { signal } from '@preact/signals';
+import { setPageContext } from '@fairfox/shared/page-context';
+import { signal, useSignalEffect } from '@preact/signals';
 import { capturesState, projectsState, tasksState } from '#src/client/state.ts';
 
 export type ViewId = 'projects' | 'tasks' | 'capture';
@@ -870,6 +871,70 @@ function CaptureView() {
 }
 
 export function App() {
+  useSignalEffect(() => {
+    const tab = activeTab.value;
+    if (tab === 'tasks') {
+      const tid = selectedTaskId.value;
+      if (tid) {
+        const task = tasksState.value.tasks.find((t) => t.tid === tid);
+        setPageContext({
+          kind: 'task',
+          id: tid,
+          label: task ? `${tid} — ${task.description.slice(0, 40)}` : tid,
+        });
+      } else {
+        // Publish the currently visible (filtered) task ids so the
+        // relay can inject just the subset the user is looking at.
+        const project = filterProjectName.value;
+        const priority = filterPriority.value;
+        const showingDone = showDone.value;
+        const visible = tasksState.value.tasks.filter((t) => {
+          if (!showingDone && t.done) {
+            return false;
+          }
+          if (project && t.project !== project) {
+            return false;
+          }
+          if (priority && t.priority !== priority) {
+            return false;
+          }
+          return true;
+        });
+        const parts: string[] = [];
+        if (project) {
+          parts.push(`project ${project}`);
+        }
+        if (priority) {
+          parts.push(`${priority} priority`);
+        }
+        parts.push(`${visible.length} tasks`);
+        setPageContext({
+          kind: 'tasks-list',
+          label: parts.join(' · '),
+          details: { taskIds: visible.map((t) => t.tid) },
+        });
+      }
+      return;
+    }
+    if (tab === 'projects') {
+      const pid = selectedProjectId.value;
+      if (pid) {
+        const project = projectsState.value.projects.find((p) => p.pid === pid);
+        setPageContext({
+          kind: 'project',
+          id: pid,
+          label: project ? `${pid} — ${project.name}` : pid,
+        });
+      } else {
+        setPageContext({ kind: 'hub', label: 'Projects list' });
+      }
+      return;
+    }
+    if (tab === 'capture') {
+      setPageContext({ kind: 'hub', label: 'Quick capture' });
+      return;
+    }
+  });
   return (
     <Layout
       rows="auto 1fr"

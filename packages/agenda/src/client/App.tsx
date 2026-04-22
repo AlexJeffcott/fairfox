@@ -5,7 +5,8 @@
 
 import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
 import { HubBack } from '@fairfox/shared/hub-back';
-import { signal } from '@preact/signals';
+import { setPageContext } from '@fairfox/shared/page-context';
+import { signal, useSignalEffect } from '@preact/signals';
 import type { AgendaItem, Completion, RecurrenceType } from '#src/client/state.ts';
 import { activeTab, agenda, fairnessWindowDays, itemDraft, ROOMS } from '#src/client/state.ts';
 
@@ -550,6 +551,28 @@ function FairnessView() {
 }
 
 export function App() {
+  useSignalEffect(() => {
+    const tab = activeTab.value;
+    if (tab === 'today') {
+      setPageContext({ kind: 'agenda-today', label: "Today's agenda" });
+      return;
+    }
+    if (tab === 'items') {
+      const count = agenda.value.items.filter((i) => i.active).length;
+      setPageContext({
+        kind: 'hub',
+        label: `Agenda items (${count} active)`,
+      });
+      return;
+    }
+    if (tab === 'fairness') {
+      setPageContext({
+        kind: 'hub',
+        label: `Agenda fairness · ${fairnessWindowDays.value}d`,
+      });
+      return;
+    }
+  });
   return (
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout rows="auto" gap="var(--polly-space-md)">

@@ -5,7 +5,8 @@
 import { ActionInput, Button, Layout, Tabs } from '@fairfox/polly/ui';
 import { renderMarkdown } from '@fairfox/polly/ui/markdown';
 import { HubBack } from '@fairfox/shared/hub-back';
-import { useSignal } from '@preact/signals';
+import { setPageContext } from '@fairfox/shared/page-context';
+import { useSignal, useSignalEffect } from '@preact/signals';
 import type { Passage } from '#src/client/state.ts';
 import { progressState, storyState } from '#src/client/state.ts';
 
@@ -115,6 +116,10 @@ function MemoryView() {
 
 export function App() {
   const activeTab = useSignal<ViewId>('story');
+
+  useSignalEffect(() => {
+    setPageContext({ kind: 'struggle', label: `The Struggle · ${activeTab.value}` });
+  });
 
   return (
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
