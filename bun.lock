@@ -189,20 +189,6 @@
         "typescript": "catalog:",
       },
     },
-    "packages/struggle": {
-      "name": "@fairfox/struggle",
-      "version": "0.0.0",
-      "dependencies": {
-        "@elysiajs/static": "catalog:",
-        "@fairfox/polly": "catalog:",
-        "@fairfox/shared": "workspace:*",
-        "elysia": "catalog:",
-      },
-      "devDependencies": {
-        "@types/bun": "catalog:",
-        "typescript": "catalog:",
-      },
-    },
     "packages/the-struggle": {
       "name": "@fairfox/the-struggle",
       "version": "0.0.0",
@@ -220,21 +206,6 @@
       "devDependencies": {
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
-        "typescript": "catalog:",
-      },
-    },
-    "packages/todo": {
-      "name": "@fairfox/todo",
-      "version": "0.0.0",
-      "dependencies": {
-        "@fairfox/shared": "workspace:*",
-        "@preact/signals": "catalog:",
-        "htm": "catalog:",
-        "marked": "catalog:",
-        "preact": "catalog:",
-      },
-      "devDependencies": {
-        "@types/bun": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -261,8 +232,6 @@
       "version": "0.0.0",
       "dependencies": {
         "@fairfox/shared": "workspace:*",
-        "@fairfox/struggle": "workspace:*",
-        "@fairfox/todo": "workspace:*",
         "fflate": "^0.8.2",
       },
       "devDependencies": {
@@ -348,8 +317,6 @@
 
     "@cbor-extract/cbor-extract-win32-x64": ["@cbor-extract/cbor-extract-win32-x64@2.2.2", "", { "os": "win32", "cpu": "x64" }, "sha512-dI+9P7cfWxkTQ+oE+7Aa6onEn92PHgfWXZivjNheCRmTBDBf2fx6RyTi0cmgpYLnD1KLZK9ZYrMxaPZ4oiXhGA=="],
 
-    "@elysiajs/static": ["@elysiajs/static@1.4.9", "", { "peerDependencies": { "elysia": ">= 1.4.0" } }, "sha512-b4niBOvl1daqkBqQEStugUfYL0/LaEJHywAzH9Wxhv2tc6d0H6PmwOKl9jEpzhj2PDsG4iJ1kyqDNCKG0Pl36A=="],
-
     "@fairfox/_template": ["@fairfox/_template@workspace:packages/_template"],
 
     "@fairfox/agenda": ["@fairfox/agenda@workspace:packages/agenda"],
@@ -370,11 +337,7 @@
 
     "@fairfox/speakwell": ["@fairfox/speakwell@workspace:packages/speakwell"],
 
-    "@fairfox/struggle": ["@fairfox/struggle@workspace:packages/struggle"],
-
     "@fairfox/the-struggle": ["@fairfox/the-struggle@workspace:packages/the-struggle"],
-
-    "@fairfox/todo": ["@fairfox/todo@workspace:packages/todo"],
 
     "@fairfox/todo-v2": ["@fairfox/todo-v2@workspace:packages/todo-v2"],
 
@@ -623,8 +586,6 @@
     "glob": ["glob@10.5.0", "", { "dependencies": { "foreground-child": "^3.1.0", "jackspeak": "^3.1.2", "minimatch": "^9.0.4", "minipass": "^7.1.2", "package-json-from-dist": "^1.0.0", "path-scurry": "^1.11.1" }, "bin": { "glob": "dist/esm/bin.mjs" } }, "sha512-DfXN8DfhJ7NH3Oe7cFmu3NCu1wKbkReJ8TorzSAFbSKrlNaQSKfIzqYqVY8zlbs2NLBbWpRiU52GX2PbaBVNkg=="],
 
     "glob-parent": ["glob-parent@5.1.2", "", { "dependencies": { "is-glob": "^4.0.1" } }, "sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow=="],
-
-    "htm": ["htm@3.1.1", "", {}, "sha512-983Vyg8NwUE7JkZ6NmOqpCZ+sh1bKv2iYTlUkzlWmA5JD2acKoxd4KVxbMmxX/85mtfdnDmTFoNKcg5DGAvxNQ=="],
 
     "http-proxy-agent": ["http-proxy-agent@7.0.2", "", { "dependencies": { "agent-base": "^7.1.0", "debug": "^4.3.4" } }, "sha512-T1gkAiYYDWYx3V5Bmyu7HcfcvL7mUrTWiM6yOfa3PIphViJ/gFPbvidQ+veqSOHci/PxBcDabeUNCzpOODJZig=="],
 

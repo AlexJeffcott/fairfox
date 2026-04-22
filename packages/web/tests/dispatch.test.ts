@@ -80,30 +80,23 @@ describe('web dispatcher', () => {
     expect(await res.json()).toEqual({ ok: true });
   });
 
-  test('/ returns landing HTML with two nav links', async () => {
+  test('/ returns the unified SPA shell', async () => {
     const res = await fetch(`${server.url}/`);
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain('href="/todo"');
-    expect(html).toContain('href="/struggle"');
+    expect(html).toContain('id="app"');
+    expect(html).toContain('/home/boot-');
   });
 
-  test('/struggle reaches struggle sub-app', async () => {
-    const res = await fetch(`${server.url}/struggle/api/health`);
+  test('/todo-v2 returns the same SPA shell (client-side routed)', async () => {
+    const res = await fetch(`${server.url}/todo-v2`);
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.ok).toBe(true);
+    const html = await res.text();
+    expect(html).toContain('/home/boot-');
   });
 
-  test('/todo reaches todo sub-app and lists projects', async () => {
-    const res = await fetch(`${server.url}/todo/api/projects`);
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(Array.isArray(body)).toBe(true);
-  });
-
-  test('/todoish/y is a 404, not routed to todo (false prefix guard)', async () => {
-    const res = await fetch(`${server.url}/todoish/y`);
+  test('unknown paths 404', async () => {
+    const res = await fetch(`${server.url}/nope`);
     expect(res.status).toBe(404);
   });
 

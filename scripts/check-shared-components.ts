@@ -8,7 +8,7 @@
 // own stdout / stderr.
 //
 // Exemptions:
-//   - packages/struggle, packages/todo — legacy, exempted per ADR 0006.
+//   - none. Legacy /todo and /struggle retired on 2026-04-22.
 //   - Test directories are already skipped by the check's default
 //     skipDirs set.
 
@@ -19,7 +19,7 @@ const repoRoot = resolve(new URL('.', import.meta.url).pathname, '..');
 
 const result = await checkSharedComponents({
   root: repoRoot,
-  exemptPackages: new Set(['struggle', 'todo']),
+  exemptPackages: new Set(),
 });
 
 if (result.violations.length === 0) {

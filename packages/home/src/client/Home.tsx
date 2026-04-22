@@ -80,64 +80,33 @@ const SUBAPPS: readonly SubApp[] = [
   { path: '/family-phone-admin', name: 'Family Phone', description: 'Directory and devices' },
 ];
 
-const LEGACY: readonly SubApp[] = [
-  { path: '/todo', name: '/todo', description: 'Legacy project tracker (read-only fallback)' },
-  { path: '/struggle', name: '/struggle', description: 'Legacy struggle reader' },
-];
-
 function AppsGrid() {
   return (
-    <Layout rows="auto auto" gap="var(--polly-space-xl)">
-      <Layout rows="auto" gap="var(--polly-space-md)">
-        {SUBAPPS.map((s) => (
-          <a
-            key={s.path}
-            href={s.path}
-            data-action="app.navigate"
-            data-action-href={s.path}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr',
-              gap: 'var(--polly-space-xs)',
-              padding: 'var(--polly-space-md) var(--polly-space-lg)',
-              border: '1px solid var(--polly-border)',
-              borderRadius: 'var(--polly-radius-lg)',
-              textDecoration: 'none',
-              color: 'var(--polly-text)',
-              background: 'var(--polly-surface)',
-            }}
-          >
-            <strong>{s.name}</strong>
-            <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
-              {s.description}
-            </span>
-          </a>
-        ))}
-      </Layout>
-
-      <Layout rows="auto auto" gap="var(--polly-space-sm)">
-        <span
+    <Layout rows="auto" gap="var(--polly-space-md)">
+      {SUBAPPS.map((s) => (
+        <a
+          key={s.path}
+          href={s.path}
+          data-action="app.navigate"
+          data-action-href={s.path}
           style={{
-            color: 'var(--polly-text-muted)',
-            fontSize: 'var(--polly-text-sm)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
+            display: 'grid',
+            gridTemplateColumns: '1fr',
+            gap: 'var(--polly-space-xs)',
+            padding: 'var(--polly-space-md) var(--polly-space-lg)',
+            border: '1px solid var(--polly-border)',
+            borderRadius: 'var(--polly-radius-lg)',
+            textDecoration: 'none',
+            color: 'var(--polly-text)',
+            background: 'var(--polly-surface)',
           }}
         >
-          Legacy
-        </span>
-        <Layout rows="auto" gap="var(--polly-space-xs)">
-          {LEGACY.map((s) => (
-            <a
-              key={s.path}
-              href={s.path}
-              style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}
-            >
-              {s.name} — {s.description}
-            </a>
-          ))}
-        </Layout>
-      </Layout>
+          <strong>{s.name}</strong>
+          <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+            {s.description}
+          </span>
+        </a>
+      ))}
     </Layout>
   );
 }

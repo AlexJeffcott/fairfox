@@ -1,25 +1,20 @@
-// Fairfox server — signaling relay + legacy sub-app dispatch + static landing.
+// Fairfox server — signaling relay + unified mesh SPA + static landing.
 //
-// Under the meshState architecture the server's primary role is the
-// WebSocket signaling relay that helps mesh peers discover each other
-// for WebRTC connections. It also serves the static landing page, a
-// health endpoint, and — during the transition period — dispatches
-// requests to legacy sub-apps (todo, struggle) that still run on
-// SQLite. The legacy dispatching will be removed in Phase 7 when
-// those sub-apps are rebuilt on the mesh baseline.
-//
-// New sub-apps built from _template do not register data routes here;
-// they are standalone Preact clients that connect to the signaling
-// relay and sync state peer-to-peer via $meshState.
+// The server's primary job is the WebSocket signaling relay that helps
+// mesh peers discover each other for WebRTC connections. It also
+// serves the unified Preact SPA (one bundle, one HTML shell for every
+// mesh route), the CLI installer script, the Chrome side-panel
+// extension download, and a handful of small APIs. The legacy
+// sub-apps (packages/todo on raw Bun.serve and packages/struggle on
+// Elysia) have been retired — their data migrated into todo-v2's
+// mesh documents.
 
 import { loadEnv } from '@fairfox/shared/env';
 import { SIGNALING_PATH } from '@fairfox/shared/signaling';
-import type { SubApp, WsData, WsSubApp } from '@fairfox/shared/subapp';
+import type { WsData } from '@fairfox/shared/subapp';
 import type { ServerWebSocket, WebSocketHandler } from 'bun';
 import { zipSync } from 'fflate';
 import { APP_PACKAGE, buildApp } from './bundle-app.ts';
-import { parseWsRole } from './parseWsRole.ts';
-import { strip } from './strip.ts';
 
 const env = loadEnv();
 
@@ -98,36 +93,7 @@ try {
 
 // --- Legacy sub-app dispatch (remove in Phase 7) ---
 
-type SubAppNs = { fetch(req: Request): Promise<Response>; mount: `/${string}` };
-type WsSubAppNs = SubAppNs & {
-  wsPath: `/${string}/ws`;
-  open(ws: ServerWebSocket<WsData>): void;
-  message(ws: ServerWebSocket<WsData>, msg: string | Buffer): void;
-  close(ws: ServerWebSocket<WsData>): void;
-};
-
-let struggleApp: SubApp | null = null;
-async function getStruggle(): Promise<SubApp> {
-  if (struggleApp) {
-    return struggleApp;
-  }
-  const ns: SubAppNs = await import('@fairfox/struggle');
-  struggleApp = ns;
-  return struggleApp;
-}
-
-let todoApp: WsSubApp | null = null;
-async function getTodo(): Promise<WsSubApp> {
-  if (todoApp) {
-    return todoApp;
-  }
-  const ns: WsSubAppNs = await import('@fairfox/todo');
-  todoApp = ns;
-  return todoApp;
-}
-
-// --- Signaling relay (Bun WebSocket, not Elysia, because the main
-// server uses Bun.serve directly for legacy sub-app compat) ---
+// --- Signaling relay (Bun WebSocket) ---
 //
 // The wire protocol matches @fairfox/polly/elysia's signalingServer
 // plugin so paired devices can discover each other reactively rather
@@ -548,30 +514,21 @@ function buildExtensionZip(origin: string, token: string): Uint8Array {
   return zipSync(files, { level: 6 });
 }
 
-// --- WebSocket handler: signaling + legacy todo ---
+// --- WebSocket handler: signaling ---
 
 const websocket: WebSocketHandler<WsData> = {
-  open(ws) {
-    if (ws.data.role === 'client') {
-      // Legacy todo WebSocket
-      todoApp?.open(ws);
-    }
+  open() {
     // Signaling peers don't need an open handler — they join via message.
   },
   message(ws, msg) {
     const text = typeof msg === 'string' ? msg : msg.toString();
     if (ws.data.role === 'signaling') {
       handleSignalingMessage(ws, text);
-    } else {
-      // Legacy todo
-      todoApp?.message(ws, msg);
     }
   },
   close(ws) {
     if (ws.data.role === 'signaling') {
       handleSignalingClose(ws);
-    } else {
-      todoApp?.close(ws);
     }
   },
 };
@@ -740,26 +697,6 @@ const server = Bun.serve<WsData>({
           headers: { 'Content-Type': artefact.contentType },
         });
       }
-    }
-
-    // Legacy sub-app dispatch (remove in Phase 7)
-    if (p === '/todo/ws') {
-      const role = parseWsRole(new URL(req.url));
-      await getTodo();
-      if (srv.upgrade(req, { data: { role } })) {
-        return undefined;
-      }
-      return new Response('Upgrade failed', { status: 400 });
-    }
-
-    if (p === '/todo' || p.startsWith('/todo/')) {
-      const t = await getTodo();
-      return t.fetch(strip(req, '/todo'));
-    }
-
-    if (p === '/struggle' || p.startsWith('/struggle/')) {
-      const s = await getStruggle();
-      return s.fetch(strip(req, '/struggle'));
     }
 
     return new Response('Not Found', { status: 404 });

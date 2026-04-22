@@ -12,9 +12,9 @@
 // the types at the source instead. See ADR 0001 for the rationale.
 //
 // Note: @fairfox/polly ships a quality CLI (polly check) that does the
-// same scan, but without per-package exclusions. Once the legacy
-// packages (struggle, todo, web, shared) are retired or brought into
-// conformance, this script can be replaced with the polly CLI.
+// same scan, but without per-package exclusions. Once `web` and
+// `shared` are brought into conformance in their own tasks this
+// script can be replaced with the polly CLI directly.
 
 import { readdir } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
@@ -29,12 +29,12 @@ const scriptDir = new URL('.', import.meta.url).pathname;
 const repoRoot = resolve(scriptDir, '..');
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build']);
-// Packages excluded from the as-casting check. Legacy packages (struggle, todo)
-// are exempted per ADR 0006. web and shared predate the check and will be brought
-// into conformance in their own tasks.
-const EXCLUDED_PACKAGES = new Set(['struggle', 'todo', 'web', 'shared']);
+// Packages excluded from the as-casting check. `web` and `shared`
+// predate the check and will be brought into conformance in their
+// own tasks.
+const EXCLUDED_PACKAGES = new Set(['web', 'shared']);
 // Pre-existing scripts that predate the as-casting ban. Fix in their own tasks.
-const EXCLUDED_FILES = new Set(['relay.ts', 'verify-migration.ts']);
+const EXCLUDED_FILES = new Set(['relay.ts']);
 
 const violations: Violation[] = [];
 

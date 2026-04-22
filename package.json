@@ -59,7 +59,7 @@
     "typecheck": "bun --filter='@fairfox/*' run typecheck",
     "test": "bun test",
     "test:browser": "bun node_modules/@fairfox/polly/dist/tools/test/src/browser/run.js tests/browser",
-    "backup": "mkdir -p backups && curl -fsSL ${FAIRFOX_URL:-https://fairfox-production-8273.up.railway.app}/todo/api/backup > backups/todo-$(date +%F).json && curl -fsSL ${FAIRFOX_URL:-https://fairfox-production-8273.up.railway.app}/struggle/api/backup/full > backups/struggle-$(date +%F).json",
+    "backup": "echo 'Legacy /todo and /struggle REST backups retired 2026-04-22. All state lives in the mesh ($meshState) and replicates to every paired device — use any paired device as the backup.'",
     "relay": "bun scripts/relay.ts",
     "pair-cli": "FAIRFOX_URL=\"${FAIRFOX_URL:-http://localhost:3000}\" bun packages/cli/src/bin.ts"
   },

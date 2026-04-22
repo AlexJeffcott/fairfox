@@ -13,8 +13,6 @@
   },
   "dependencies": {
     "@fairfox/shared": "workspace:*",
-    "@fairfox/struggle": "workspace:*",
-    "@fairfox/todo": "workspace:*",
     "fflate": "^0.8.2"
   },
   "devDependencies": {

@@ -6,7 +6,6 @@
   "exports": {
     "./subapp": "./src/subapp.ts",
     "./env": "./src/env.ts",
-    "./openDb": "./src/openDb.ts",
     "./keyring": "./src/keyring.ts",
     "./pairing": "./src/pairing.ts",
     "./mesh": "./src/mesh.ts",

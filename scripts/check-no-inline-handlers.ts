@@ -9,7 +9,6 @@
 // Exemptions:
 //   - packages/ui/src — the primitives themselves legitimately use
 //     onInput, onKeyDown, onBlur etc on native elements internally.
-//   - packages/struggle, packages/todo — legacy, exempted per ADR 0006.
 //   - Test files — test setup code is allowed to use handlers.
 //
 // Adapted from Lingua's scripts/check-no-inline-handlers.ts.
@@ -21,7 +20,7 @@ const scriptDir = new URL('.', import.meta.url).pathname;
 const repoRoot = resolve(scriptDir, '..');
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'tests']);
-const EXEMPT_PACKAGES = new Set(['ui', 'struggle', 'todo']);
+const EXEMPT_PACKAGES = new Set(['ui']);
 
 const BANNED_HANDLERS = [
   'onClick',

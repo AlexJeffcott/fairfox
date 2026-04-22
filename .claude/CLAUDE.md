@@ -1,11 +1,30 @@
 # fairfox
 
-A Bun monorepo that gathers small web projects into a single Railway service. Each project mounts at its own subpath beneath one `Bun.serve`, shares the landing page at `/`, and owns its own SQLite database.
+A Bun monorepo that hosts a single Preact SPA under one `Bun.serve`,
+backed entirely by polly `$meshState` documents replicated between
+paired devices over WebRTC. The server's primary role is the
+WebSocket signalling relay; the mesh UI ships as one bundle served
+from `packages/home`.
 
 ## Sub-apps
 
-- **`/todo`** — project tracker (transplanted from `~/projects/todo-remote`). Raw `Bun.serve` routes + Preact/HTM/Signals frontend. Lives in `packages/todo`. Owns `data/todo.db`.
-- **`/struggle`** — interactive sci-fi story (transplanted from `~/projects/the_struggle`). Elysia + vanilla JS thick client. Lives in `packages/struggle`. Owns `data/struggle.db`. **The database is the source of truth.** Seed files and `/api/reseed` referenced in old docs no longer exist; the only authoritative copy is the live DB.
+All sub-apps are routes within the unified SPA. Each owns one or
+more `$meshState` documents; no server-side database is involved.
+
+- `/` — the hub: app grid, peers, users, help.
+- `/todo-v2` — projects + tasks + captures (`todo:projects`,
+  `todo:tasks`, `todo:captures`).
+- `/agenda` — household today view (`agenda:main`).
+- `/library` — references and world bible (`library:*`).
+- `/the-struggle` — interactive sci-fi story (`struggle:*`).
+- `/speakwell` — spoken-skills coach (`speakwell:*`).
+- `/family-phone-admin` — family directory + devices
+  (`family:*`).
+
+The legacy `/todo` (Bun.serve + SQLite) and `/struggle` (Elysia +
+SQLite) sub-apps were retired on 2026-04-22; their data was
+migrated into `todo:*` mesh documents beforehand. The `DATA_DIR`
+env var is no longer required.
 
 ## Starting / resetting a mesh
 
@@ -31,40 +50,52 @@ bootstraps a fresh admin — that path lives in the CLI.
 
 ## Architecture
 
-- `packages/shared` — typed `SubApp`/`WsSubApp`/`WsData` contract, `loadEnv()`, `openDb()`. Zero runtime deps.
-- `packages/web` — the single `Bun.serve`. Validates env, dispatches by URL prefix (with correct false-prefix guards), owns WebSocket upgrades on behalf of sub-apps, serves the static landing page.
-- Each sub-app exports `fetch(Request): Promise<Response>` and a `mount: '/xyz'` literal. Web assigns imported namespaces to typed locals to force structural conformance at compile time.
-- Todo imports are **lazy dynamic** so its module-load side effects (opening the sqlite file) don't fire until after the migration runbook has uploaded real data.
+- `packages/shared` — mesh primitives (pairing, keyring, policy,
+  $meshState wrappers), shared action registries. Zero server
+  deps.
+- `packages/home` — the unified Preact SPA. One `boot.tsx`, one
+  router, one action registry that merges every sub-app's
+  handlers. Every mesh route serves this bundle.
+- `packages/web` — the single `Bun.serve`. Serves the SPA shell
+  on every mesh route, the CLI installer, the Chrome side-panel
+  extension download, the WebSocket signalling relay, and a few
+  small APIs (health, build-hash, CLI version).
+- Each sub-app package exports `./client` (its `<App>`) and
+  `./actions` (its action map + optional write-gate set). The
+  unified shell imports both.
 
 ## House rules
 
 - No `any`. No `as` casts except `as const`. No `@ts-ignore`. No `.skip()`. No `!` non-null assertions.
 - All environment access goes through `@fairfox/shared/env` — no bare `process.env.X` reads.
 - `biome check` and `tsc --noEmit` stay green on every commit.
-- `packages/struggle` has a targeted biome override relaxing `noExplicitAny` and `useTemplate`, and loosens `noUnusedLocals`/`noUnusedParameters` in its tsconfig — these are documented concessions for transplanted creative-writing code. New fairfox code stays strict.
-
-## Data + Railway
-
-- Dev: `DATA_DIR=./data`, gitignored. Databases created on first boot.
-- Prod: Railway volume mounted at `/data`. `loadEnv()` refuses to start if the volume is on the same device as `/` — a check that catches unmounted container filesystems.
-- Production migrations use SQLite's `VACUUM INTO` against the source service, then stream the clean file into fairfox's volume while fairfox is stopped. Never raw-copy `.db` + `-wal` + `-shm` under a live writer.
 
 ## Writing-style skills
 
-`.claude/skills/` contains four creative-writing skills (`narrative-draft`, `story-architect`, `story-critic`, `world-bible`) transplanted from the_struggle. They apply only to content work inside `packages/struggle`. **Do not use the `classic-style` skill for struggle content** — creative writing needs voice, rhythm, and the freedom to break prose rules.
+`.claude/skills/` contains four creative-writing skills
+(`narrative-draft`, `story-architect`, `story-critic`,
+`world-bible`). They apply to content work inside
+`packages/the-struggle` (the mesh-based story app). **Do not use
+the `classic-style` skill for story content** — creative writing
+needs voice, rhythm, and the freedom to break prose rules.
 
 ## Scripts
 
-- `bun dev` — run the web server locally (sets `DATA_DIR=./data` inline; `bun --hot` currently breaks mesh-subapp bundling so dev runs without it)
-- `bun check` — biome format + lint
+- `bun dev` — run the web server locally (`bun --hot` breaks the
+  mesh bundle build, so dev runs without it)
+- `bun check` — biome format + lint + the house-rule checks +
+  gitleaks
 - `bun typecheck` — tsc across all packages
-- `bun test` — run tests (once they exist)
-- `bun run backup` — pull JSON backups from both sub-apps via their `/api/backup` endpoints
+- `bun test` — run tests
+- `bun pair-cli <args>` — run the CLI from source against
+  localhost (no rebuild, no Railway round-trip)
 
 ## Deploy
 
-- `railway up` in the repo root. Single-stage Dockerfile. No Litestream (v1).
-- Old todo-remote and the_struggle Railway services stay running for seven days after each migration as rollback insurance, then are deleted.
+- `railway up` in the repo root. Single-stage Dockerfile.
+- CLI bundles are shipped via GitHub Releases (tag `vX.Y.Z`
+  triggers the `cli-release` workflow); `fairfox update` on any
+  installed CLI picks up the new bundle without a Railway deploy.
 
 ## Mesh sync verification
 
