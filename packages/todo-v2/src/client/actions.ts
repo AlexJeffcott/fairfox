@@ -13,7 +13,6 @@ import {
   showDone,
   toggleShowDone,
 } from '#src/client/App.tsx';
-import { migrateFromLegacy } from '#src/client/migrate.ts';
 import type {
   Project,
   ProjectCategory,
@@ -26,8 +25,6 @@ import { capturesState, projectsState, tasksState } from '#src/client/state.ts';
 function isProjectCategory(s: string): s is ProjectCategory {
   return s === 'personal' || s === 'amboss';
 }
-
-let migrationInFlight = false;
 
 interface HandlerContext {
   data: Record<string, string>;
@@ -69,7 +66,6 @@ export const TODO_WRITE_ACTIONS: ReadonlySet<string> = new Set([
   'capture.delete',
   'capture.update',
   'capture.promote',
-  'migrate.from-legacy',
 ]);
 
 export const registry: Record<string, (ctx: HandlerContext) => void> = {
@@ -454,27 +450,5 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     filterProjectName.value = '';
     filterPriority.value = '';
     showDone.value = false;
-  },
-
-  // --- One-shot migration from the legacy todo REST API. Writes
-  // directly into $meshState so the migrated records propagate to
-  // every paired device. Idempotent — running it twice overwrites.
-  'migrate.from-legacy': () => {
-    if (migrationInFlight) {
-      return;
-    }
-    migrationInFlight = true;
-    (async () => {
-      try {
-        const result = await migrateFromLegacy();
-        console.log(
-          `[migrate] ok — ${result.projects} projects, ${result.tasks} tasks, ${result.captures} captures`
-        );
-      } catch (err) {
-        console.error('[migrate] failed:', err);
-      } finally {
-        migrationInFlight = false;
-      }
-    })();
   },
 };

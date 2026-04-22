@@ -865,17 +865,6 @@ function CaptureView() {
       {capturesState.value.captures.length === 0 && (
         <p style={{ color: 'var(--polly-text-muted)' }}>No captures yet.</p>
       )}
-      <Layout rows="auto" gap="var(--polly-space-sm)" padding="var(--polly-space-md) 0 0 0">
-        <p style={{ fontSize: 'var(--polly-text-sm)', color: 'var(--polly-text-muted)' }}>
-          One-shot legacy import — pulls from the old /todo API into this mesh.
-        </p>
-        <Button
-          label="Migrate from legacy"
-          tier="secondary"
-          size="small"
-          data-action="migrate.from-legacy"
-        />
-      </Layout>
     </Layout>
   );
 }
