@@ -9,12 +9,12 @@
 import '@fairfox/polly/ui/styles.css';
 import '@fairfox/polly/ui/theme.css';
 
-import { type ActionDispatch, installEventDelegation } from '@fairfox/polly/actions';
+import { installEventDelegation } from '@fairfox/polly/actions';
 import { touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
 import { loadOrCreateKeyring } from '@fairfox/shared/keyring';
 import { render } from 'preact';
 import { App } from '#src/client/App.tsx';
-import { registry } from '#src/client/registry.ts';
+import { dispatch } from '#src/client/registry.ts';
 import { setSelfPeerId } from '#src/client/self-peer.ts';
 
 function derivePeerId(publicKey: Uint8Array): string {
@@ -23,12 +23,7 @@ function derivePeerId(publicKey: Uint8Array): string {
     .join('');
 }
 
-installEventDelegation((d: ActionDispatch) => {
-  const handler = registry[d.action];
-  if (handler) {
-    handler({ data: d.data, event: d.event, element: d.element });
-  }
-});
+installEventDelegation(dispatch);
 
 // Populate the self-peer id as soon as the keyring resolves so
 // PeersView can flag this device's own row. Independent of

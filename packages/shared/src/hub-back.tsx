@@ -11,6 +11,8 @@ export function HubBack(): preact.JSX.Element {
   return (
     <a
       href="/"
+      data-action="app.navigate"
+      data-action-href="/"
       style={{
         display: 'inline-flex',
         alignItems: 'center',

@@ -93,6 +93,8 @@ function AppsGrid() {
           <a
             key={s.path}
             href={s.path}
+            data-action="app.navigate"
+            data-action-href={s.path}
             style={{
               display: 'grid',
               gridTemplateColumns: '1fr',

@@ -47,6 +47,31 @@ function isProjectStatus(s: string): s is Project['status'] {
   return s === 'active' || s === 'paused' || s === 'done' || s === 'archived';
 }
 
+/** Actions that mutate `todo:*` CRDT state and therefore require
+ * `todo.write`. View-state toggles (`*.open`, `*.close`, `*.new`,
+ * `todo.tab`) only flip local signals and stay unguarded. Exported
+ * so the unified shell's dispatcher can gate the same set without
+ * duplicating the list. */
+export const TODO_WRITE_ACTIONS: ReadonlySet<string> = new Set([
+  'project.create',
+  'project.update-status',
+  'project.delete',
+  'project.delete-and-close',
+  'project.update',
+  'task.create',
+  'task.toggle-done',
+  'task.set-priority',
+  'task.update-notes',
+  'task.delete',
+  'task.delete-and-close',
+  'task.update',
+  'capture.add',
+  'capture.delete',
+  'capture.update',
+  'capture.promote',
+  'migrate.from-legacy',
+]);
+
 export const registry: Record<string, (ctx: HandlerContext) => void> = {
   ...pairingActions,
   ...buildFreshnessActions,

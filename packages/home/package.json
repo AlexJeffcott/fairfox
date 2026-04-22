@@ -12,6 +12,7 @@
   "dependencies": {
     "@fairfox/polly": "catalog:",
     "@fairfox/shared": "workspace:*",
+    "@fairfox/todo-v2": "workspace:*",
     "@preact/signals": "catalog:",
     "preact": "catalog:"
   },
