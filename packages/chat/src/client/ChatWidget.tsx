@@ -1,0 +1,419 @@
+/** @jsxImportSource preact */
+// ChatWidget — the always-mounted floating assistant. Collapsed it
+// renders a single bottom-right button; expanded it's a full-screen
+// modal on mobile and a docked panel on wider screens. Shows the
+// active conversation's message tail, a composer with the live page
+// context chip, and a small header with new / close controls.
+
+import { ActionInput, Button, Layout } from '@fairfox/polly/ui';
+import { devicesState } from '@fairfox/shared/devices-state';
+import { currentPageContext, type PageContext } from '@fairfox/shared/page-context';
+import { userIdentity } from '@fairfox/shared/user-identity-state';
+import { usersState } from '@fairfox/shared/users-state';
+import type { Conversation, Message } from '#src/client/state.ts';
+import {
+  activeConversationId,
+  chatState,
+  draftText,
+  pinnedContext,
+  widgetOpen,
+} from '#src/client/state.ts';
+
+const BUTTON_SIZE = 56;
+
+function displayNameFor(userId: string): string {
+  const entry = usersState.value.users[userId];
+  if (entry?.displayName) {
+    return entry.displayName;
+  }
+  return userId.slice(0, 8);
+}
+
+function deviceNameFor(deviceId: string): string {
+  const entry = devicesState.value.devices[deviceId];
+  if (entry?.name) {
+    return entry.name;
+  }
+  return deviceId.slice(0, 8);
+}
+
+function formatTime(iso: string): string {
+  if (!iso) {
+    return '';
+  }
+  try {
+    const d = new Date(iso);
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  } catch {
+    return '';
+  }
+}
+
+function activeConversation(): Conversation | undefined {
+  const id = activeConversationId.value;
+  if (!id) {
+    return undefined;
+  }
+  return chatState.value.conversations.find((c) => c.id === id);
+}
+
+function messagesForActive(): Message[] {
+  const convo = activeConversation();
+  if (!convo) {
+    return [];
+  }
+  return chatState.value.messages
+    .filter((m) => m.conversationId === convo.id)
+    .slice()
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+function anyPending(): boolean {
+  return chatState.value.messages.some((m) => m.sender === 'user' && m.pending);
+}
+
+function ContextChip({ ctx, onDetachAction }: { ctx: PageContext; onDetachAction?: string }) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.35rem',
+        padding: '0.15rem 0.55rem',
+        background: '#e8edf3',
+        color: '#1c1917',
+        border: '1px solid #c6cfd9',
+        borderRadius: '999px',
+        fontSize: '0.78rem',
+      }}
+    >
+      <span style={{ fontFamily: 'var(--polly-font-mono)' }}>{ctx.kind}</span>
+      <span>{ctx.label}</span>
+      {onDetachAction && (
+        <button
+          type="button"
+          data-action={onDetachAction}
+          data-action-kind={ctx.kind}
+          data-action-id={ctx.id ?? ''}
+          data-action-key={`${ctx.kind}:${ctx.id ?? ''}`}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '0.9rem',
+            lineHeight: 1,
+            padding: 0,
+            color: '#6b7280',
+          }}
+          aria-label={`Remove ${ctx.label}`}
+        >
+          ×
+        </button>
+      )}
+    </span>
+  );
+}
+
+function FloatingButton() {
+  const pending = anyPending();
+  return (
+    <button
+      type="button"
+      data-action="chat.toggle-widget"
+      aria-label="Open chat assistant"
+      style={{
+        position: 'fixed',
+        right: '1rem',
+        bottom: '1rem',
+        width: `${BUTTON_SIZE}px`,
+        height: `${BUTTON_SIZE}px`,
+        borderRadius: '50%',
+        border: 'none',
+        background: '#2563eb',
+        color: 'white',
+        cursor: 'pointer',
+        fontSize: '1.5rem',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+        zIndex: 9998,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <span role="img" aria-hidden="true">
+        💬
+      </span>
+      {pending && (
+        <span
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: '4px',
+            right: '4px',
+            width: '12px',
+            height: '12px',
+            background: '#ef4444',
+            borderRadius: '50%',
+            border: '2px solid #2563eb',
+          }}
+        />
+      )}
+    </button>
+  );
+}
+
+function MessageBubble({
+  message,
+  selfDeviceId,
+}: {
+  message: Message;
+  selfDeviceId: string | null;
+}) {
+  const isAssistant = message.sender === 'assistant';
+  const isSelf = !isAssistant && message.senderDeviceId === selfDeviceId;
+  const bg = isAssistant ? '#e8edf3' : isSelf ? '#dbeafe' : '#ffffff';
+  const border = isAssistant ? '#c6cfd9' : isSelf ? '#bcd5f5' : '#e7e5e4';
+  const label = isAssistant
+    ? 'Claude'
+    : `${displayNameFor(message.senderUserId)} · ${deviceNameFor(message.senderDeviceId)}`;
+  return (
+    <Layout rows="auto auto" gap="0.15rem" padding="0.35rem 0">
+      <Layout columns="auto 1fr auto" gap="0.5rem" alignItems="center">
+        <strong
+          style={{
+            fontSize: '0.75rem',
+            color: isAssistant ? '#047857' : '#1c1917',
+          }}
+        >
+          {label}
+        </strong>
+        <span />
+        <span
+          style={{
+            fontSize: '0.75rem',
+            color: '#6b7280',
+          }}
+        >
+          {formatTime(message.createdAt)}
+          {message.pending && !isAssistant && ' · pending'}
+        </span>
+      </Layout>
+      <div
+        style={{
+          background: bg,
+          color: '#1c1917',
+          border: `1px solid ${border}`,
+          padding: '0.5rem 0.75rem',
+          borderRadius: '6px',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          fontSize: '0.9rem',
+        }}
+      >
+        {message.text}
+      </div>
+    </Layout>
+  );
+}
+
+function Composer({ selfPeerId }: { selfPeerId: string | null }) {
+  const identity = userIdentity.value;
+  if (!identity) {
+    return (
+      <p style={{ margin: 0, color: '#6b7280', fontSize: '0.85rem', padding: '0.5rem' }}>
+        Connect your identity on the hub's Peers tab before sending messages.
+      </p>
+    );
+  }
+  if (!selfPeerId) {
+    return null;
+  }
+  const live = pinnedContext.value ?? currentPageContext.value;
+  const pinned = pinnedContext.value !== null;
+  return (
+    <Layout rows="auto auto" gap="0.35rem">
+      <Layout columns="1fr auto" gap="0.35rem" alignItems="center">
+        <Layout columns="auto auto" gap="0.35rem" alignItems="center">
+          <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+            {pinned ? 'Pinned:' : 'Context:'}
+          </span>
+          {live ? (
+            <ContextChip ctx={live} />
+          ) : (
+            <span style={{ fontSize: '0.78rem', color: '#9ca3af' }}>(none)</span>
+          )}
+        </Layout>
+        {live && (
+          <Button
+            label={pinned ? 'Unpin' : 'Pin'}
+            tier="tertiary"
+            size="small"
+            data-action={pinned ? 'chat.unpin-context' : 'chat.pin-context'}
+          />
+        )}
+      </Layout>
+      <Layout columns="1fr auto" gap="0.5rem" alignItems="stretch">
+        <ActionInput
+          value={draftText.value}
+          variant="multi"
+          action="chat.draft-text"
+          saveOn="blur"
+          placeholder="Ask Claude…"
+          ariaLabel="Message text"
+        />
+        <Button label="Send" tier="primary" data-action="chat.send" />
+      </Layout>
+    </Layout>
+  );
+}
+
+function ConversationHeader({ convo }: { convo: Conversation | undefined }) {
+  const title = convo?.title ?? 'New conversation';
+  return (
+    <Layout columns="1fr auto auto" gap="0.35rem" alignItems="center">
+      <strong style={{ fontSize: '0.95rem' }}>{title}</strong>
+      <Button
+        label="New"
+        tier="tertiary"
+        size="small"
+        data-action="chat.new-conversation"
+        title="Start a fresh conversation — current one stays in history"
+      />
+      <Button label="Close" tier="tertiary" size="small" data-action="chat.close-widget" />
+    </Layout>
+  );
+}
+
+function ConversationContextStrip({ convo }: { convo: Conversation | undefined }) {
+  if (!convo || convo.contextRefs.length === 0) {
+    return null;
+  }
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '0.35rem',
+        padding: '0.25rem 0',
+      }}
+    >
+      <span style={{ fontSize: '0.75rem', color: '#6b7280', alignSelf: 'center' }}>Following:</span>
+      {convo.contextRefs.map((ctx) => {
+        const key = `${ctx.kind}:${ctx.id ?? ''}`;
+        return (
+          <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+            <ContextChip ctx={ctx} />
+            <button
+              type="button"
+              data-action="chat.remove-context"
+              data-action-conversation-id={convo.id}
+              data-action-key={key}
+              aria-label={`Remove ${ctx.label} from this conversation`}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                color: '#6b7280',
+                fontSize: '0.9rem',
+              }}
+            >
+              ×
+            </button>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function isMobile(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  return window.innerWidth < 640;
+}
+
+function Panel({ selfPeerId }: { selfPeerId: string | null }) {
+  const convo = activeConversation();
+  const messages = messagesForActive();
+  const mobile = isMobile();
+  const panelStyle: preact.JSX.CSSProperties = mobile
+    ? {
+        position: 'fixed',
+        inset: 0,
+        background: '#ffffff',
+        display: 'flex',
+        flexDirection: 'column',
+        zIndex: 9999,
+      }
+    : {
+        position: 'fixed',
+        right: '1rem',
+        bottom: `${BUTTON_SIZE + 20}px`,
+        width: '380px',
+        maxHeight: '70vh',
+        background: '#ffffff',
+        border: '1px solid #e7e5e4',
+        borderRadius: '12px',
+        boxShadow: '0 12px 32px rgba(0,0,0,0.18)',
+        display: 'flex',
+        flexDirection: 'column',
+        zIndex: 9999,
+        overflow: 'hidden',
+      };
+  return (
+    <div style={panelStyle}>
+      <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #e7e5e4' }}>
+        <ConversationHeader convo={convo} />
+        <ConversationContextStrip convo={convo} />
+      </div>
+      <div
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '0.5rem 1rem',
+        }}
+      >
+        {messages.length === 0 ? (
+          <p style={{ color: '#6b7280', fontSize: '0.85rem', margin: '0.5rem 0' }}>
+            New thread. Type below — the laptop's <code>fairfox chat serve</code> will reply.
+          </p>
+        ) : (
+          messages.map((m) => <MessageBubble key={m.id} message={m} selfDeviceId={selfPeerId} />)
+        )}
+      </div>
+      <div style={{ padding: '0.75rem 1rem', borderTop: '1px solid #e7e5e4' }}>
+        <Composer selfPeerId={selfPeerId} />
+      </div>
+    </div>
+  );
+}
+
+function useSelfPeerId(): string | null {
+  const identity = userIdentity.value;
+  if (!identity) {
+    return null;
+  }
+  for (const [peerId, entry] of Object.entries(devicesState.value.devices)) {
+    if ((entry.ownerUserIds ?? []).includes(identity.userId)) {
+      return peerId;
+    }
+  }
+  return null;
+}
+
+export function ChatWidget(): preact.JSX.Element {
+  const selfPeerId = useSelfPeerId();
+  // Render both so Preact can keep the panel mounted while it
+  // animates in/out if we ever add a transition. Visibility is
+  // controlled by widgetOpen.value.
+  return (
+    <>
+      <FloatingButton />
+      {widgetOpen.value && <Panel selfPeerId={selfPeerId} />}
+    </>
+  );
+}

@@ -1,59 +1,80 @@
-// Chat state — one household conversation held in a single $meshState
-// document. Every paired device sees the same message list; attribution
-// on each row (userId + deviceId) keeps interleaved posts legible.
-// Context is per-message, not per-thread, so different asks can target
-// different sub-apps without needing separate threads.
+// Chat state — household assistant threads held in a single $meshState
+// document. Two entities: conversations and messages. Each message
+// belongs to a conversation; each conversation owns the list of
+// contextRefs it has accumulated (page context automatically appends
+// here on send, so the relay keeps seeing the relevant records even
+// after the user navigates away).
 
 import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
+import type { PageContext } from '@fairfox/shared/page-context';
 import { signal } from '@preact/signals';
 
 export type Sender = 'user' | 'assistant';
 
-/** Sub-app doc a message is asking about. The relay uses this to pick
- * which mesh doc to serialize into the prompt. */
-export type ContextKind = 'project' | 'task' | 'agenda' | 'doc';
-
-export interface ContextRef {
+export interface Conversation {
   [key: string]: unknown;
-  kind: ContextKind;
   id: string;
+  title?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdByUserId: string;
+  /** Context records the conversation has accumulated — page
+   * contexts attached from send sites, any manual additions. The
+   * relay reads this to build its prompt, so adding to the list on
+   * every send keeps the conversation "sticky" to its topic even
+   * when the user navigates. */
+  contextRefs: PageContext[];
+  archivedAt?: string;
 }
 
 export interface Message {
   [key: string]: unknown;
   id: string;
+  conversationId: string;
   sender: Sender;
   senderUserId: string;
   senderDeviceId: string;
   text: string;
   pending: boolean;
   parentId?: string;
-  contextRef?: ContextRef;
+  /** Per-message context override — rarely set; the conversation's
+   * contextRefs usually supply everything the relay needs. */
+  contextRef?: PageContext;
   createdAt: string;
 }
 
 export interface ChatDoc {
   [key: string]: unknown;
+  conversations: Conversation[];
   messages: Message[];
 }
 
-export const chatState = $meshState<ChatDoc>('chat:main', { messages: [] });
-
-/** Draft state for the composer. Lives on a local signal so partial
- * text doesn't replicate to every peer before Send. */
-export interface MessageDraft {
-  text: string;
-  contextKind: ContextKind | '';
-  contextId: string;
-}
-
-export const messageDraft = signal<MessageDraft>({
-  text: '',
-  contextKind: '',
-  contextId: '',
+export const chatState = $meshState<ChatDoc>('chat:main', {
+  conversations: [],
+  messages: [],
 });
 
+/** Which conversation the widget is currently rendering, per
+ * device. View state, not mesh state — each device keeps its own
+ * active pointer so opening the widget on one device doesn't yank
+ * another device's view. `null` means "start a new one on next
+ * send". */
+export const activeConversationId = signal<string | null>(null);
+
+/** Whether the widget panel is expanded (modal/sheet open) or
+ * collapsed (button only). */
+export const widgetOpen = signal<boolean>(false);
+
+/** Draft text for the composer. Lives on a local signal so partial
+ * text doesn't replicate to every peer before Send. */
+export const draftText = signal<string>('');
+
+/** Pinned context override for the active conversation. When set,
+ * every send uses this instead of the current page context. Cleared
+ * on "Start fresh" or explicit detach. */
+export const pinnedContext = signal<PageContext | null>(null);
+
 export function resetDraft(): void {
-  messageDraft.value = { text: '', contextKind: '', contextId: '' };
+  draftText.value = '';
 }

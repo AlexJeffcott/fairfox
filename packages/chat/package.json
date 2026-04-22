@@ -6,6 +6,7 @@
   "main": "src/server/server.ts",
   "exports": {
     "./client": "./src/client/App.tsx",
+    "./widget": "./src/client/ChatWidget.tsx",
     "./actions": "./src/client/actions.ts",
     "./state": "./src/client/state.ts"
   },

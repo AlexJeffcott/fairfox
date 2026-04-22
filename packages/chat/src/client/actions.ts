@@ -1,14 +1,22 @@
-// Action registry for the Chat sub-app. Send composes a new user
-// message with pending=true; the laptop-side `fairfox chat serve`
-// watches for those and writes back an assistant reply. The browser
-// never calls an LLM directly.
+// Action registry for the Chat widget. The widget lives in every
+// mesh-gated page so these actions need to work wherever the user
+// is when they press Send.
 
 import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import { loadOrCreateKeyring } from '@fairfox/shared/keyring';
+import { currentPageContext, type PageContext } from '@fairfox/shared/page-context';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
 import { userIdentity } from '@fairfox/shared/user-identity-state';
-import type { ContextKind, Message } from '#src/client/state.ts';
-import { chatState, messageDraft, resetDraft } from '#src/client/state.ts';
+import { historyViewSignals } from '#src/client/App.tsx';
+import type { Conversation, Message } from '#src/client/state.ts';
+import {
+  activeConversationId,
+  chatState,
+  draftText,
+  pinnedContext,
+  resetDraft,
+  widgetOpen,
+} from '#src/client/state.ts';
 
 interface HandlerContext {
   data: Record<string, string>;
@@ -20,11 +28,6 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-const CONTEXT_KINDS = new Set<string>(['project', 'task', 'agenda', 'doc']);
-function isContextKind(s: string): s is ContextKind {
-  return CONTEXT_KINDS.has(s);
-}
-
 async function derivePeerId(): Promise<string> {
   const keyring = await loadOrCreateKeyring();
   return Array.from(keyring.identity.publicKey.slice(0, 8))
@@ -32,49 +35,204 @@ async function derivePeerId(): Promise<string> {
     .join('');
 }
 
-/** Actions that mutate `chat:main`. Gated under `chat.write` once
- * policy.ts grows that permission; ungated today, matching the
- * rollout used by tasks/agenda during Phase E. */
+/** Find an existing conversation matching a page-context "anchor",
+ * so repeatedly opening the widget on the same entity page
+ * continues the same thread. Returns undefined when no match. */
+function findAnchorConversation(ctx: PageContext): Conversation | undefined {
+  const key = `${ctx.kind}:${ctx.id ?? ''}`;
+  return chatState.value.conversations.find((c) => {
+    if (c.archivedAt) {
+      return false;
+    }
+    return c.contextRefs.some((r) => `${r.kind}:${r.id ?? ''}` === key);
+  });
+}
+
+function effectiveContext(): PageContext | null {
+  return pinnedContext.value ?? currentPageContext.value;
+}
+
+function contextAlreadyPresent(list: PageContext[], ctx: PageContext): boolean {
+  const key = `${ctx.kind}:${ctx.id ?? ''}`;
+  return list.some((r) => `${r.kind}:${r.id ?? ''}` === key);
+}
+
+function shortTitleFrom(text: string): string {
+  const stripped = text.trim().replace(/\s+/g, ' ');
+  return stripped.length <= 60 ? stripped : `${stripped.slice(0, 57)}…`;
+}
+
+/** Ensure there's an active conversation: reuse one anchored to the
+ * current page context if available, otherwise start a fresh one.
+ * Returns the conversation that should carry the next message. */
+function ensureActiveConversation(
+  creatorUserId: string,
+  seedText: string,
+  pageCtx: PageContext | null
+): Conversation {
+  const activeId = activeConversationId.value;
+  if (activeId) {
+    const existing = chatState.value.conversations.find((c) => c.id === activeId);
+    if (existing) {
+      return existing;
+    }
+  }
+  if (pageCtx) {
+    const anchor = findAnchorConversation(pageCtx);
+    if (anchor) {
+      activeConversationId.value = anchor.id;
+      return anchor;
+    }
+  }
+  const now = new Date().toISOString();
+  const fresh: Conversation = {
+    id: generateId(),
+    title: shortTitleFrom(seedText) || undefined,
+    createdAt: now,
+    updatedAt: now,
+    createdByUserId: creatorUserId,
+    contextRefs: pageCtx ? [pageCtx] : [],
+  };
+  chatState.value = {
+    ...chatState.value,
+    conversations: [...chatState.value.conversations, fresh],
+  };
+  activeConversationId.value = fresh.id;
+  return fresh;
+}
+
+function appendContextToConversation(conversationId: string, ctx: PageContext): void {
+  chatState.value = {
+    ...chatState.value,
+    conversations: chatState.value.conversations.map((c) => {
+      if (c.id !== conversationId) {
+        return c;
+      }
+      if (contextAlreadyPresent(c.contextRefs, ctx)) {
+        return c;
+      }
+      return { ...c, contextRefs: [...c.contextRefs, ctx] };
+    }),
+  };
+}
+
+function bumpConversationTimestamp(conversationId: string): void {
+  const now = new Date().toISOString();
+  chatState.value = {
+    ...chatState.value,
+    conversations: chatState.value.conversations.map((c) =>
+      c.id === conversationId ? { ...c, updatedAt: now } : c
+    ),
+  };
+}
+
 export const CHAT_WRITE_ACTIONS: ReadonlySet<string> = new Set([
   'chat.send',
   'chat.delete',
   'chat.cancel-pending',
+  'chat.new-conversation',
+  'chat.open-conversation',
+  'chat.archive-conversation',
+  'chat.remove-context',
 ]);
 
 export const registry: Record<string, (ctx: HandlerContext) => void> = {
   ...pairingActions,
   ...buildFreshnessActions,
 
-  'chat.draft-text': (ctx) => {
-    messageDraft.value = { ...messageDraft.value, text: ctx.data.value ?? '' };
+  // Widget open / close / draft bookkeeping ---------------------
+  'chat.toggle-widget': () => {
+    widgetOpen.value = !widgetOpen.value;
   },
 
-  'chat.draft-kind': (ctx) => {
-    const k = ctx.data.value ?? '';
-    if (k === '' || isContextKind(k)) {
-      messageDraft.value = { ...messageDraft.value, contextKind: k };
+  'chat.close-widget': () => {
+    widgetOpen.value = false;
+  },
+
+  'chat.draft-text': (ctx) => {
+    draftText.value = ctx.data.value ?? '';
+  },
+
+  // Conversation lifecycle --------------------------------------
+  'chat.new-conversation': () => {
+    activeConversationId.value = null;
+    pinnedContext.value = null;
+    resetDraft();
+  },
+
+  'chat.open-conversation': (ctx) => {
+    const id = ctx.data.id;
+    if (!id) {
+      return;
+    }
+    activeConversationId.value = id;
+    widgetOpen.value = true;
+  },
+
+  'chat.archive-conversation': (ctx) => {
+    const id = ctx.data.id;
+    if (!id) {
+      return;
+    }
+    const now = new Date().toISOString();
+    chatState.value = {
+      ...chatState.value,
+      conversations: chatState.value.conversations.map((c) =>
+        c.id === id ? { ...c, archivedAt: now } : c
+      ),
+    };
+    if (activeConversationId.value === id) {
+      activeConversationId.value = null;
     }
   },
 
-  'chat.draft-id': (ctx) => {
-    messageDraft.value = { ...messageDraft.value, contextId: (ctx.data.value ?? '').trim() };
+  'chat.remove-context': (ctx) => {
+    const conversationId = ctx.data.conversationId;
+    const key = ctx.data.key;
+    if (!conversationId || !key) {
+      return;
+    }
+    chatState.value = {
+      ...chatState.value,
+      conversations: chatState.value.conversations.map((c) => {
+        if (c.id !== conversationId) {
+          return c;
+        }
+        return {
+          ...c,
+          contextRefs: c.contextRefs.filter((r) => `${r.kind}:${r.id ?? ''}` !== key),
+        };
+      }),
+    };
   },
 
+  'chat.pin-context': () => {
+    pinnedContext.value = currentPageContext.value;
+  },
+
+  'chat.unpin-context': () => {
+    pinnedContext.value = null;
+  },
+
+  // Sending -----------------------------------------------------
   'chat.send': () => {
-    const draft = messageDraft.value;
-    const text = draft.text.trim();
+    const text = draftText.value.trim();
     if (!text) {
       return;
     }
     const identity = userIdentity.value;
     if (!identity) {
-      // No identity — can't attribute the message. UI should already
-      // hide the send button in this state; this is belt-and-braces.
       return;
     }
+    const pageCtx = effectiveContext();
     void derivePeerId().then((peerId) => {
+      const convo = ensureActiveConversation(identity.userId, text, pageCtx);
+      if (pageCtx) {
+        appendContextToConversation(convo.id, pageCtx);
+      }
       const message: Message = {
         id: generateId(),
+        conversationId: convo.id,
         sender: 'user',
         senderUserId: identity.userId,
         senderDeviceId: peerId,
@@ -82,13 +240,11 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
         pending: true,
         createdAt: new Date().toISOString(),
       };
-      if (draft.contextKind && draft.contextId) {
-        message.contextRef = { kind: draft.contextKind, id: draft.contextId };
-      }
       chatState.value = {
         ...chatState.value,
         messages: [...chatState.value.messages, message],
       };
+      bumpConversationTimestamp(convo.id);
       resetDraft();
     });
   },
@@ -105,10 +261,6 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
   },
 
   'chat.cancel-pending': (ctx) => {
-    // Flag a pending user message as no-longer-needs-a-reply. The
-    // relay's idempotency check already skips messages that already
-    // have an assistant reply; this is for the other case, where
-    // the user wants to rescind before the relay processes.
     const id = ctx.data.id;
     if (!id) {
       return;
@@ -117,5 +269,13 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       ...chatState.value,
       messages: chatState.value.messages.map((m) => (m.id === id ? { ...m, pending: false } : m)),
     };
+  },
+
+  'chat.history-search': (ctx) => {
+    historyViewSignals.searchQuery.value = ctx.data.value ?? '';
+  },
+
+  'chat.history-toggle-archived': () => {
+    historyViewSignals.showArchived.value = !historyViewSignals.showArchived.value;
   },
 };

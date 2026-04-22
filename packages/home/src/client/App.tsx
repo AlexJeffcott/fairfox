@@ -7,6 +7,7 @@
 
 import { App as AgendaApp } from '@fairfox/agenda/client';
 import { App as ChatApp } from '@fairfox/chat/client';
+import { ChatWidget } from '@fairfox/chat/widget';
 import { App as DocsApp } from '@fairfox/docs/client';
 import { App as FamilyPhoneApp } from '@fairfox/family-phone-admin/client';
 import { App as LibraryApp } from '@fairfox/library/client';
@@ -21,6 +22,7 @@ export function App(): preact.JSX.Element {
   return (
     <MeshGate>
       <RouteView />
+      <ChatWidget />
     </MeshGate>
   );
 }

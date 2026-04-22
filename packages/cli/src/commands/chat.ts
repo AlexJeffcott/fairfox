@@ -1,18 +1,14 @@
 // `fairfox chat serve` — long-lived mesh peer that watches the
 // `chat:main` $meshState doc for pending user messages and writes
 // assistant replies produced by `claude -p`. Idempotent: a user
-// message is considered "already handled" when the doc already
-// carries an assistant message whose parentId points at it. CRDT
-// replay of old pending flags therefore can't cause double replies.
+// message is "handled" when the doc already carries an assistant
+// message whose parentId points at it.
 //
-// Each user message carries an optional `contextRef = { kind, id }`.
-// When set, the relay fetches the relevant mesh doc (todo:projects,
-// todo:tasks, agenda:main, docs:main) and serialises the matching
-// entry into the prompt so the assistant sees what was referenced.
-//
-// History window: messages in the last 30 minutes up to the user's
-// message, capped at 20 entries. Earlier exchanges on different
-// topics therefore don't pollute a new context.
+// Conversations own a list of contextRefs that accumulate as the
+// user sends messages from different pages. The relay pulls every
+// entry on the conversation's contextRefs list into the prompt.
+// History window: messages in the SAME conversation, last 30
+// minutes up to the target, capped at 20 entries.
 
 import { $meshState } from '@fairfox/polly/mesh';
 import { $ } from 'bun';
@@ -26,17 +22,41 @@ import {
 import { loadUserIdentityFile } from '#src/user-identity-node.ts';
 
 type Sender = 'user' | 'assistant';
-type ContextKind = 'project' | 'task' | 'agenda' | 'doc';
+type ContextKind =
+  | 'project'
+  | 'task'
+  | 'tasks-list'
+  | 'agenda'
+  | 'agenda-today'
+  | 'doc'
+  | 'docs-list'
+  | 'library'
+  | 'struggle'
+  | 'hub';
 
 interface ContextRef {
   [key: string]: unknown;
   kind: ContextKind;
+  id?: string;
+  label: string;
+  details?: Record<string, unknown>;
+}
+
+interface Conversation {
+  [key: string]: unknown;
   id: string;
+  title?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdByUserId: string;
+  contextRefs: ContextRef[];
+  archivedAt?: string;
 }
 
 interface Message {
   [key: string]: unknown;
   id: string;
+  conversationId: string;
   sender: Sender;
   senderUserId: string;
   senderDeviceId: string;
@@ -49,11 +69,12 @@ interface Message {
 
 interface ChatDoc {
   [key: string]: unknown;
+  conversations: Conversation[];
   messages: Message[];
 }
 
-// Duplicated context-target shapes — the CLI mirrors the sub-app
-// types to stay independent of their Preact-flavoured modules.
+// Sub-app doc shapes mirrored locally so the CLI doesn't pull in
+// their Preact-flavoured modules.
 interface MinProject {
   [key: string]: unknown;
   pid: string;
@@ -79,6 +100,15 @@ interface MinAgendaItem {
   room?: string;
   time?: string;
   points: number;
+  active: boolean;
+}
+interface MinAgendaCompletion {
+  [key: string]: unknown;
+  id: string;
+  itemId: string;
+  person: string;
+  kind: string;
+  completedAt: string;
 }
 interface MinDoc {
   [key: string]: unknown;
@@ -115,6 +145,9 @@ function historyFor(doc: ChatDoc, target: Message): Message[] {
   const cutoff = targetMs - HISTORY_WINDOW_MS;
   return doc.messages
     .filter((m) => {
+      if (m.conversationId !== target.conversationId) {
+        return false;
+      }
       const ms = new Date(m.createdAt).getTime();
       return ms <= targetMs && ms >= cutoff && m.id !== target.id;
     })
@@ -131,6 +164,13 @@ function renderHistory(messages: Message[]): string {
     .join('\n\n');
 }
 
+function truncate(s: string, n: number): string {
+  if (s.length <= n) {
+    return s;
+  }
+  return `${s.slice(0, n)}\n… (truncated)`;
+}
+
 function resolveContext(ref: ContextRef): string {
   try {
     if (ref.kind === 'project') {
@@ -143,10 +183,30 @@ function resolveContext(ref: ContextRef): string {
       const t = tasks.value.tasks.find((x) => x.tid === ref.id);
       return t ? JSON.stringify(t, null, 2) : `(no task ${ref.id})`;
     }
+    if (ref.kind === 'tasks-list') {
+      const tasks = $meshState<{ tasks: MinTask[] }>('todo:tasks', { tasks: [] });
+      const raw = ref.details?.taskIds;
+      const ids: string[] = Array.isArray(raw)
+        ? raw.filter((x): x is string => typeof x === 'string')
+        : [];
+      if (ids.length === 0) {
+        return `(tasks-list without ids; summary: ${ref.label})`;
+      }
+      const matched = tasks.value.tasks.filter((t) => ids.includes(t.tid)).slice(0, 25);
+      return JSON.stringify(matched, null, 2);
+    }
     if (ref.kind === 'agenda') {
       const agenda = $meshState<{ items: MinAgendaItem[] }>('agenda:main', { items: [] });
       const a = agenda.value.items.find((x) => x.id === ref.id);
       return a ? JSON.stringify(a, null, 2) : `(no agenda item ${ref.id})`;
+    }
+    if (ref.kind === 'agenda-today') {
+      const agenda = $meshState<{
+        items: MinAgendaItem[];
+        completions: MinAgendaCompletion[];
+      }>('agenda:main', { items: [], completions: [] });
+      const activeItems = agenda.value.items.filter((i) => i.active);
+      return JSON.stringify(activeItems.slice(0, 50), null, 2);
     }
     if (ref.kind === 'doc') {
       const docs = $meshState<{ docs: MinDoc[] }>('docs:main', { docs: [] });
@@ -154,9 +214,23 @@ function resolveContext(ref: ContextRef): string {
       if (!d) {
         return `(no doc ${ref.id})`;
       }
-      // A full body can be huge; cap it so the prompt stays focused.
-      const body = d.body.length > 4000 ? `${d.body.slice(0, 4000)}\n… (truncated)` : d.body;
-      return JSON.stringify({ ...d, body }, null, 2);
+      return JSON.stringify({ ...d, body: truncate(d.body, 4000) }, null, 2);
+    }
+    if (ref.kind === 'docs-list') {
+      const docs = $meshState<{ docs: MinDoc[] }>('docs:main', { docs: [] });
+      const compact = docs.value.docs.slice(0, 25).map((d) => ({
+        id: d.id,
+        slug: d.slug,
+        title: d.title,
+        project: d.project,
+      }));
+      return JSON.stringify(compact, null, 2);
+    }
+    if (ref.kind === 'library' || ref.kind === 'struggle' || ref.kind === 'hub') {
+      // Coarse-grained views — the label is what the user saw,
+      // that's enough signal for the assistant. Deeper resolution
+      // lands when / if those sub-apps publish finer contexts.
+      return `(view: ${ref.label})`;
     }
   } catch (err) {
     return `(context resolution failed: ${err instanceof Error ? err.message : String(err)})`;
@@ -164,17 +238,31 @@ function resolveContext(ref: ContextRef): string {
   return '';
 }
 
+function conversationContext(doc: ChatDoc, conversationId: string): string {
+  const convo = doc.conversations.find((c) => c.id === conversationId);
+  if (!convo || convo.contextRefs.length === 0) {
+    return '';
+  }
+  const blocks = convo.contextRefs.map((ref) => {
+    const body = resolveContext(ref);
+    return `— ${ref.kind}${ref.id ? ` ${ref.id}` : ''} (${ref.label}):\n${body}`;
+  });
+  return `\n\nContext (conversation-wide):\n${blocks.join('\n\n')}`;
+}
+
 function buildPrompt(doc: ChatDoc, target: Message): string {
   const history = renderHistory(historyFor(doc, target));
-  const contextBlock = target.contextRef
-    ? `\n\nContext — ${target.contextRef.kind} ${target.contextRef.id}:\n${resolveContext(target.contextRef)}`
+  const convoContext = conversationContext(doc, target.conversationId);
+  const msgContext = target.contextRef
+    ? `\n\nMessage-specific context — ${target.contextRef.kind}${target.contextRef.id ? ` ${target.contextRef.id}` : ''}:\n${resolveContext(target.contextRef)}`
     : '';
   return [
     'You are responding in a household chat with multiple family members.',
     'Messages are attributed; the latest user message is the one to answer.',
     'Keep responses concise and practical — readers are likely on a phone.',
     'You have access to the laptop (files, git, commands).',
-    contextBlock,
+    convoContext,
+    msgContext,
     `\nConversation so far:\n${history}`,
     `\nLatest user message (from ${target.senderUserId.slice(0, 8)}): ${target.text}`,
     '\nRespond. If asked to do something on the laptop, do it and report back briefly.',
@@ -208,8 +296,6 @@ async function processOne(
     process.stderr.write(
       `[chat serve] claude failed: ${err instanceof Error ? err.message : String(err)}\n`
     );
-    // Flip pending off so we don't re-attempt indefinitely; the user
-    // can re-send if they want another try.
     chatSignal.value = {
       ...chatSignal.value,
       messages: chatSignal.value.messages.map((m) =>
@@ -220,6 +306,7 @@ async function processOne(
   }
   const reply: Message = {
     id: randomId(),
+    conversationId: target.conversationId,
     sender: 'assistant',
     senderUserId: selfUserId,
     senderDeviceId: selfPeerId,
@@ -230,6 +317,9 @@ async function processOne(
   };
   chatSignal.value = {
     ...chatSignal.value,
+    conversations: chatSignal.value.conversations.map((c) =>
+      c.id === target.conversationId ? { ...c, updatedAt: reply.createdAt } : c
+    ),
     messages: [
       ...chatSignal.value.messages.map((m) => (m.id === target.id ? { ...m, pending: false } : m)),
       reply,
@@ -261,10 +351,10 @@ export async function chatServe(): Promise<number> {
   );
 
   await waitForPeer(client, 8000);
-  const chatSignal = $meshState<ChatDoc>('chat:main', { messages: [] });
+  const chatSignal = $meshState<ChatDoc>('chat:main', { conversations: [], messages: [] });
   await chatSignal.loaded;
   process.stdout.write(
-    `[chat serve] chat:main loaded — ${chatSignal.value.messages.length} message(s) locally\n`
+    `[chat serve] chat:main loaded — ${chatSignal.value.conversations.length} conversation(s), ${chatSignal.value.messages.length} message(s)\n`
   );
 
   let busy = false;
@@ -277,7 +367,6 @@ export async function chatServe(): Promise<number> {
       const next = pickNextPending(chatSignal.value);
       if (next) {
         await processOne(chatSignal, next, identity.userId, peerId);
-        // Poke flush so the reply reaches peers promptly.
         await flushOutgoing(1500);
       }
     } finally {
@@ -287,9 +376,6 @@ export async function chatServe(): Promise<number> {
   const interval = setInterval(() => {
     void tick();
   }, POLL_INTERVAL_MS);
-  // Heartbeat so the operator can see the relay is alive, connected,
-  // and whether chat:main is actually receiving syncs. Prints peers,
-  // total messages, and pending count every 10s.
   const heartbeat = setInterval(() => {
     const peers = client.repo.peers.length;
     const msgs = chatSignal.value.messages;
@@ -297,10 +383,10 @@ export async function chatServe(): Promise<number> {
       (m) => m.sender === 'user' && m.pending && !hasAssistantReply(chatSignal.value, m.id)
     ).length;
     const now = new Date().toISOString().slice(11, 19);
-    process.stdout.write(`[${now}] peers=${peers} messages=${msgs.length} pending=${pending}\n`);
+    process.stdout.write(
+      `[${now}] peers=${peers} convos=${chatSignal.value.conversations.length} messages=${msgs.length} pending=${pending}\n`
+    );
   }, 10_000);
-  // Kick an immediate pass so we don't wait for the first interval
-  // if there's already a pending message on connect.
   void tick();
 
   await new Promise<void>((resolve) => {

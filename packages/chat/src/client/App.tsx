@@ -1,44 +1,32 @@
 /** @jsxImportSource preact */
-// Chat sub-app — one household thread visible to every paired device.
-// Each message is attributed by user + device so interleaved asks stay
-// readable. A message can carry a per-message contextRef; the
-// laptop-side `fairfox chat serve` picks that up and injects the
-// referenced sub-app doc into the prompt.
+// Chat history archive — the `/chat` sub-app now lists past
+// conversations with their titles, context chips, and last
+// activity. The composer and live thread view live in the
+// always-mounted ChatWidget; this page is the "find me that
+// conversation from last Tuesday" surface.
 
 import { ActionInput, Badge, Button, Layout } from '@fairfox/polly/ui';
-import { devicesState } from '@fairfox/shared/devices-state';
 import { HubBack } from '@fairfox/shared/hub-back';
-import { userIdentity } from '@fairfox/shared/user-identity-state';
-import { usersState } from '@fairfox/shared/users-state';
-import type { Message } from '#src/client/state.ts';
-import { chatState, messageDraft } from '#src/client/state.ts';
+import { signal } from '@preact/signals';
+import type { Conversation, Message } from '#src/client/state.ts';
+import { chatState } from '#src/client/state.ts';
 
-const CONTEXT_KIND_OPTIONS = ['', 'project', 'task', 'agenda', 'doc'] as const;
+const searchQuery = signal<string>('');
+const showArchived = signal<boolean>(false);
 
-const SELECT_STYLE = {
-  padding: '0.35rem',
-  border: '1px solid var(--polly-border)',
-  borderRadius: '4px',
-  fontSize: 'var(--polly-text-sm)',
-};
-
-function displayNameFor(userId: string): string {
-  const entry = usersState.value.users[userId];
-  if (entry?.displayName) {
-    return entry.displayName;
-  }
-  return userId.slice(0, 8);
+function conversationMessages(conversationId: string): Message[] {
+  return chatState.value.messages
+    .filter((m) => m.conversationId === conversationId)
+    .slice()
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
-function deviceNameFor(deviceId: string): string {
-  const entry = devicesState.value.devices[deviceId];
-  if (entry?.name) {
-    return entry.name;
-  }
-  return deviceId;
+function lastMessageOf(conversationId: string): Message | undefined {
+  const msgs = conversationMessages(conversationId);
+  return msgs[msgs.length - 1];
 }
 
-function formatTime(iso: string): string {
+function formatDateTime(iso: string): string {
   if (!iso) {
     return '';
   }
@@ -62,181 +50,151 @@ function formatTime(iso: string): string {
   }
 }
 
-function MessageRow({ message, selfDeviceId }: { message: Message; selfDeviceId: string | null }) {
-  const isAssistant = message.sender === 'assistant';
-  const isSelf = !isAssistant && message.senderDeviceId === selfDeviceId;
-  // Hard-coded readable palette rather than polly vars that don't
-  // cover "muted surface for assistant" / "soft primary for self" in
-  // every theme. Earlier the assistant bubble inherited white text
-  // on an almost-white background, which is the report.
-  const bg = isAssistant ? '#e8edf3' : isSelf ? '#dbeafe' : '#ffffff';
-  const fg = '#1c1917';
-  const border = isAssistant ? '#c6cfd9' : isSelf ? '#bcd5f5' : '#e7e5e4';
-  const label = isAssistant
-    ? 'Claude'
-    : `${displayNameFor(message.senderUserId)} · ${deviceNameFor(message.senderDeviceId)}`;
-  return (
-    <Layout
-      rows="auto auto"
-      gap="var(--polly-space-xs)"
-      padding="var(--polly-space-sm) var(--polly-space-md)"
-    >
-      <Layout columns="auto 1fr auto auto" gap="var(--polly-space-sm)" alignItems="center">
-        <strong
-          style={{
-            fontSize: 'var(--polly-text-sm)',
-            color: isAssistant ? 'var(--polly-success)' : 'var(--polly-text)',
-          }}
-        >
-          {label}
-        </strong>
-        <span
-          style={{
-            fontSize: 'var(--polly-text-sm)',
-            color: 'var(--polly-text-muted)',
-          }}
-        >
-          {formatTime(message.createdAt)}
-        </span>
-        {message.contextRef && (
-          <Badge variant="info">
-            {message.contextRef.kind}:{message.contextRef.id}
-          </Badge>
-        )}
-        {message.pending && !isAssistant && <Badge variant="warning">pending</Badge>}
-      </Layout>
-      <div
-        style={{
-          background: bg,
-          color: fg,
-          border: `1px solid ${border}`,
-          padding: 'var(--polly-space-sm) var(--polly-space-md)',
-          borderRadius: '6px',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word',
-          fontSize: 'var(--polly-text-base)',
-        }}
-      >
-        {message.text}
-      </div>
-      {message.pending && !isAssistant && (
-        <Layout columns="auto auto" gap="var(--polly-space-xs)">
-          <Button
-            label="Cancel"
-            tier="tertiary"
-            size="small"
-            data-action="chat.cancel-pending"
-            data-action-id={message.id}
-          />
-          <Button
-            label="Delete"
-            tier="tertiary"
-            size="small"
-            color="danger"
-            data-action="chat.delete"
-            data-action-id={message.id}
-          />
-        </Layout>
-      )}
-    </Layout>
-  );
+function matchesQuery(convo: Conversation, query: string): boolean {
+  if (!query) {
+    return true;
+  }
+  const needle = query.toLowerCase();
+  if ((convo.title ?? '').toLowerCase().includes(needle)) {
+    return true;
+  }
+  for (const ctx of convo.contextRefs) {
+    if (ctx.label.toLowerCase().includes(needle)) {
+      return true;
+    }
+    if ((ctx.id ?? '').toLowerCase().includes(needle)) {
+      return true;
+    }
+  }
+  for (const m of conversationMessages(convo.id)) {
+    if (m.text.toLowerCase().includes(needle)) {
+      return true;
+    }
+  }
+  return false;
 }
 
-function Composer({ selfPeerId }: { selfPeerId: string | null }) {
-  const draft = messageDraft.value;
-  const identity = userIdentity.value;
-  if (!identity) {
-    return (
-      <p style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
-        Connect your identity on the hub Peers tab before sending messages.
-      </p>
-    );
-  }
-  if (!selfPeerId) {
-    return null;
-  }
+function ConversationRow({ convo }: { convo: Conversation }) {
+  const last = lastMessageOf(convo.id);
+  const msgCount = conversationMessages(convo.id).length;
   return (
-    <Layout rows="auto auto" gap="var(--polly-space-xs)">
-      <Layout columns="auto auto auto" gap="var(--polly-space-xs)" alignItems="center">
-        <span style={{ fontSize: 'var(--polly-text-sm)', color: 'var(--polly-text-muted)' }}>
-          Context
-        </span>
-        <select
-          value={draft.contextKind}
-          data-action="chat.draft-kind"
-          style={SELECT_STYLE}
-          aria-label="Context kind"
-        >
-          {CONTEXT_KIND_OPTIONS.map((k) => (
-            <option key={k} value={k}>
-              {k === '' ? '(none)' : k}
-            </option>
-          ))}
-        </select>
-        {draft.contextKind !== '' && (
-          <ActionInput
-            value={draft.contextId}
-            variant="single"
-            action="chat.draft-id"
-            saveOn="blur"
-            placeholder="id (e.g. P01, T42, 38)"
-            ariaLabel="Context id"
+    <Layout
+      columns="1fr auto auto"
+      gap="var(--polly-space-sm)"
+      alignItems="center"
+      padding="var(--polly-space-sm) var(--polly-space-md)"
+    >
+      <div>
+        <Layout columns="auto 1fr" gap="0.5rem" alignItems="center">
+          <strong>{convo.title ?? '(untitled)'}</strong>
+          {convo.archivedAt && <Badge variant="default">archived</Badge>}
+        </Layout>
+        {convo.contextRefs.length > 0 && (
+          <div style={{ marginTop: '0.25rem' }}>
+            {convo.contextRefs.map((r) => (
+              <span
+                key={`${r.kind}:${r.id ?? ''}`}
+                style={{
+                  display: 'inline-block',
+                  padding: '0.1rem 0.5rem',
+                  marginRight: '0.35rem',
+                  background: '#e8edf3',
+                  border: '1px solid #c6cfd9',
+                  borderRadius: '999px',
+                  fontSize: '0.75rem',
+                }}
+              >
+                {r.kind}: {r.label}
+              </span>
+            ))}
+          </div>
+        )}
+        {last && (
+          <div
+            style={{
+              marginTop: '0.25rem',
+              color: 'var(--polly-text-muted)',
+              fontSize: 'var(--polly-text-sm)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {last.sender === 'assistant' ? 'Claude: ' : 'You: '}
+            {last.text}
+          </div>
+        )}
+      </div>
+      <span style={{ fontSize: 'var(--polly-text-sm)', color: 'var(--polly-text-muted)' }}>
+        {msgCount} msg · {formatDateTime(convo.updatedAt)}
+      </span>
+      <Layout columns="auto auto" gap="0.25rem">
+        <Button
+          label="Continue"
+          tier="primary"
+          size="small"
+          data-action="chat.open-conversation"
+          data-action-id={convo.id}
+        />
+        {!convo.archivedAt && (
+          <Button
+            label="Archive"
+            tier="tertiary"
+            size="small"
+            data-action="chat.archive-conversation"
+            data-action-id={convo.id}
           />
         )}
-      </Layout>
-      <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
-        <ActionInput
-          value={draft.text}
-          variant="multi"
-          action="chat.draft-text"
-          saveOn="blur"
-          placeholder="Ask Claude…"
-          ariaLabel="Message text"
-        />
-        <Button label="Send" tier="primary" data-action="chat.send" />
       </Layout>
     </Layout>
   );
 }
 
 export function App() {
-  const messages = chatState.value.messages
+  const query = searchQuery.value;
+  const archived = showArchived.value;
+  const convos = chatState.value.conversations
+    .filter((c) => (archived ? true : !c.archivedAt))
+    .filter((c) => matchesQuery(c, query))
     .slice()
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  // Derive this browser's device id from the devicesState + local
-  // userIdentity: the device row whose ownerUserIds includes the
-  // local user's id. Good enough for the "this is me" highlight;
-  // falls back to null when the gate isn't fully satisfied yet.
-  const identity = userIdentity.value;
-  let selfPeerId: string | null = null;
-  if (identity) {
-    for (const [peerId, entry] of Object.entries(devicesState.value.devices)) {
-      if ((entry.ownerUserIds ?? []).includes(identity.userId)) {
-        selfPeerId = peerId;
-        break;
-      }
-    }
-  }
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
   return (
-    <Layout rows="auto 1fr auto" gap="var(--polly-space-md)" padding="var(--polly-space-lg)">
+    <Layout rows="auto auto 1fr" gap="var(--polly-space-md)" padding="var(--polly-space-lg)">
       <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
-        <h1 style={{ margin: 0 }}>Chat</h1>
+        <h1 style={{ margin: 0 }}>Chat history</h1>
         <HubBack />
       </Layout>
-      <div style={{ overflowY: 'auto' }}>
-        <Layout rows="auto" gap="var(--polly-space-xs)">
-          {messages.length === 0 ? (
-            <p style={{ color: 'var(--polly-text-muted)' }}>
-              No messages yet. Start the thread below — the laptop's
-              <code style={{ margin: '0 0.25rem' }}>fairfox chat serve</code>
-              picks up pending user messages and writes Claude's reply.
-            </p>
-          ) : (
-            messages.map((m) => <MessageRow key={m.id} message={m} selfDeviceId={selfPeerId} />)
-          )}
-        </Layout>
-      </div>
-      <Composer selfPeerId={selfPeerId} />
+      <Layout columns="1fr auto auto" gap="var(--polly-space-sm)" alignItems="center">
+        <ActionInput
+          value={query}
+          variant="single"
+          action="chat.history-search"
+          saveOn="blur"
+          placeholder="Search titles, context, message bodies…"
+          ariaLabel="Search"
+        />
+        <Button
+          label={archived ? 'Hide archived' : 'Show archived'}
+          tier="tertiary"
+          size="small"
+          data-action="chat.history-toggle-archived"
+        />
+        <Button label="+ New" tier="primary" size="small" data-action="chat.new-conversation" />
+      </Layout>
+      <Layout rows="auto" gap="var(--polly-space-xs)">
+        {convos.length === 0 ? (
+          <p style={{ color: 'var(--polly-text-muted)' }}>
+            {chatState.value.conversations.length === 0
+              ? 'No conversations yet. Open the chat widget (bottom-right) to start one.'
+              : 'No conversations match your filter.'}
+          </p>
+        ) : (
+          convos.map((c) => <ConversationRow key={c.id} convo={c} />)
+        )}
+      </Layout>
     </Layout>
   );
 }
+
+export const historyViewSignals = { searchQuery, showArchived };

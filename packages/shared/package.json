@@ -30,7 +30,8 @@
     "./pairing-state": "./src/pairing-state.ts",
     "./pairing-actions": "./src/pairing-actions.ts",
     "./qr-scan": "./src/qr-scan.tsx",
-    "./signaling": "./src/signaling.ts"
+    "./signaling": "./src/signaling.ts",
+    "./page-context": "./src/page-context.ts"
   },
   "imports": {
     "#src/*": "./src/*"

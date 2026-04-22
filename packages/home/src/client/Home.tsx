@@ -75,7 +75,11 @@ interface SubApp {
 const SUBAPPS: readonly SubApp[] = [
   { path: '/todo-v2', name: 'Todo', description: 'Project tracker and tasks' },
   { path: '/agenda', name: 'Agenda', description: "Household today and who's done what" },
-  { path: '/chat', name: 'Chat', description: 'Talk to Claude — everyone shares one thread' },
+  {
+    path: '/chat',
+    name: 'Chat history',
+    description: 'Past conversations — the live assistant is the widget, bottom-right',
+  },
   { path: '/docs', name: 'Docs', description: 'Research notes and project writeups' },
   { path: '/the-struggle', name: 'The Struggle', description: 'Interactive sci-fi story' },
   { path: '/library', name: 'Library', description: 'References and the world bible' },
