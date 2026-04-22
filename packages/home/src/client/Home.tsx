@@ -14,6 +14,7 @@ import { PwaInstallPrompt } from '@fairfox/shared/pwa-install';
 import { signal, useSignalEffect } from '@preact/signals';
 import { HelpView } from '#src/client/HelpView.tsx';
 import { PeersView } from '#src/client/PeersView.tsx';
+import { selfPeerId } from '#src/client/self-peer.ts';
 import { UsersView } from '#src/client/UsersView.tsx';
 
 const meshFingerprintText = signal<string>('');
@@ -117,6 +118,7 @@ export function Home() {
   });
   const meshName = meshMetaState.value.name;
   const fp = meshFingerprintText.value;
+  const devId = selfPeerId.value;
   return (
     <Layout
       rows="auto auto 1fr"
@@ -148,6 +150,20 @@ export function Home() {
                     title="Mesh fingerprint — first 8 hex of SHA-256 over the document key. Two devices on the same mesh share this value."
                   >
                     ({fp})
+                  </span>
+                </>
+              )}
+              {devId && (
+                <>
+                  {' · '}
+                  <span
+                    style={{
+                      fontFamily: 'var(--polly-font-mono)',
+                      fontSize: 'var(--polly-text-sm)',
+                    }}
+                    title="This device's peer id — unique to this browser profile / CLI install. Match against a row in the Peers tab to identify which device you're on."
+                  >
+                    device {devId}
                   </span>
                 </>
               )}
