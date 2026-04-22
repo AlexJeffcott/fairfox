@@ -263,6 +263,9 @@ export async function chatServe(): Promise<number> {
   await waitForPeer(client, 8000);
   const chatSignal = $meshState<ChatDoc>('chat:main', { messages: [] });
   await chatSignal.loaded;
+  process.stdout.write(
+    `[chat serve] chat:main loaded — ${chatSignal.value.messages.length} message(s) locally\n`
+  );
 
   let busy = false;
   const tick = async (): Promise<void> => {
@@ -284,6 +287,18 @@ export async function chatServe(): Promise<number> {
   const interval = setInterval(() => {
     void tick();
   }, POLL_INTERVAL_MS);
+  // Heartbeat so the operator can see the relay is alive, connected,
+  // and whether chat:main is actually receiving syncs. Prints peers,
+  // total messages, and pending count every 10s.
+  const heartbeat = setInterval(() => {
+    const peers = client.repo.peers.length;
+    const msgs = chatSignal.value.messages;
+    const pending = msgs.filter(
+      (m) => m.sender === 'user' && m.pending && !hasAssistantReply(chatSignal.value, m.id)
+    ).length;
+    const now = new Date().toISOString().slice(11, 19);
+    process.stdout.write(`[${now}] peers=${peers} messages=${msgs.length} pending=${pending}\n`);
+  }, 10_000);
   // Kick an immediate pass so we don't wait for the first interval
   // if there's already a pending message on connect.
   void tick();
@@ -297,6 +312,7 @@ export async function chatServe(): Promise<number> {
   });
 
   clearInterval(interval);
+  clearInterval(heartbeat);
   process.stdout.write('\nchat serve: closing.\n');
   try {
     await flushOutgoing(2000);
