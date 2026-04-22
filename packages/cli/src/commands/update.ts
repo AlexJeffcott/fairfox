@@ -30,12 +30,15 @@ const FETCH_TIMEOUT_MS = 4000;
 
 const GITHUB_OWNER = 'AlexJeffcott';
 const GITHUB_REPO = 'fairfox';
-const LATEST_RELEASE_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
-// GitHub's stable redirect URL for the fairfox.js asset of the
-// newest release tagged on this repo. Preferred over parsing the
-// API JSON because it survives release rename + retains the same
-// path regardless of tag.
-const LATEST_BUNDLE_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest/download/fairfox.js`;
+// The repo publishes two release tracks: `v*` for the CLI and
+// `web-v*` for the SPA bundle. GitHub's `/releases/latest` picks
+// whichever is newest *across both*, so we can't use it for the
+// CLI — a web release would mask the CLI line. We walk
+// `/releases` instead and pick the newest tag starting with `v`
+// but not `web-v`.
+const RELEASES_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
+const CLI_BUNDLE_URL = (tag: string): string =>
+  `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download/${tag}/fairfox.js`;
 
 interface Stamp {
   checkedAt: string;
@@ -97,17 +100,25 @@ async function fetchWithTimeout(url: string): Promise<Response | undefined> {
   }
 }
 
+function isCliTag(tag: string): boolean {
+  return tag.startsWith('v') && !tag.startsWith('web-v');
+}
+
 async function fetchLatestTag(): Promise<string | undefined> {
-  const res = await fetchWithTimeout(LATEST_RELEASE_API);
+  const res = await fetchWithTimeout(RELEASES_API);
   if (!res?.ok) {
     return undefined;
   }
   try {
     const parsed: unknown = await res.json();
-    if (isRecord(parsed)) {
-      const tag = parsed.tag_name;
-      if (typeof tag === 'string' && tag.length > 0) {
-        return tag;
+    if (Array.isArray(parsed)) {
+      for (const entry of parsed) {
+        if (isRecord(entry)) {
+          const tag = entry.tag_name;
+          if (typeof tag === 'string' && isCliTag(tag)) {
+            return tag;
+          }
+        }
       }
     }
   } catch {
@@ -139,7 +150,7 @@ export async function update(): Promise<number> {
     );
     return 1;
   }
-  const res = await fetchWithTimeout(LATEST_BUNDLE_URL);
+  const res = await fetchWithTimeout(CLI_BUNDLE_URL(latestTag));
   if (!res?.ok) {
     process.stderr.write('fairfox update: could not fetch the new bundle.\n');
     return 1;
