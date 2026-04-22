@@ -598,6 +598,60 @@ function randomBase64(bytes: number): string {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+/** `fairfox mesh serve` — open the mesh client and keep it open
+ * until ctrl-c. Turns the CLI into a long-lived peer for the
+ * duration of a shell session, useful as the "backbone" that
+ * guarantees a second device (the laptop coming online for five
+ * minutes, a phone PWA launched briefly) finds at least one
+ * peer with the full mesh state to sync against. No UI, no
+ * mutation — just an open door.
+ *
+ * Prints a status line every 15s with the current peer count
+ * and the loaded doc counts for todo:*, library:main,
+ * struggle:story so the user sees that the process is doing
+ * something. The mesh client is closed cleanly on ctrl-c; any
+ * pending outgoing Automerge messages flush on close. */
+async function meshServe(): Promise<number> {
+  const storage = keyringStorage();
+  const keyring = await storage.load();
+  if (!keyring) {
+    process.stderr.write(
+      'fairfox mesh serve: no keyring — run `fairfox mesh init` or pair first.\n'
+    );
+    return 1;
+  }
+  const peerId = derivePeerId(keyring.identity.publicKey);
+  const client = await openMeshClient({ peerId });
+
+  const heartbeat = setInterval(() => {
+    const peers = client.repo.peers.length;
+    const now = new Date().toISOString().slice(11, 19);
+    process.stdout.write(`[${now}] peers=${peers}\n`);
+  }, 15_000);
+
+  process.stdout.write(
+    `fairfox mesh serve — peerId ${peerId}. Holding the mesh open. Ctrl-c to close.\n`
+  );
+
+  await new Promise<void>((resolve) => {
+    const stop = (): void => {
+      resolve();
+    };
+    process.once('SIGINT', stop);
+    process.once('SIGTERM', stop);
+  });
+
+  clearInterval(heartbeat);
+  process.stdout.write('\nmesh serve: closing.\n');
+  try {
+    await flushOutgoing(2000);
+  } catch {
+    // best-effort
+  }
+  await client.close();
+  return 0;
+}
+
 // --- dispatch ----------------------------------------------------
 
 export function meshUsage(stream: NodeJS.WriteStream = process.stderr): void {
@@ -623,6 +677,11 @@ export function meshUsage(stream: NodeJS.WriteStream = process.stderr): void {
       '                                     (your phone, a second laptop,',
       '                                     etc.). URL carries your recovery',
       '                                     blob — share only with yourself.',
+      '  fairfox mesh serve                 Hold the mesh client open until',
+      '                                     ctrl-c. Run this on a long-lived',
+      '                                     machine (mini-PC, server) so the',
+      '                                     mesh always has at least one peer',
+      '                                     other devices can sync against.',
       '',
       "Only this machine's state is affected. Other paired devices stay on",
       'the old mesh until they wipe their own state.',
@@ -654,6 +713,9 @@ export function mesh(rest: readonly string[]): Promise<number> {
   }
   if (verb === 'whoami') {
     return meshWhoami();
+  }
+  if (verb === 'serve') {
+    return meshServe();
   }
   meshUsage();
   return Promise.resolve(1);

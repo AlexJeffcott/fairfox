@@ -91,9 +91,15 @@ function parseTags(raw: unknown): string[] {
 }
 
 function derivCategory(path: string): DocCategory {
-  if (path.startsWith('world/')) return 'world';
-  if (path.startsWith('structure/')) return 'structure';
-  if (path.startsWith('interface/')) return 'interface';
+  if (path.startsWith('world/')) {
+    return 'world';
+  }
+  if (path.startsWith('structure/')) {
+    return 'structure';
+  }
+  if (path.startsWith('interface/')) {
+    return 'interface';
+  }
   // Unknown prefix → fold into world; the UI filters by category
   // and "world" is the safer bucket than interface/structure.
   return 'world';
@@ -120,13 +126,19 @@ async function loadAllDocs(): Promise<Doc[]> {
   }
   const docs: Doc[] = [];
   for (const entry of index) {
-    if (!isRecord(entry)) continue;
+    if (!isRecord(entry)) {
+      continue;
+    }
     const path = str(entry.path);
-    if (!path) continue;
+    if (!path) {
+      continue;
+    }
     const full = await fetchJson<unknown>(
-      `${base}/api/docs/${path.split('/').map(encodeURIComponent).join('/')}`,
+      `${base}/api/docs/${path.split('/').map(encodeURIComponent).join('/')}`
     );
-    if (!isRecord(full)) continue;
+    if (!isRecord(full)) {
+      continue;
+    }
     docs.push({
       id: path,
       path,
@@ -147,12 +159,18 @@ async function loadAllRefs(): Promise<Ref[]> {
   }
   const refs: Ref[] = [];
   for (const entry of index) {
-    if (!isRecord(entry)) continue;
+    if (!isRecord(entry)) {
+      continue;
+    }
     const rawId = entry.id;
     const id = typeof rawId === 'number' ? String(rawId) : str(rawId);
-    if (!id) continue;
+    if (!id) {
+      continue;
+    }
     const full = await fetchJson<unknown>(`${base}/api/refs/${encodeURIComponent(id)}`);
-    if (!isRecord(full)) continue;
+    if (!isRecord(full)) {
+      continue;
+    }
     const form: RefForm = full.form === 'poem' ? 'poem' : 'prose';
     refs.push({
       id,
@@ -187,7 +205,7 @@ async function main(): Promise<number> {
     const peered = await waitForPeer(client, 8000);
     if (!peered) {
       process.stderr.write(
-        '[library] no mesh peer reached in 8s — writes will land locally and sync later. Continuing.\n',
+        '[library] no mesh peer reached in 8s — writes will land locally and sync later. Continuing.\n'
       );
     }
     const lib = $meshState<LibraryDoc>('library:main', LIBRARY_INITIAL);
@@ -197,7 +215,7 @@ async function main(): Promise<number> {
     const existingRefs = lib.value.refs.length;
     if ((existingDocs > 0 || existingRefs > 0) && !force) {
       process.stderr.write(
-        `[library] library:main already has ${existingDocs} docs + ${existingRefs} refs. Pass --force to replace.\n`,
+        `[library] library:main already has ${existingDocs} docs + ${existingRefs} refs. Pass --force to replace.\n`
       );
       return 1;
     }

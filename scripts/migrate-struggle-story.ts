@@ -77,7 +77,8 @@ interface StoryDoc {
 }
 
 const STORY_INITIAL: StoryDoc = { chapters: [] };
-const DB_PATH = process.env.STRUGGLE_DB ?? join(homedir(), 'projects', 'the_struggle', 'data', 'app.db');
+const DB_PATH =
+  process.env.STRUGGLE_DB ?? join(homedir(), 'projects', 'the_struggle', 'data', 'app.db');
 
 interface ChapterRow {
   id: string;
@@ -122,7 +123,9 @@ function loadFromDb(): {
   unmodeled: string[];
 } {
   const db = new Database(DB_PATH, { readonly: true });
-  const chapterRows = db.query('SELECT id, title, start_passage FROM chapters').all() as ChapterRow[];
+  const chapterRows = db
+    .query('SELECT id, title, start_passage FROM chapters')
+    .all() as ChapterRow[];
   const passageRows = db
     .query('SELECT id, chapter_id, death FROM passages ORDER BY id')
     .all() as PassageRow[];
@@ -131,7 +134,7 @@ function loadFromDb(): {
     .all() as ContentRow[];
   const choiceRows = db
     .query(
-      'SELECT id, passage_id, chapter_id, label, target, type, sort_order FROM choices ORDER BY passage_id, sort_order, id',
+      'SELECT id, passage_id, chapter_id, label, target, type, sort_order FROM choices ORDER BY passage_id, sort_order, id'
     )
     .all() as ChoiceRow[];
   const placeRows = db
@@ -217,11 +220,11 @@ function loadFromDb(): {
   // (Not fetching them here; just indicating they exist. If the
   // runtime actually needs them, that's a follow-up schema bump.)
   unmodeled.push(
-    'passage engine fields (type, next, set_vars, condition, is_end, is_title_page, is_inspection) — not in StoryDoc schema',
+    'passage engine fields (type, next, set_vars, condition, is_end, is_title_page, is_inspection) — not in StoryDoc schema'
   );
   if (litanyRows.length > 0) {
     unmodeled.push(
-      `${litanyRows.length} litany row(s) — no direct home in StoryDoc; GameProgress.litanies is runtime-collected.`,
+      `${litanyRows.length} litany row(s) — no direct home in StoryDoc; GameProgress.litanies is runtime-collected.`
     );
   }
 
@@ -237,10 +240,10 @@ async function main(): Promise<number> {
   const passageCount = chapters.reduce((s, c) => s + c.passages.length, 0);
   const choiceCount = chapters.reduce(
     (s, c) => s + c.passages.reduce((s2, p) => s2 + p.choices.length, 0),
-    0,
+    0
   );
   process.stdout.write(
-    `[story] source: ${chapters.length} chapter(s), ${passageCount} passage(s), ${choiceCount} choice(s)\n`,
+    `[story] source: ${chapters.length} chapter(s), ${passageCount} passage(s), ${choiceCount} choice(s)\n`
   );
 
   const storage = keyringStorage();
@@ -255,7 +258,7 @@ async function main(): Promise<number> {
     const peered = await waitForPeer(client, 8000);
     if (!peered) {
       process.stderr.write(
-        '[story] no mesh peer reached in 8s — writes land locally and sync later. Continuing.\n',
+        '[story] no mesh peer reached in 8s — writes land locally and sync later. Continuing.\n'
       );
     }
     const story = $meshState<StoryDoc>('struggle:story', STORY_INITIAL);
@@ -263,7 +266,7 @@ async function main(): Promise<number> {
 
     if (story.value.chapters.length > 0 && !force) {
       process.stderr.write(
-        `[story] struggle:story already has ${story.value.chapters.length} chapter(s). Pass --force to replace.\n`,
+        `[story] struggle:story already has ${story.value.chapters.length} chapter(s). Pass --force to replace.\n`
       );
       return 1;
     }
@@ -274,11 +277,11 @@ async function main(): Promise<number> {
 
     if (litanies.length > 0) {
       process.stdout.write(
-        `[story] litanies (${litanies.length}) not written — add to the StoryDoc schema if the game needs them.\n`,
+        `[story] litanies (${litanies.length}) not written — add to the StoryDoc schema if the game needs them.\n`
       );
     }
     if (unmodeled.length > 0) {
-      process.stdout.write(`[story] skipped legacy data:\n`);
+      process.stdout.write('[story] skipped legacy data:\n');
       for (const line of unmodeled) {
         process.stdout.write(`  - ${line}\n`);
       }
