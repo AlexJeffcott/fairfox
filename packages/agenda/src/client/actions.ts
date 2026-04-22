@@ -24,6 +24,17 @@ function isSnoozeKind(s: string): s is SnoozeKind {
   return SNOOZE_KINDS.has(s);
 }
 
+/** Actions that mutate the `agenda:main` CRDT state and therefore
+ * require `agenda.write`. View-state toggles stay unguarded.
+ * Exported so the unified shell's dispatcher gates the same set. */
+export const AGENDA_WRITE_ACTIONS: ReadonlySet<string> = new Set([
+  'item.create',
+  'item.delete',
+  'item.toggle-active',
+  'chore.done',
+  'chore.snooze',
+]);
+
 export const registry: Record<string, (ctx: HandlerContext) => void> = {
   ...pairingActions,
   ...buildFreshnessActions,

@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "main": "src/server/server.ts",
+  "exports": {
+    "./client": "./src/client/App.tsx",
+    "./actions": "./src/client/actions.ts"
+  },
   "imports": {
     "#src/*": "./src/*"
   },

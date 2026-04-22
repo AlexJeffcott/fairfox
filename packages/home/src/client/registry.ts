@@ -4,15 +4,20 @@
 // the app without each sub-app running its own delegation.
 //
 // The dispatcher also applies per-sub-app permission gates (e.g.
-// `todo.write` on todo-v2's mutations). Each sub-app exports both
-// its `registry` and a set of action names that require a
-// specific capability; the dispatcher consults `canDo()` before
-// running any gated handler.
+// `todo.write` on todo-v2's mutations, `agenda.write` on agenda's).
+// Each sub-app exports both its `registry` and a set of action
+// names that require a specific capability; the dispatcher
+// consults `canDo()` before running any gated handler.
 
+import { AGENDA_WRITE_ACTIONS, registry as agendaRegistry } from '@fairfox/agenda/actions';
+import { registry as familyPhoneRegistry } from '@fairfox/family-phone-admin/actions';
+import { registry as libraryRegistry } from '@fairfox/library/actions';
 import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
 import { canDo } from '@fairfox/shared/policy';
 import { pwaInstallActions } from '@fairfox/shared/pwa-install';
+import { registry as speakwellRegistry } from '@fairfox/speakwell/actions';
+import { registry as theStruggleRegistry } from '@fairfox/the-struggle/actions';
 import { TODO_WRITE_ACTIONS, registry as todoRegistry } from '@fairfox/todo-v2/actions';
 import { homeActions } from '#src/client/home-actions.ts';
 import { routerActions } from '#src/client/router.ts';
@@ -37,6 +42,11 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
   ...homeActions,
   ...routerActions,
   ...todoRegistry,
+  ...agendaRegistry,
+  ...libraryRegistry,
+  ...familyPhoneRegistry,
+  ...speakwellRegistry,
+  ...theStruggleRegistry,
 };
 
 /** Event-delegation callback. Gates each dispatch against the
@@ -50,6 +60,10 @@ export function dispatch(d: ActionDispatch): void {
   }
   if (TODO_WRITE_ACTIONS.has(d.action) && !canDo('todo.write')) {
     console.warn(`[policy] blocked ${d.action}: user lacks todo.write`);
+    return;
+  }
+  if (AGENDA_WRITE_ACTIONS.has(d.action) && !canDo('agenda.write')) {
+    console.warn(`[policy] blocked ${d.action}: user lacks agenda.write`);
     return;
   }
   handler({ data: d.data, event: d.event, element: d.element });

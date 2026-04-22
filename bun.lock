@@ -114,8 +114,13 @@
       "name": "@fairfox/home",
       "version": "0.0.0",
       "dependencies": {
+        "@fairfox/agenda": "workspace:*",
+        "@fairfox/family-phone-admin": "workspace:*",
+        "@fairfox/library": "workspace:*",
         "@fairfox/polly": "catalog:",
         "@fairfox/shared": "workspace:*",
+        "@fairfox/speakwell": "workspace:*",
+        "@fairfox/the-struggle": "workspace:*",
         "@fairfox/todo-v2": "workspace:*",
         "@preact/signals": "catalog:",
         "preact": "catalog:",
