@@ -34,6 +34,7 @@ import '#src/preload.ts';
 import { parseArgs } from 'node:util';
 import { agendaAdd, agendaList } from '#src/commands/agenda.ts';
 import { chatDump, chatSend, chatServe } from '#src/commands/chat.ts';
+import { daemon } from '#src/commands/daemon.ts';
 import { deploy } from '#src/commands/deploy.ts';
 import { mesh } from '#src/commands/mesh.ts';
 import { pair } from '#src/commands/pair.ts';
@@ -75,6 +76,10 @@ function printUsage(): void {
       '  fairfox deploy logs           Tail Railway logs for the current service.',
       '  fairfox update                Fetch the latest CLI bundle if it has drifted.',
       '  fairfox chat serve            Reply to pending chat messages via `claude -p`.',
+      '  fairfox daemon install        Install launchd/systemd unit; keep the mesh open.',
+      '  fairfox daemon start          Start the installed unit (use --foreground to run).',
+      '  fairfox daemon stop           Stop the installed unit.',
+      '  fairfox daemon status         Unit + pid + log paths.',
       '',
       'The keyring is stored at ~/.fairfox/keyring.json and is created on',
       'first run. The signalling URL defaults to the fairfox production',
@@ -130,6 +135,10 @@ function main(): Promise<number> {
 
   if (subcommand === 'mesh') {
     return mesh(rest);
+  }
+
+  if (subcommand === 'daemon') {
+    return daemon(rest);
   }
 
   if (subcommand === 'update') {

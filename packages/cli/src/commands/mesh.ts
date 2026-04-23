@@ -646,6 +646,14 @@ async function meshServe(): Promise<number> {
     );
     return 1;
   }
+  // Phase 1 of the daemon rollout supersedes this verb for anyone
+  // who wants their mesh peer to survive terminal exit. Only nag when
+  // invoked from a user shell — the daemon itself never calls this.
+  if (process.env.FAIRFOX_DAEMON_MANAGED !== '1') {
+    process.stderr.write(
+      'note: `fairfox mesh serve` is superseded by `fairfox daemon install && fairfox daemon start`.\n'
+    );
+  }
   const peerId = derivePeerId(keyring.identity.publicKey);
   const client = await openMeshClient({ peerId });
 
