@@ -70,6 +70,26 @@ export const sessionsActive = $meshState<SessionsActive>(SESSIONS_ACTIVE_DOC_ID,
   sessions: [],
 });
 
+/** View-only overlay for demo / test injections. URL hooks
+ * (#__inject=...) write here instead of the mesh doc, so injected
+ * items never sync to paired peers and never persist across a
+ * reload. The widget merges overlay entries into its render with a
+ * visible "(demo)" badge so they're impossible to confuse with real
+ * traffic. */
+export interface InjectedOverlay {
+  readonly conversations: readonly Conversation[];
+  readonly messages: readonly Message[];
+  readonly sessions: readonly import('@fairfox/shared/assistant-state').SessionAnnouncement[];
+  readonly demoBannerSeen: boolean;
+}
+
+export const injectedOverlay = signal<InjectedOverlay>({
+  conversations: [],
+  messages: [],
+  sessions: [],
+  demoBannerSeen: false,
+});
+
 /** Which conversation the widget is currently rendering, per
  * device. View state, not mesh state — each device keeps its own
  * active pointer so opening the widget on one device doesn't yank

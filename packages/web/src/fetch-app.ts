@@ -173,10 +173,49 @@ function saveToDisk(bytes: Uint8Array): void {
   }
 }
 
+/** Read a locally-built bundle from a file path (dev workflow).
+ * Set `FAIRFOX_LOCAL_BUNDLE=/absolute/path/to/fairfox-web.zip` to
+ * bypass the GitHub fetch entirely — useful for verifying an
+ * uncommitted SPA change against a real mesh before tagging a
+ * web-v* release. Returns null if the env var is unset or the file
+ * can't be read. */
+function loadFromLocalEnv(): { bytes: Uint8Array; tag: string } | null {
+  const path = process.env.FAIRFOX_LOCAL_BUNDLE;
+  if (!path) {
+    return null;
+  }
+  if (!existsSync(path)) {
+    console.error(`[fetch-app] FAIRFOX_LOCAL_BUNDLE=${path} does not exist`);
+    return null;
+  }
+  try {
+    return {
+      bytes: new Uint8Array(readFileSync(path)),
+      tag: `local:${path.split('/').pop() ?? 'bundle'}`,
+    };
+  } catch (err) {
+    console.error(
+      `[fetch-app] FAIRFOX_LOCAL_BUNDLE read failed: ${err instanceof Error ? err.message : err}`
+    );
+    return null;
+  }
+}
+
 /** Fetch the newest `web-v*` release's bundle, fall back to the
  * last good disk copy, and unpack into an AppBundle. Never throws
  * — a null return means "no bundle available; server should 503". */
 export async function fetchApp(): Promise<AppBundle | null> {
+  const local = loadFromLocalEnv();
+  if (local) {
+    try {
+      console.log(`[fetch-app] using local bundle (${local.tag})`);
+      return bundleFromZip(local.bytes, local.tag);
+    } catch (err) {
+      console.error(
+        `[fetch-app] local zip parse failed: ${err instanceof Error ? err.message : err}`
+      );
+    }
+  }
   const [tag, zipBytes] = await Promise.all([fetchLatestTag(), fetchZipBytes()]);
   if (zipBytes) {
     saveToDisk(zipBytes);

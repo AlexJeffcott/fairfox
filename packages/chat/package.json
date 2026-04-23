@@ -8,7 +8,8 @@
     "./client": "./src/client/App.tsx",
     "./widget": "./src/client/ChatWidget.tsx",
     "./actions": "./src/client/actions.ts",
-    "./state": "./src/client/state.ts"
+    "./state": "./src/client/state.ts",
+    "./url-hooks": "./src/client/url-hooks.ts"
   },
   "imports": {
     "#src/*": "./src/*"

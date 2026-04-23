@@ -15,6 +15,7 @@ import {
   activeConversationId,
   chatState,
   draftText,
+  injectedOverlay,
   pinnedContext,
   sessionsActive,
   widgetOpen,
@@ -52,12 +53,34 @@ function formatTime(iso: string): string {
   }
 }
 
+/** IDs of messages + sessions + conversations that came from a URL
+ * #__inject= payload. Used to tag overlay entries with a "(demo)"
+ * marker and to render a banner so nothing injected can pass for a
+ * real message. */
+function overlayIds(): { messages: Set<string>; sessions: Set<string>; convos: Set<string> } {
+  const ov = injectedOverlay.value;
+  return {
+    messages: new Set(ov.messages.map((m) => m.id)),
+    sessions: new Set(ov.sessions.map((s) => `${s.sessionId}`)),
+    convos: new Set(ov.conversations.map((c) => c.id)),
+  };
+}
+
+function hasOverlay(): boolean {
+  const ov = injectedOverlay.value;
+  return ov.messages.length > 0 || ov.sessions.length > 0 || ov.conversations.length > 0;
+}
+
 function activeConversation(): Conversation | undefined {
   const id = activeConversationId.value;
   if (!id) {
     return undefined;
   }
-  return chatState.value.conversations.find((c) => c.id === id);
+  const mesh = chatState.value.conversations.find((c) => c.id === id);
+  if (mesh) {
+    return mesh;
+  }
+  return injectedOverlay.value.conversations.find((c) => c.id === id);
 }
 
 function messagesForActive(): Message[] {
@@ -65,10 +88,9 @@ function messagesForActive(): Message[] {
   if (!convo) {
     return [];
   }
-  return chatState.value.messages
-    .filter((m) => m.conversationId === convo.id)
-    .slice()
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const mesh = chatState.value.messages.filter((m) => m.conversationId === convo.id);
+  const overlay = injectedOverlay.value.messages.filter((m) => m.conversationId === convo.id);
+  return [...mesh, ...overlay].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 function anyPending(): boolean {
@@ -174,11 +196,12 @@ function MessageBubble({
 }) {
   const isAssistant = message.sender === 'assistant';
   const isSelf = !isAssistant && message.senderDeviceId === selfDeviceId;
-  const bg = isAssistant ? '#e8edf3' : isSelf ? '#dbeafe' : '#ffffff';
-  const border = isAssistant ? '#c6cfd9' : isSelf ? '#bcd5f5' : '#e7e5e4';
+  const isDemo = overlayIds().messages.has(message.id);
+  const bg = isDemo ? '#fef3c7' : isAssistant ? '#e8edf3' : isSelf ? '#dbeafe' : '#ffffff';
+  const border = isDemo ? '#f59e0b' : isAssistant ? '#c6cfd9' : isSelf ? '#bcd5f5' : '#e7e5e4';
   const label = isAssistant
-    ? 'Claude'
-    : `${displayNameFor(message.senderUserId)} · ${deviceNameFor(message.senderDeviceId)}`;
+    ? `Claude${isDemo ? ' · demo' : ''}`
+    : `${displayNameFor(message.senderUserId)} · ${deviceNameFor(message.senderDeviceId)}${isDemo ? ' · demo' : ''}`;
   return (
     <Layout rows="auto auto" gap="0.15rem" padding="0.35rem 0">
       <Layout columns="auto 1fr auto" gap="0.5rem" alignItems="center">
@@ -382,16 +405,20 @@ function ConversationContextStrip({ convo }: { convo: Conversation | undefined }
 }
 
 function ActiveCcSessions() {
-  const sessions = sessionsActive.value.sessions;
+  const mesh = sessionsActive.value.sessions;
+  const overlay = injectedOverlay.value.sessions;
+  const sessions = [...mesh, ...overlay];
   if (sessions.length === 0) {
     return null;
   }
+  const demoIds = overlayIds().sessions;
   return (
     <div style={{ padding: '0.35rem 0', borderTop: '1px dashed #e7e5e4' }}>
       <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>Claude Code:</span>
       {sessions.map((s) => {
         const leaf = `${s.cwd}`.split('/').slice(-2).join('/');
         const state = s.state;
+        const isDemo = demoIds.has(`${s.sessionId}`);
         return (
           <div
             key={`${s.sessionId}`}
@@ -403,7 +430,10 @@ function ActiveCcSessions() {
               gap: '0.5rem',
             }}
           >
-            <span title={`${s.cwd}`}>{leaf}</span>
+            <span title={`${s.cwd}`}>
+              {leaf}
+              {isDemo ? ' · demo' : ''}
+            </span>
             <span style={{ color: '#6b7280' }}>
               {state}
               {s.lastToolName ? ` · ${s.lastToolName}` : ''}
@@ -411,6 +441,28 @@ function ActiveCcSessions() {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function DemoBanner() {
+  if (!hasOverlay()) {
+    return null;
+  }
+  return (
+    <div
+      style={{
+        background: '#fef3c7',
+        border: '1px solid #f59e0b',
+        color: '#78350f',
+        padding: '0.35rem 0.6rem',
+        fontSize: '0.75rem',
+        borderRadius: '4px',
+        margin: '0.25rem 0',
+      }}
+    >
+      ⚠ This widget contains demo data from <code>#__inject=</code> in the URL. None of it is real
+      or synced to your other devices.
     </div>
   );
 }
@@ -454,6 +506,7 @@ function Panel({ selfPeerId }: { selfPeerId: string | null }) {
     <div style={panelStyle}>
       <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #e7e5e4' }}>
         <ConversationHeader convo={convo} />
+        <DemoBanner />
         <ConversationContextStrip convo={convo} />
         <ActiveCcSessions />
       </div>

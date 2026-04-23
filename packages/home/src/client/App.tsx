@@ -7,6 +7,7 @@
 
 import { App as AgendaApp } from '@fairfox/agenda/client';
 import { App as ChatApp } from '@fairfox/chat/client';
+import { applyUrlHooks } from '@fairfox/chat/url-hooks';
 import { ChatWidget } from '@fairfox/chat/widget';
 import { App as DocsApp } from '@fairfox/docs/client';
 import { App as FamilyPhoneApp } from '@fairfox/family-phone-admin/client';
@@ -17,6 +18,11 @@ import { App as TheStruggleApp } from '@fairfox/the-struggle/client';
 import { App as TodoApp } from '@fairfox/todo-v2/client';
 import { Home } from '#src/client/Home.tsx';
 import { currentPath } from '#src/client/router.ts';
+
+// Run the URL hooks once at module load — the hash / query params
+// are stable across the lifetime of the page load, and rereading
+// them on every render wastes work.
+applyUrlHooks();
 
 export function App(): preact.JSX.Element {
   return (
