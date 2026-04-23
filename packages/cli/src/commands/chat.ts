@@ -21,10 +21,11 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import type {
   AssistantMessageExtras,
   ConversationExtras,
+  LeaderLease,
   ModelId,
   TurnError,
 } from '@fairfox/shared/assistant-state';
-import { computeCostUsd, parseModelId } from '@fairfox/shared/assistant-state';
+import { computeCostUsd, LEADER_LEASE_DOC_ID, parseModelId } from '@fairfox/shared/assistant-state';
 import { $meshState } from '@fairfox/shared/polly';
 import {
   derivePeerId,
@@ -141,6 +142,11 @@ const AGENT_IDLE_TIMEOUT_MS = 60_000;
 const THINKING_TRIGGER = /\b(think|plan|design|debug|why|prove)\b/i;
 const LONG_PROMPT_CHARS = 500;
 const HARD_DEFAULT_MODEL: ModelId = parseModelId('claude-sonnet-4-6');
+
+const LEASE_TTL_MS = 30_000;
+const LEASE_RENEW_MS = 10_000;
+const STALE_TURN_MS = 2 * 60 * 1000;
+const PREFLIGHT_CHARS_PER_USD = 50_000;
 
 function envModel(): ModelId | undefined {
   const raw = process.env.FAIRFOX_ASSISTANT_MODEL;
@@ -433,6 +439,181 @@ function randomId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function monthKey(iso: string): string {
+  return iso.slice(0, 7);
+}
+
+function monthCostSoFar(doc: ChatDoc, currentMonth: string): number {
+  let total = 0;
+  for (const m of doc.messages) {
+    if (m.sender !== 'assistant' || typeof m.costUsd !== 'number') {
+      continue;
+    }
+    if (monthKey(m.createdAt) === currentMonth) {
+      total += m.costUsd;
+    }
+  }
+  return total;
+}
+
+function estimatedUsdForTurn(prompt: string, model: ModelId): number {
+  // Rough ballpark — divides input chars by a per-dollar budget to
+  // get a scale-invariant estimate. The point of the estimator is to
+  // flag a warning before a costly turn lands, not to be accurate.
+  const factor =
+    model === parseModelId('claude-opus-4-7')
+      ? 5
+      : model === parseModelId('claude-haiku-4-5')
+        ? 0.2
+        : 1;
+  return (prompt.length / PREFLIGHT_CHARS_PER_USD) * factor;
+}
+
+function monthlyCostCapUsd(): number | undefined {
+  const raw = process.env.FAIRFOX_MONTHLY_COST_CAP_USD;
+  if (!raw) {
+    return undefined;
+  }
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
+/** Writes a system-style assistant message warning of the pending
+ * monthly cap breach. Does not refuse the turn — the user has
+ * explicitly set the cap, not asked us to hard-refuse above it. */
+function writeCapWarning(
+  chatSignal: ReturnType<typeof $meshState<ChatDoc>>,
+  convoId: string,
+  selfUserId: string,
+  selfPeerId: string,
+  mtd: number,
+  cap: number
+): void {
+  const nowIso = new Date().toISOString();
+  const warning: Message = {
+    id: randomId(),
+    conversationId: convoId,
+    sender: 'assistant',
+    senderUserId: selfUserId,
+    senderDeviceId: selfPeerId,
+    text: `⚠ Monthly cost cap ($${cap.toFixed(2)}) about to be crossed — MTD $${mtd.toFixed(2)}. Continuing; set FAIRFOX_MONTHLY_COST_CAP_USD higher or pin cheaper models in the widget to silence.`,
+    pending: false,
+    createdAt: nowIso,
+    model: HARD_DEFAULT_MODEL,
+    costUsd: 0,
+  };
+  chatSignal.value = {
+    ...chatSignal.value,
+    messages: [...chatSignal.value.messages, warning],
+  };
+}
+
+interface LeaderContext {
+  readonly daemonId: string;
+  readonly deviceId: string;
+}
+
+/** Try to claim the `daemon:leader` lease. Returns a `release()`
+ * handle on success. If another daemon currently holds a live
+ * lease, returns null — caller should sit out and re-check later.
+ * The lease is 30 s; renewed every 10 s. */
+function tryAcquireLease(
+  leaseSignal: ReturnType<typeof $meshState<LeaderLease>>,
+  ctx: LeaderContext
+): boolean {
+  const nowMs = Date.now();
+  const current = leaseSignal.value;
+  const expiresMs = current.expiresAt ? new Date(current.expiresAt).getTime() : 0;
+  const held: boolean = current.daemonId.length > 0 && expiresMs > nowMs;
+  const heldBySelf: boolean = held && current.daemonId === ctx.daemonId;
+  if (held && !heldBySelf) {
+    return false;
+  }
+  leaseSignal.value = {
+    deviceId: ctx.deviceId,
+    daemonId: ctx.daemonId,
+    expiresAt: new Date(nowMs + LEASE_TTL_MS).toISOString(),
+    renewedAt: new Date(nowMs).toISOString(),
+  };
+  return true;
+}
+
+function releaseLease(
+  leaseSignal: ReturnType<typeof $meshState<LeaderLease>>,
+  ctx: LeaderContext
+): void {
+  const current = leaseSignal.value;
+  if (current.daemonId !== ctx.daemonId) {
+    return;
+  }
+  leaseSignal.value = {
+    deviceId: ctx.deviceId,
+    daemonId: '',
+    expiresAt: new Date(0).toISOString(),
+    renewedAt: new Date().toISOString(),
+  };
+}
+
+/** Mark any pending user message older than STALE_TURN_MS — or
+ * whose last reply came from a different daemon session — with a
+ * `daemon-restarted` error so the widget can surface a regenerate
+ * affordance instead of a forever-spinning indicator. Runs once on
+ * daemon startup. */
+function sweepStaleTurns(
+  chatSignal: ReturnType<typeof $meshState<ChatDoc>>,
+  selfUserId: string,
+  selfPeerId: string,
+  ourDaemonId: string
+): number {
+  const nowMs = Date.now();
+  const cutoff = nowMs - STALE_TURN_MS;
+  const toMark: Message[] = [];
+  for (const m of chatSignal.value.messages) {
+    if (m.sender !== 'user' || !m.pending) {
+      continue;
+    }
+    if (hasAssistantReply(chatSignal.value, m.id)) {
+      continue;
+    }
+    const startedMs = new Date(m.createdAt).getTime();
+    if (startedMs >= cutoff) {
+      continue;
+    }
+    toMark.push(m);
+  }
+  if (toMark.length === 0) {
+    return 0;
+  }
+  const nowIso = new Date().toISOString();
+  const errors: Message[] = toMark.map((m) => ({
+    id: randomId(),
+    conversationId: m.conversationId,
+    sender: 'assistant',
+    senderUserId: selfUserId,
+    senderDeviceId: selfPeerId,
+    text: '(interrupted — regenerate to retry)',
+    pending: false,
+    parentId: m.id,
+    createdAt: nowIso,
+    model: HARD_DEFAULT_MODEL,
+    startedAt: m.createdAt,
+    finishedAt: nowIso,
+    error: { kind: 'daemon-restarted', message: `recovered on daemon ${ourDaemonId}` },
+    daemonId: selfPeerId,
+    costUsd: 0,
+  }));
+  chatSignal.value = {
+    ...chatSignal.value,
+    messages: [
+      ...chatSignal.value.messages.map((m) =>
+        toMark.some((t) => t.id === m.id) ? { ...m, pending: false } : m
+      ),
+      ...errors,
+    ],
+  };
+  return toMark.length;
+}
+
 function findConversation(doc: ChatDoc, conversationId: string): Conversation | undefined {
   return doc.conversations.find((c) => c.id === conversationId);
 }
@@ -607,15 +788,52 @@ export async function chatServe(): Promise<number> {
     `[chat serve] chat:main loaded — ${chatSignal.value.conversations.length} conversation(s), ${chatSignal.value.messages.length} message(s)\n`
   );
 
+  const leaseSignal = $meshState<LeaderLease>(LEADER_LEASE_DOC_ID, {
+    deviceId: '',
+    daemonId: '',
+    expiresAt: new Date(0).toISOString(),
+    renewedAt: new Date(0).toISOString(),
+  });
+  await leaseSignal.loaded;
+  const daemonId = randomId();
+  const leaderCtx: LeaderContext = { daemonId, deviceId: peerId };
+
+  // Startup sweep: mark crashed-mid-turn messages with daemon-restarted
+  // so the widget can surface a regenerate affordance instead of
+  // leaving the user staring at a forever-pending spinner.
+  const swept = sweepStaleTurns(chatSignal, identity.userId, peerId, daemonId);
+  if (swept > 0) {
+    process.stdout.write(`[chat serve] swept ${swept} stale pending message(s)\n`);
+    await flushOutgoing(500);
+  }
+
+  const cap = monthlyCostCapUsd();
+  if (cap !== undefined) {
+    process.stdout.write(`[chat serve] monthly cost cap: $${cap.toFixed(2)}\n`);
+  }
+
   let busy = false;
   const tick = async (): Promise<void> => {
     if (busy) {
+      return;
+    }
+    if (!tryAcquireLease(leaseSignal, leaderCtx)) {
       return;
     }
     busy = true;
     try {
       const next = pickNextPending(chatSignal.value);
       if (next) {
+        const convo = findConversation(chatSignal.value, next.conversationId);
+        const chosenModel = pickModel(convo, next);
+        if (cap !== undefined) {
+          const mtd = monthCostSoFar(chatSignal.value, monthKey(next.createdAt));
+          const estimate = estimatedUsdForTurn(next.text, chosenModel);
+          if (mtd + estimate >= cap) {
+            writeCapWarning(chatSignal, next.conversationId, identity.userId, peerId, mtd, cap);
+            await flushOutgoing(500);
+          }
+        }
         await processOne(chatSignal, next, identity.userId, peerId);
         await flushOutgoing(1500);
       }
@@ -626,6 +844,11 @@ export async function chatServe(): Promise<number> {
   const interval = setInterval(() => {
     void tick();
   }, POLL_INTERVAL_MS);
+  const leaseRenew = setInterval(() => {
+    if (!busy) {
+      tryAcquireLease(leaseSignal, leaderCtx);
+    }
+  }, LEASE_RENEW_MS);
   const heartbeat = setInterval(() => {
     const peers = client.repo.peers.length;
     const msgs = chatSignal.value.messages;
@@ -633,8 +856,11 @@ export async function chatServe(): Promise<number> {
       (m) => m.sender === 'user' && m.pending && !hasAssistantReply(chatSignal.value, m.id)
     ).length;
     const now = new Date().toISOString().slice(11, 19);
+    const lease = leaseSignal.value;
+    const held =
+      lease.daemonId === daemonId ? 'self' : lease.daemonId.length > 0 ? 'other' : 'none';
     process.stdout.write(
-      `[${now}] peers=${peers} convos=${chatSignal.value.conversations.length} messages=${msgs.length} pending=${pending}\n`
+      `[${now}] peers=${peers} convos=${chatSignal.value.conversations.length} messages=${msgs.length} pending=${pending} lease=${held}\n`
     );
   }, 10_000);
   void tick();
@@ -648,7 +874,9 @@ export async function chatServe(): Promise<number> {
   });
 
   clearInterval(interval);
+  clearInterval(leaseRenew);
   clearInterval(heartbeat);
+  releaseLease(leaseSignal, leaderCtx);
   process.stdout.write('\nchat serve: closing.\n');
   try {
     await flushOutgoing(2000);

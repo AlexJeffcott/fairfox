@@ -134,6 +134,7 @@ export const CHAT_WRITE_ACTIONS: ReadonlySet<string> = new Set([
   'chat.open-conversation',
   'chat.archive-conversation',
   'chat.remove-context',
+  'chat.regenerate',
 ]);
 
 export const registry: Record<string, (ctx: HandlerContext) => void> = {
@@ -268,6 +269,28 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     chatState.value = {
       ...chatState.value,
       messages: chatState.value.messages.map((m) => (m.id === id ? { ...m, pending: false } : m)),
+    };
+  },
+
+  // Regenerate an errored assistant turn. Deletes the assistant
+  // error reply and flips its user parent back to pending, so the
+  // relay picks it up on its next tick. Only exposed on assistant
+  // messages carrying an `error` extras field.
+  'chat.regenerate': (ctx) => {
+    const id = ctx.data.id;
+    if (!id) {
+      return;
+    }
+    const errored = chatState.value.messages.find((m) => m.id === id);
+    if (!errored || errored.sender !== 'assistant' || !errored.parentId) {
+      return;
+    }
+    const parentId = errored.parentId;
+    chatState.value = {
+      ...chatState.value,
+      messages: chatState.value.messages
+        .filter((m) => m.id !== id)
+        .map((m) => (m.id === parentId ? { ...m, pending: true } : m)),
     };
   },
 

@@ -223,6 +223,7 @@ function MessageBubble({
             display: 'flex',
             gap: '0.5rem',
             flexWrap: 'wrap',
+            alignItems: 'center',
           }}
         >
           {message.model ? <span>{shortModel(message.model)}</span> : null}
@@ -233,6 +234,25 @@ function MessageBubble({
             <span>{Math.round(message.durationMs / 100) / 10}s</span>
           )}
           {message.error ? <span>error: {message.error.kind}</span> : null}
+          {message.error && message.parentId ? (
+            <button
+              type="button"
+              data-action="chat.regenerate"
+              data-action-id={message.id}
+              aria-label="Regenerate this reply"
+              style={{
+                background: 'transparent',
+                border: '1px solid #b45309',
+                color: '#b45309',
+                borderRadius: '999px',
+                padding: '0.05rem 0.5rem',
+                fontSize: '0.7rem',
+                cursor: 'pointer',
+              }}
+            >
+              ↻ regenerate
+            </button>
+          ) : null}
         </div>
       ) : null}
     </Layout>
