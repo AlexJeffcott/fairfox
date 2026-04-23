@@ -22,6 +22,17 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import type {
+  SessionAnnouncement,
+  SessionAnnouncementState,
+  SessionsActive,
+} from '@fairfox/shared/assistant-state';
+import {
+  SESSIONS_ACTIVE_DOC_ID,
+  toAbsolutePath,
+  toSessionId,
+} from '@fairfox/shared/assistant-state';
+import { $meshState } from '@fairfox/shared/polly';
 import {
   currentOs,
   DAEMON_LOG_DIR,
@@ -31,11 +42,168 @@ import {
   LAUNCH_AGENT_LABEL,
   LAUNCH_AGENT_PATH,
   removeUnitFile,
+  renderCcHookSnippet,
   SYSTEMD_UNIT_PATH,
   writeLaunchAgent,
   writeSystemdUnit,
 } from '#src/daemon-install.ts';
 import { derivePeerId, flushOutgoing, keyringStorage, openMeshClient } from '#src/mesh.ts';
+
+const HOOK_FLUSH_MS = 500;
+const HOOK_STDIN_TIMEOUT_MS = 2000;
+
+type HookKind = 'session-start' | 'prompt-submit' | 'pre-tool' | 'post-tool' | 'session-stop';
+
+const HOOK_KIND_TO_STATE: Record<HookKind, SessionAnnouncementState> = {
+  'session-start': 'started',
+  'prompt-submit': 'prompt-submit',
+  'pre-tool': 'pre-tool',
+  'post-tool': 'post-tool',
+  'session-stop': 'stopped',
+};
+
+function isHookKind(v: string): v is HookKind {
+  return (
+    v === 'session-start' ||
+    v === 'prompt-submit' ||
+    v === 'pre-tool' ||
+    v === 'post-tool' ||
+    v === 'session-stop'
+  );
+}
+
+async function readStdinJson(): Promise<Record<string, unknown>> {
+  if (process.stdin.isTTY) {
+    return {};
+  }
+  const chunks: Buffer[] = [];
+  let raw = '';
+  const done = new Promise<void>((resolve, reject) => {
+    const to = setTimeout(() => resolve(), HOOK_STDIN_TIMEOUT_MS);
+    process.stdin.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+    process.stdin.on('end', () => {
+      clearTimeout(to);
+      resolve();
+    });
+    process.stdin.on('error', (err) => {
+      clearTimeout(to);
+      reject(err);
+    });
+  });
+  await done;
+  raw = Buffer.concat(chunks).toString('utf8').trim();
+  if (!raw) {
+    return {};
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // fall through to empty
+  }
+  return {};
+}
+
+function readString(obj: Record<string, unknown>, key: string): string | undefined {
+  const v = obj[key];
+  return typeof v === 'string' ? v : undefined;
+}
+
+function upsertSession(prev: SessionsActive, entry: SessionAnnouncement): SessionsActive {
+  const filtered = prev.sessions.filter((s) => s.sessionId !== entry.sessionId);
+  return { sessions: [...filtered, entry] };
+}
+
+function removeSessionById(prev: SessionsActive, sessionId: string): SessionsActive {
+  return { sessions: prev.sessions.filter((s) => `${s.sessionId}` !== sessionId) };
+}
+
+async function daemonHook(kindRaw: string): Promise<number> {
+  if (!isHookKind(kindRaw)) {
+    process.stderr.write(
+      `fairfox daemon hook: unknown kind "${kindRaw}" — expected session-start|prompt-submit|pre-tool|post-tool|session-stop.\n`
+    );
+    return 1;
+  }
+  const payload = await readStdinJson();
+  const sessionIdRaw = readString(payload, 'session_id') ?? readString(payload, 'sessionId');
+  const cwdRaw = readString(payload, 'cwd') ?? process.cwd();
+  const transcriptPathRaw =
+    readString(payload, 'transcript_path') ?? readString(payload, 'transcriptPath') ?? cwdRaw;
+  if (!sessionIdRaw) {
+    process.stderr.write('fairfox daemon hook: stdin payload missing session_id.\n');
+    return 1;
+  }
+  const storage = keyringStorage();
+  const keyring = await storage.load();
+  if (!keyring) {
+    process.stderr.write('fairfox daemon hook: no keyring; run `fairfox pair` first.\n');
+    return 1;
+  }
+  const peerId = derivePeerId(keyring.identity.publicKey);
+  const client = await openMeshClient({ peerId });
+  try {
+    const signal = $meshState<SessionsActive>(SESSIONS_ACTIVE_DOC_ID, { sessions: [] });
+    await signal.loaded;
+    const nowIso = new Date().toISOString();
+    const state = HOOK_KIND_TO_STATE[kindRaw];
+    const promptPreview = readString(payload, 'prompt');
+    const toolName = readString(payload, 'tool_name') ?? readString(payload, 'toolName');
+
+    let sessionId: SessionAnnouncement['sessionId'];
+    try {
+      sessionId = toSessionId(sessionIdRaw);
+    } catch (err) {
+      process.stderr.write(
+        `fairfox daemon hook: invalid session_id (${err instanceof Error ? err.message : String(err)}).\n`
+      );
+      return 1;
+    }
+    let cwd: SessionAnnouncement['cwd'];
+    let transcriptPath: SessionAnnouncement['transcriptPath'];
+    try {
+      cwd = toAbsolutePath(cwdRaw);
+      transcriptPath = toAbsolutePath(transcriptPathRaw);
+    } catch (err) {
+      process.stderr.write(
+        `fairfox daemon hook: bad path (${err instanceof Error ? err.message : String(err)}).\n`
+      );
+      return 1;
+    }
+
+    if (kindRaw === 'session-stop') {
+      // Drop the session from sessions:active on stop. Future phase
+      // may keep a short tombstone window; v1 removes immediately.
+      signal.value = removeSessionById(signal.value, sessionIdRaw);
+    } else {
+      const entry: SessionAnnouncement = {
+        sessionId,
+        deviceId: peerId,
+        cwd,
+        transcriptPath,
+        state,
+        updatedAt: nowIso,
+        ...(promptPreview ? { lastPromptPreview: promptPreview.slice(0, 200) } : {}),
+        ...(toolName ? { lastToolName: toolName } : {}),
+      };
+      signal.value = upsertSession(signal.value, entry);
+    }
+
+    await flushOutgoing(HOOK_FLUSH_MS);
+    process.stdout.write(`fairfox daemon hook ${kindRaw}: wrote ${sessionIdRaw}\n`);
+    return 0;
+  } finally {
+    try {
+      await client.close();
+    } catch {
+      // best-effort
+    }
+  }
+}
 
 function usage(stream: NodeJS.WriteStream = process.stderr): void {
   stream.write(
@@ -53,6 +221,11 @@ function usage(stream: NodeJS.WriteStream = process.stderr): void {
       '  fairfox daemon stop           Ask the OS supervisor to stop the unit.',
       '  fairfox daemon status         Print unit registration + pid + log path.',
       '  fairfox daemon reload         SIGHUP the daemon (reloads config).',
+      '  fairfox daemon hook <kind>    Read a Claude Code hook payload from',
+      '                                stdin and publish a SessionAnnouncement',
+      '                                into the mesh. Kinds: session-start,',
+      '                                prompt-submit, pre-tool, post-tool,',
+      '                                session-stop.',
       '',
       'Unit file paths:',
       `  macOS:  ${LAUNCH_AGENT_PATH}`,
@@ -127,6 +300,11 @@ function daemonInstall(): Promise<number> {
   for (const cmd of result.next) {
     process.stdout.write(`  ${cmd}\n`);
   }
+  process.stdout.write('\n');
+  process.stdout.write('to bridge Claude Code sessions into the mesh, merge this\n');
+  process.stdout.write('into ~/.claude/settings.json under "hooks":\n\n');
+  process.stdout.write(renderCcHookSnippet(bin));
+  process.stdout.write('\n');
   return Promise.resolve(0);
 }
 
@@ -264,6 +442,14 @@ export function daemon(rest: readonly string[]): Promise<number> {
   }
   if (verb === 'reload') {
     return daemonReload();
+  }
+  if (verb === 'hook') {
+    const kind = args[0];
+    if (!kind) {
+      process.stderr.write('fairfox daemon hook: missing kind argument.\n');
+      return Promise.resolve(1);
+    }
+    return daemonHook(kind);
   }
   process.stderr.write(`fairfox daemon: unknown verb "${verb}".\n\n`);
   usage();

@@ -16,6 +16,7 @@ import {
   chatState,
   draftText,
   pinnedContext,
+  sessionsActive,
   widgetOpen,
 } from '#src/client/state.ts';
 
@@ -360,6 +361,40 @@ function ConversationContextStrip({ convo }: { convo: Conversation | undefined }
   );
 }
 
+function ActiveCcSessions() {
+  const sessions = sessionsActive.value.sessions;
+  if (sessions.length === 0) {
+    return null;
+  }
+  return (
+    <div style={{ padding: '0.35rem 0', borderTop: '1px dashed #e7e5e4' }}>
+      <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>Claude Code:</span>
+      {sessions.map((s) => {
+        const leaf = `${s.cwd}`.split('/').slice(-2).join('/');
+        const state = s.state;
+        return (
+          <div
+            key={`${s.sessionId}`}
+            style={{
+              fontSize: '0.75rem',
+              color: s.stale ? '#9ca3af' : '#1c1917',
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: '0.5rem',
+            }}
+          >
+            <span title={`${s.cwd}`}>{leaf}</span>
+            <span style={{ color: '#6b7280' }}>
+              {state}
+              {s.lastToolName ? ` · ${s.lastToolName}` : ''}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function isMobile(): boolean {
   if (typeof window === 'undefined') {
     return false;
@@ -400,6 +435,7 @@ function Panel({ selfPeerId }: { selfPeerId: string | null }) {
       <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #e7e5e4' }}>
         <ConversationHeader convo={convo} />
         <ConversationContextStrip convo={convo} />
+        <ActiveCcSessions />
       </div>
       <div
         style={{

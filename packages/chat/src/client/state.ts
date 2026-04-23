@@ -7,7 +7,12 @@
 
 import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
-import type { AssistantMessageExtras, ConversationExtras } from '@fairfox/shared/assistant-state';
+import type {
+  AssistantMessageExtras,
+  ConversationExtras,
+  SessionsActive,
+} from '@fairfox/shared/assistant-state';
+import { SESSIONS_ACTIVE_DOC_ID } from '@fairfox/shared/assistant-state';
 import type { PageContext } from '@fairfox/shared/page-context';
 import { signal } from '@preact/signals';
 
@@ -54,6 +59,15 @@ export interface ChatDoc {
 export const chatState = $meshState<ChatDoc>('chat:main', {
   conversations: [],
   messages: [],
+});
+
+/** Mesh doc of live Claude Code sessions — populated by the daemon's
+ * `fairfox daemon hook` command when CC fires SessionStart etc. The
+ * widget renders a strip of active sessions when this list is
+ * non-empty, so a phone user can see at a glance what the laptop is
+ * doing. */
+export const sessionsActive = $meshState<SessionsActive>(SESSIONS_ACTIVE_DOC_ID, {
+  sessions: [],
 });
 
 /** Which conversation the widget is currently rendering, per

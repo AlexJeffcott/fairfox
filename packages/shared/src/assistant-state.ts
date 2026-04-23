@@ -154,6 +154,10 @@ export interface ConversationExtras {
   readonly scopeOverrideKey?: string;
 }
 
+// --- mesh doc ids ----------------------------------------------
+export const SESSIONS_ACTIVE_DOC_ID = 'sessions:active';
+export const LEADER_LEASE_DOC_ID = 'daemon:leader';
+
 // --- leader lease / sessions:active ----------------------------
 export interface LeaderLease {
   [key: string]: unknown;

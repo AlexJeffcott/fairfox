@@ -165,3 +165,35 @@ export function removeUnitFile(os: Os): { removed: boolean; path: string } {
   unlinkSync(path);
   return { removed: true, path };
 }
+
+/** Render the "hooks" block users paste into ~/.claude/settings.json
+ * to bridge a Claude Code session into fairfox's sessions:active
+ * mesh doc. Kept as a pasteable snippet rather than auto-edited: the
+ * user's settings.json likely carries unrelated hooks (e.g. peon-ping)
+ * and the safest merge is the one the user does themselves. */
+export function renderCcHookSnippet(binPath: string): string {
+  const cmd = (kind: string): string => `${binPath} daemon hook ${kind}`;
+  return `${JSON.stringify(
+    {
+      hooks: {
+        SessionStart: [
+          { matcher: '', hooks: [{ type: 'command', command: cmd('session-start'), timeout: 5 }] },
+        ],
+        UserPromptSubmit: [
+          { matcher: '', hooks: [{ type: 'command', command: cmd('prompt-submit'), timeout: 3 }] },
+        ],
+        PreToolUse: [
+          { matcher: '*', hooks: [{ type: 'command', command: cmd('pre-tool'), timeout: 3 }] },
+        ],
+        PostToolUse: [
+          { matcher: '*', hooks: [{ type: 'command', command: cmd('post-tool'), timeout: 3 }] },
+        ],
+        Stop: [
+          { matcher: '', hooks: [{ type: 'command', command: cmd('session-stop'), timeout: 3 }] },
+        ],
+      },
+    },
+    null,
+    2
+  )}\n`;
+}
