@@ -32,6 +32,8 @@
     "./qr-scan": "./src/qr-scan.tsx",
     "./signaling": "./src/signaling.ts",
     "./page-context": "./src/page-context.ts",
+    "./assistant-state": "./src/assistant-state.ts",
+    "./assistant-state-guards": "./src/assistant-state-guards.ts",
     "./polly": "./src/polly-reexport.ts"
   },
   "imports": {

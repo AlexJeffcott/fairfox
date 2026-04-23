@@ -7,12 +7,13 @@
 
 import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
+import type { AssistantMessageExtras, ConversationExtras } from '@fairfox/shared/assistant-state';
 import type { PageContext } from '@fairfox/shared/page-context';
 import { signal } from '@preact/signals';
 
 export type Sender = 'user' | 'assistant';
 
-export interface Conversation {
+export interface Conversation extends ConversationExtras {
   [key: string]: unknown;
   id: string;
   title?: string;
@@ -28,7 +29,7 @@ export interface Conversation {
   archivedAt?: string;
 }
 
-export interface Message {
+export interface Message extends AssistantMessageExtras {
   [key: string]: unknown;
   id: string;
   conversationId: string;

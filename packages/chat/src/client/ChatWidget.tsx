@@ -214,8 +214,39 @@ function MessageBubble({
       >
         {message.text}
       </div>
+      {isAssistant && (message.model || message.costUsd !== undefined || message.error) ? (
+        <div
+          style={{
+            fontSize: '0.7rem',
+            color: message.error ? '#b45309' : '#6b7280',
+            display: 'flex',
+            gap: '0.5rem',
+            flexWrap: 'wrap',
+          }}
+        >
+          {message.model ? <span>{shortModel(message.model)}</span> : null}
+          {message.costUsd !== undefined && message.costUsd > 0 ? (
+            <span>${message.costUsd.toFixed(4)}</span>
+          ) : null}
+          {message.durationMs === undefined ? null : (
+            <span>{Math.round(message.durationMs / 100) / 10}s</span>
+          )}
+          {message.error ? <span>error: {message.error.kind}</span> : null}
+        </div>
+      ) : null}
     </Layout>
   );
+}
+
+function shortModel(id: string): string {
+  // claude-sonnet-4-6 → Sonnet 4.6; fall back to raw id.
+  const m = id.match(/^claude-(opus|sonnet|haiku)-(\d+)-(\d+)$/);
+  if (!m) {
+    return id;
+  }
+  const [, fam, major, minor] = m;
+  const cap = (fam ?? '').slice(0, 1).toUpperCase() + (fam ?? '').slice(1);
+  return `${cap} ${major}.${minor}`;
 }
 
 function Composer({ selfPeerId }: { selfPeerId: string | null }) {

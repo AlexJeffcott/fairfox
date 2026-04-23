@@ -1,17 +1,31 @@
 // `fairfox chat serve` — long-lived mesh peer that watches the
 // `chat:main` $meshState doc for pending user messages and writes
-// assistant replies produced by `claude -p`. Idempotent: a user
-// message is "handled" when the doc already carries an assistant
-// message whose parentId points at it.
+// assistant replies produced by `@anthropic-ai/claude-agent-sdk`.
+// Idempotent: a user message is "handled" when the doc already
+// carries an assistant message whose parentId points at it.
 //
 // Conversations own a list of contextRefs that accumulate as the
 // user sends messages from different pages. The relay pulls every
 // entry on the conversation's contextRefs list into the prompt.
 // History window: messages in the SAME conversation, last 30
 // minutes up to the target, capped at 20 entries.
+//
+// Per-turn model routing: `pickModel` picks Sonnet by default, Opus
+// for long or thinking-triggered prompts, Haiku for short / quick
+// turns. A conversation's `pinnedModel` (set from the widget) always
+// wins. Usage (tokens, cost) is recorded on the assistant message's
+// extras block so the UI can show a per-message badge and a rolling
+// conversation total.
 
+import { query } from '@anthropic-ai/claude-agent-sdk';
+import type {
+  AssistantMessageExtras,
+  ConversationExtras,
+  ModelId,
+  TurnError,
+} from '@fairfox/shared/assistant-state';
+import { computeCostUsd, parseModelId } from '@fairfox/shared/assistant-state';
 import { $meshState } from '@fairfox/shared/polly';
-import { $ } from 'bun';
 import {
   derivePeerId,
   flushOutgoing,
@@ -42,7 +56,7 @@ interface ContextRef {
   details?: Record<string, unknown>;
 }
 
-interface Conversation {
+interface Conversation extends ConversationExtras {
   [key: string]: unknown;
   id: string;
   title?: string;
@@ -53,7 +67,7 @@ interface Conversation {
   archivedAt?: string;
 }
 
-interface Message {
+interface Message extends AssistantMessageExtras {
   [key: string]: unknown;
   id: string;
   conversationId: string;
@@ -122,7 +136,40 @@ interface MinDoc {
 const HISTORY_WINDOW_MS = 30 * 60 * 1000;
 const HISTORY_MAX = 20;
 const POLL_INTERVAL_MS = 5_000;
-const CLAUDE_CWD = process.env.RELAY_CWD || process.cwd();
+const RELAY_CWD = process.env.RELAY_CWD || process.cwd();
+const AGENT_IDLE_TIMEOUT_MS = 60_000;
+const THINKING_TRIGGER = /\b(think|plan|design|debug|why|prove)\b/i;
+const LONG_PROMPT_CHARS = 500;
+const HARD_DEFAULT_MODEL: ModelId = parseModelId('claude-sonnet-4-6');
+
+function envModel(): ModelId | undefined {
+  const raw = process.env.FAIRFOX_ASSISTANT_MODEL;
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    return parseModelId(raw);
+  } catch {
+    process.stderr.write(
+      `[chat serve] ignoring FAIRFOX_ASSISTANT_MODEL="${raw}" — not a valid claude model id.\n`
+    );
+    return undefined;
+  }
+}
+
+function pickModel(convo: Conversation | undefined, target: Message): ModelId {
+  if (convo?.pinnedModel) {
+    return convo.pinnedModel;
+  }
+  const text = target.text;
+  if (text.length < 20) {
+    return parseModelId('claude-haiku-4-5');
+  }
+  if (THINKING_TRIGGER.test(text) || text.length > LONG_PROMPT_CHARS) {
+    return parseModelId('claude-opus-4-7');
+  }
+  return envModel() ?? HARD_DEFAULT_MODEL;
+}
 
 function hasAssistantReply(doc: ChatDoc, userMessageId: string): boolean {
   for (const m of doc.messages) {
@@ -269,28 +316,125 @@ function buildPrompt(doc: ChatDoc, target: Message): string {
   ].join('\n');
 }
 
-async function runClaude(prompt: string): Promise<string> {
-  // Test hook — when FAIRFOX_CLAUDE_STUB is set the relay short-circuits
-  // and returns the env value (or a default echo) instead of shelling out
-  // to `claude -p`. This lets scripts/e2e-chat-relay.ts exercise the
-  // full write-pending → reply → clear-pending loop without burning API
-  // tokens. Never used in production — the env is deliberately
-  // unfamiliar and no CI workflow sets it.
+interface AgentResult {
+  readonly text: string;
+  readonly extras: AssistantMessageExtras;
+}
+
+async function runAgent(prompt: string, model: ModelId, startedAt: string): Promise<AgentResult> {
+  // Test hook — when FAIRFOX_CLAUDE_STUB is set the relay
+  // short-circuits and returns the env value (or a default echo)
+  // instead of calling the Agent SDK. This lets
+  // scripts/e2e-chat-relay.ts exercise the pending → reply → clear
+  // loop without burning API tokens. Never used in production —
+  // the env is deliberately unfamiliar and no CI workflow sets it.
   const stub = process.env.FAIRFOX_CLAUDE_STUB;
   if (stub !== undefined) {
-    if (stub.length > 0) {
-      return stub;
-    }
-    const peek = prompt.split('\n').at(-2) ?? '';
-    return `[stub] acknowledged: ${peek.slice(0, 120)}`;
+    const text = stub.length > 0 ? stub : `[stub] acknowledged: ${prompt.split('\n').at(-2) ?? ''}`;
+    return {
+      text,
+      extras: {
+        model,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+      },
+    };
   }
-  const result =
-    await $`cd ${CLAUDE_CWD} && claude -p ${prompt} --dangerously-skip-permissions`.text();
-  return result.trim();
+
+  const abort = new AbortController();
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  const resetIdleTimer = (): void => {
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+    }
+    idleTimer = setTimeout(() => abort.abort(), AGENT_IDLE_TIMEOUT_MS);
+  };
+  resetIdleTimer();
+
+  let text = '';
+  let extras: AssistantMessageExtras = { model, startedAt };
+  const toolsUsed: string[] = [];
+  try {
+    for await (const msg of query({
+      prompt,
+      options: {
+        model,
+        cwd: RELAY_CWD,
+        abortController: abort,
+        systemPrompt: [
+          'You are the fairfox household assistant running on the laptop.',
+          'The user may be on a phone, iPad, or the laptop itself.',
+          'Keep responses concise and practical unless explicitly asked to go deep.',
+          'You have access to the laptop (files, git, commands).',
+        ].join(' '),
+      },
+    })) {
+      resetIdleTimer();
+      if (msg.type === 'assistant') {
+        for (const block of msg.message.content) {
+          if (block.type === 'tool_use') {
+            toolsUsed.push(block.name);
+          }
+        }
+      }
+      if (msg.type === 'result') {
+        const finishedAt = new Date().toISOString();
+        if (msg.subtype === 'success') {
+          text = msg.result;
+          extras = {
+            model,
+            startedAt,
+            finishedAt,
+            inputTokens: msg.usage.input_tokens,
+            outputTokens: msg.usage.output_tokens,
+            ...(msg.usage.cache_read_input_tokens === undefined
+              ? {}
+              : { cachedInputTokens: msg.usage.cache_read_input_tokens }),
+            costUsd: msg.total_cost_usd,
+            durationMs: msg.duration_ms,
+            ...(toolsUsed.length > 0 ? { toolsUsed } : {}),
+          };
+        } else {
+          const firstError = msg.errors[0] ?? '';
+          const isAuth = /401|403|auth|api.key|unauthorized/i.test(firstError);
+          const err: TurnError = isAuth
+            ? { kind: 'no-api-key', message: firstError || 'authentication failed' }
+            : {
+                kind: 'api',
+                status: 0,
+                message: firstError || `agent: ${msg.subtype}`,
+              };
+          extras = {
+            model,
+            startedAt,
+            finishedAt,
+            durationMs: msg.duration_ms,
+            error: err,
+          };
+        }
+      }
+    }
+  } catch (err) {
+    const finishedAt = new Date().toISOString();
+    const aborted = abort.signal.aborted;
+    const turnError: TurnError = aborted
+      ? { kind: 'timeout', idleMs: AGENT_IDLE_TIMEOUT_MS }
+      : { kind: 'unknown', message: err instanceof Error ? err.message : String(err) };
+    extras = { model, startedAt, finishedAt, error: turnError };
+  } finally {
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+    }
+  }
+  return { text, extras };
 }
 
 function randomId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function findConversation(doc: ChatDoc, conversationId: string): Conversation | undefined {
+  return doc.conversations.find((c) => c.id === conversationId);
 }
 
 async function processOne(
@@ -300,46 +444,54 @@ async function processOne(
   selfPeerId: string
 ): Promise<void> {
   const prompt = buildPrompt(chatSignal.value, target);
+  const model = pickModel(findConversation(chatSignal.value, target.conversationId), target);
+  const startedAt = new Date().toISOString();
   process.stdout.write(
-    `[chat serve] processing ${target.id} (${target.text.slice(0, 60).replace(/\n/g, ' ')}…)\n`
+    `[chat serve] processing ${target.id} via ${model} (${target.text.slice(0, 60).replace(/\n/g, ' ')}…)\n`
   );
-  let replyText: string;
-  try {
-    replyText = await runClaude(prompt);
-  } catch (err) {
-    process.stderr.write(
-      `[chat serve] claude failed: ${err instanceof Error ? err.message : String(err)}\n`
-    );
-    chatSignal.value = {
-      ...chatSignal.value,
-      messages: chatSignal.value.messages.map((m) =>
-        m.id === target.id ? { ...m, pending: false } : m
-      ),
-    };
-    return;
-  }
+  const { text: replyText, extras } = await runAgent(prompt, model, startedAt);
+  const finalCost =
+    extras.costUsd ??
+    computeCostUsd({
+      model: extras.model,
+      inputTokens: extras.inputTokens,
+      outputTokens: extras.outputTokens,
+      cachedInputTokens: extras.cachedInputTokens,
+    });
   const reply: Message = {
     id: randomId(),
     conversationId: target.conversationId,
     sender: 'assistant',
     senderUserId: selfUserId,
     senderDeviceId: selfPeerId,
-    text: replyText || '(empty reply)',
+    text: replyText || (extras.error ? `(error: ${extras.error.kind})` : '(empty reply)'),
     pending: false,
     parentId: target.id,
     createdAt: new Date().toISOString(),
+    ...extras,
+    costUsd: finalCost,
+    daemonId: selfPeerId,
   };
   chatSignal.value = {
     ...chatSignal.value,
     conversations: chatSignal.value.conversations.map((c) =>
-      c.id === target.conversationId ? { ...c, updatedAt: reply.createdAt } : c
+      c.id === target.conversationId
+        ? {
+            ...c,
+            updatedAt: reply.createdAt,
+            totalCostUsd: Math.round(((c.totalCostUsd ?? 0) + finalCost) * 10_000) / 10_000,
+            typing: false,
+          }
+        : c
     ),
     messages: [
       ...chatSignal.value.messages.map((m) => (m.id === target.id ? { ...m, pending: false } : m)),
       reply,
     ],
   };
-  process.stdout.write(`[chat serve] replied to ${target.id} (${replyText.length} chars)\n`);
+  process.stdout.write(
+    `[chat serve] replied to ${target.id} (${replyText.length} chars · $${finalCost.toFixed(4)})\n`
+  );
 }
 
 /** `fairfox chat send <text>` — writes a pending user message into
