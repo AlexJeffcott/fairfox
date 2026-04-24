@@ -18,6 +18,7 @@ import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
 import { canDo } from '@fairfox/shared/policy';
 import { pwaInstallActions } from '@fairfox/shared/pwa-install';
+import { qrScanActions } from '@fairfox/shared/qr-scan';
 import { registry as speakwellRegistry } from '@fairfox/speakwell/actions';
 import { registry as theStruggleRegistry } from '@fairfox/the-struggle/actions';
 import { TODO_WRITE_ACTIONS, registry as todoRegistry } from '@fairfox/todo-v2/actions';
@@ -40,6 +41,7 @@ type ActionDispatch = {
 export const registry: Record<string, (ctx: HandlerContext) => void> = {
   ...pairingActions,
   ...buildFreshnessActions,
+  ...qrScanActions,
   ...pwaInstallActions,
   ...homeActions,
   ...routerActions,

@@ -19,9 +19,8 @@
 // screenshot's colour profile may have inverted the code.
 
 import { Button } from '@fairfox/polly/ui';
-import { signal } from '@preact/signals';
+import { effect, signal } from '@preact/signals';
 import jsQR from 'jsqr';
-import { useEffect, useRef } from 'preact/hooks';
 import { importRecoveryBlob, submitScannedValue } from '#src/pairing-actions.ts';
 import { type CameraScanMode, cameraScanMode, pairingError } from '#src/pairing-state.ts';
 
@@ -144,92 +143,136 @@ function closeCamera(): void {
   cameraScanError.value = null;
 }
 
+// Module-scoped DOM handles for the camera dialog. Callback refs on
+// the <video>/<canvas> in QrScanDialog populate these on mount and
+// clear them on unmount, so the camera lifecycle lives outside any
+// Preact hook.
+let cameraVideoEl: HTMLVideoElement | null = null;
+let cameraCanvasEl: HTMLCanvasElement | null = null;
+
+let activeStream: MediaStream | null = null;
+let activeRafId: number | null = null;
+let activeCameraSession = 0;
+
+function stopCamera(): void {
+  activeCameraSession += 1;
+  if (activeRafId !== null) {
+    cancelAnimationFrame(activeRafId);
+    activeRafId = null;
+  }
+  if (activeStream) {
+    activeStream.getTracks().forEach((t) => {
+      t.stop();
+    });
+    activeStream = null;
+  }
+  if (cameraVideoEl) {
+    cameraVideoEl.srcObject = null;
+  }
+}
+
+async function startCamera(mode: CameraScanMode): Promise<void> {
+  const session = ++activeCameraSession;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false,
+    });
+    if (session !== activeCameraSession) {
+      stream.getTracks().forEach((t) => {
+        t.stop();
+      });
+      return;
+    }
+    activeStream = stream;
+    const video = cameraVideoEl;
+    if (!video) {
+      return;
+    }
+    video.srcObject = stream;
+    video.setAttribute('playsinline', 'true');
+    video.muted = true;
+    await video.play();
+    tickCamera(mode, session);
+  } catch (err) {
+    cameraScanError.value = err instanceof Error ? err.message : 'Could not open the camera.';
+  }
+}
+
+function tickCamera(mode: CameraScanMode, session: number): void {
+  if (session !== activeCameraSession) {
+    return;
+  }
+  const video = cameraVideoEl;
+  const canvas = cameraCanvasEl;
+  if (video && canvas && video.readyState === video.HAVE_ENOUGH_DATA) {
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    if (w > 0 && h > 0) {
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, w, h);
+        const image = ctx.getImageData(0, 0, w, h);
+        const code = jsQR(image.data, image.width, image.height, {
+          inversionAttempts: 'dontInvert',
+        });
+        if (code?.data) {
+          pairingError.value = null;
+          const payload = code.data;
+          closeCamera();
+          void dispatchScanPayload(mode, payload);
+          return;
+        }
+      }
+    }
+  }
+  activeRafId = requestAnimationFrame(() => {
+    tickCamera(mode, session);
+  });
+}
+
+let cameraLifecycleInstalled = false;
+
+/** Install the module-scope effect that drives the camera on and off
+ * in response to `cameraScanMode` changes. The QR dialog's video and
+ * canvas elements register themselves via callback refs, so this
+ * effect can open getUserMedia and start the jsQR frame loop without
+ * any component-level hook. Safe to call more than once. */
+export function installQrCameraLifecycle(): void {
+  if (cameraLifecycleInstalled) {
+    return;
+  }
+  cameraLifecycleInstalled = true;
+  effect(() => {
+    const mode = cameraScanMode.value;
+    if (mode === null) {
+      stopCamera();
+      return;
+    }
+    // Callback refs populate after render commits. One microtask is
+    // enough to let the dialog mount before we grab the elements.
+    queueMicrotask(() => {
+      if (cameraScanMode.value === mode && cameraVideoEl && cameraCanvasEl) {
+        void startCamera(mode);
+      }
+    });
+  });
+}
+
+function setCameraVideo(el: HTMLVideoElement | null): void {
+  cameraVideoEl = el;
+}
+
+function setCameraCanvas(el: HTMLCanvasElement | null): void {
+  cameraCanvasEl = el;
+}
+
 export function QrScanDialog(): preact.JSX.Element | null {
-  const modeOrNull = cameraScanMode.value;
-  if (modeOrNull === null) {
+  if (cameraScanMode.value === null) {
     return null;
   }
-  const mode: CameraScanMode = modeOrNull;
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    let stream: MediaStream | null = null;
-    let rafId: number | null = null;
-
-    async function start(): Promise<void> {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
-          audio: false,
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => {
-            t.stop();
-          });
-          return;
-        }
-        const video = videoRef.current;
-        if (!video) {
-          return;
-        }
-        video.srcObject = stream;
-        video.setAttribute('playsinline', 'true');
-        video.muted = true;
-        await video.play();
-        tick();
-      } catch (err) {
-        cameraScanError.value = err instanceof Error ? err.message : 'Could not open the camera.';
-      }
-    }
-
-    function tick(): void {
-      if (cancelled) {
-        return;
-      }
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      if (video && canvas && video.readyState === video.HAVE_ENOUGH_DATA) {
-        const w = video.videoWidth;
-        const h = video.videoHeight;
-        if (w > 0 && h > 0) {
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d', { willReadFrequently: true });
-          if (ctx) {
-            ctx.drawImage(video, 0, 0, w, h);
-            const image = ctx.getImageData(0, 0, w, h);
-            const code = jsQR(image.data, image.width, image.height, {
-              inversionAttempts: 'dontInvert',
-            });
-            if (code?.data) {
-              cancelled = true;
-              pairingError.value = null;
-              closeCamera();
-              void dispatchScanPayload(mode, code.data);
-              return;
-            }
-          }
-        }
-      }
-      rafId = requestAnimationFrame(tick);
-    }
-
-    void start();
-
-    return () => {
-      cancelled = true;
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-      }
-      if (stream) {
-        stream.getTracks().forEach((t) => {
-          t.stop();
-        });
-      }
-    };
-  }, []);
 
   return (
     <div style={OVERLAY_STYLE} role="dialog" aria-label="Scan pairing QR">
@@ -238,12 +281,12 @@ export function QrScanDialog(): preact.JSX.Element | null {
         code is in frame.
       </p>
       <div style={VIDEO_WRAP_STYLE}>
-        <video ref={videoRef} style={VIDEO_STYLE} playsInline={true} muted={true} />
+        <video ref={setCameraVideo} style={VIDEO_STYLE} playsInline={true} muted={true} />
         <div style={FRAME_STYLE} />
       </div>
       {cameraScanError.value && <p style={ERROR_STYLE}>{cameraScanError.value}</p>}
       <Button label="Cancel" tier="secondary" data-action="pairing.close-camera" />
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
+      <canvas ref={setCameraCanvas} style={{ display: 'none' }} />
     </div>
   );
 }
@@ -320,80 +363,125 @@ const DROPZONE_STYLE = {
   width: '100%',
 };
 
+/** Decode a QR blob and route it through the configured pair or
+ * recovery pipeline. Used by the paste listener installed at boot
+ * and by the `qr.dropzone-file` action handler below. */
+async function handleDropzoneBlob(blob: Blob, mode: CameraScanMode): Promise<void> {
+  try {
+    const decoded = await decodeQrFromImageBlob(blob);
+    if (decoded) {
+      pairingError.value = null;
+      await dispatchScanPayload(mode, decoded);
+    } else {
+      pairingError.value = "Couldn't find a QR code in that image.";
+    }
+  } catch (err) {
+    pairingError.value = err instanceof Error ? err.message : 'image decode failed';
+  }
+}
+
+/** Resolve the mode of the currently-visible dropzone, if any. The
+ * window-level paste listener installed at boot uses this to decide
+ * whether a pasted image should feed the pair or recovery pipeline.
+ * Returns null when no dropzone is rendered (the listener then does
+ * nothing and lets the default paste behaviour through). */
+function resolveVisibleDropzoneMode(): CameraScanMode | null {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+  const el = document.querySelector('[data-qr-dropzone-mode]');
+  if (!(el instanceof HTMLElement)) {
+    return null;
+  }
+  const mode = el.dataset.qrDropzoneMode;
+  if (mode === 'pair' || mode === 'recovery') {
+    return mode;
+  }
+  return null;
+}
+
+let pasteListenerInstalled = false;
+
+/** Install a window-level paste listener that routes clipboard
+ * images through the currently-visible dropzone's mode. Installed
+ * once at boot. Does nothing when no dropzone is on screen. */
+export function installQrPasteListener(): void {
+  if (pasteListenerInstalled || typeof window === 'undefined') {
+    return;
+  }
+  pasteListenerInstalled = true;
+  window.addEventListener('paste', (e) => {
+    const mode = resolveVisibleDropzoneMode();
+    if (!mode) {
+      return;
+    }
+    const items = e.clipboardData?.items;
+    if (!items) {
+      return;
+    }
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const blob = item.getAsFile();
+        if (blob) {
+          e.preventDefault();
+          void handleDropzoneBlob(blob, mode);
+          return;
+        }
+      }
+    }
+  });
+}
+
 /** Screenshot-of-a-QR as an input. Renders a label-wrapped
- * `<input type="file">` (so clicks open the native picker without
- * needing an inline onClick) and also registers a window-level
- * paste listener for Cmd/Ctrl-V with an image on the clipboard.
- * `mode` decides what the decoded payload feeds — the pair pipeline
- * or the recovery-blob import. */
+ * `<input type="file">` whose `change` event bubbles to the global
+ * action dispatcher (`pairing.dropzone-file`). The window-level
+ * paste listener is installed once at boot and routes clipboard
+ * images through whichever dropzone is visible. */
 export function QrImageDropzone({
   mode = 'pair',
 }: {
   mode?: CameraScanMode;
 } = {}): preact.JSX.Element {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    const el = inputRef.current;
-    if (!el) {
-      return;
-    }
-    async function handleBlob(blob: Blob): Promise<void> {
-      try {
-        const decoded = await decodeQrFromImageBlob(blob);
-        if (decoded) {
-          pairingError.value = null;
-          await dispatchScanPayload(mode, decoded);
-        } else {
-          pairingError.value = "Couldn't find a QR code in that image.";
-        }
-      } catch (err) {
-        pairingError.value = err instanceof Error ? err.message : 'image decode failed';
-      }
-    }
-    function onFileChange(): void {
-      const file = el?.files?.[0];
-      if (file) {
-        void handleBlob(file);
-        if (el) {
-          el.value = '';
-        }
-      }
-    }
-    function onPaste(e: ClipboardEvent): void {
-      const items = e.clipboardData?.items;
-      if (!items) {
-        return;
-      }
-      for (const item of items) {
-        if (item.type.startsWith('image/')) {
-          const blob = item.getAsFile();
-          if (blob) {
-            e.preventDefault();
-            void handleBlob(blob);
-            return;
-          }
-        }
-      }
-    }
-    el.addEventListener('change', onFileChange);
-    window.addEventListener('paste', onPaste);
-    return () => {
-      el.removeEventListener('change', onFileChange);
-      window.removeEventListener('paste', onPaste);
-    };
-  }, []);
-
   return (
-    <label style={DROPZONE_STYLE}>
+    <label style={DROPZONE_STYLE} data-qr-dropzone-mode={mode}>
       Scan from a screenshot (or paste an image)
       <input
-        ref={inputRef}
         type="file"
         accept="image/*"
         style={{ display: 'none' }}
         aria-label="Pick a screenshot of a pairing QR code"
+        data-action="pairing.dropzone-file"
+        data-action-mode={mode}
       />
     </label>
   );
 }
+
+/** Action fragment for the unified registry. Handles the file-input
+ * change event that the dropzone fires when the user picks an image.
+ * Kept here rather than in `pairing-actions.ts` to avoid a circular
+ * import: qr-scan already pulls `submitScannedValue` and
+ * `importRecoveryBlob` from pairing-actions. */
+export const qrScanActions: Record<
+  string,
+  (ctx: { data: Record<string, string>; event: Event; element: HTMLElement }) => void
+> = {
+  'pairing.dropzone-file': (ctx) => {
+    const mode = ctx.data.mode;
+    if (mode !== 'pair' && mode !== 'recovery') {
+      return;
+    }
+    const input = ctx.event.target;
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+    const scoped: CameraScanMode = mode;
+    void handleDropzoneBlob(file, scoped).finally(() => {
+      input.value = '';
+    });
+  },
+};

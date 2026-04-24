@@ -5,7 +5,7 @@
 import { ActionInput, Badge, Button, Checkbox, Layout, Tabs } from '@fairfox/polly/ui';
 import { HubBack } from '@fairfox/shared/hub-back';
 import { setPageContext } from '@fairfox/shared/page-context';
-import { signal, useSignalEffect } from '@preact/signals';
+import { effect, signal } from '@preact/signals';
 import { capturesState, projectsState, tasksState } from '#src/client/state.ts';
 
 export type ViewId = 'projects' | 'tasks' | 'capture';
@@ -870,8 +870,16 @@ function CaptureView() {
   );
 }
 
-export function App() {
-  useSignalEffect(() => {
+let todoEffectsInstalled = false;
+
+/** Publish the current todo view's page-context so the chat widget can
+ * pick it up. Previously a useSignalEffect inside App. */
+export function installTodoEffects(): void {
+  if (todoEffectsInstalled) {
+    return;
+  }
+  todoEffectsInstalled = true;
+  effect(() => {
     const tab = activeTab.value;
     if (tab === 'tasks') {
       const tid = selectedTaskId.value;
@@ -883,8 +891,8 @@ export function App() {
           label: task ? `${tid} — ${task.description.slice(0, 40)}` : tid,
         });
       } else {
-        // Publish the currently visible (filtered) task ids so the
-        // relay can inject just the subset the user is looking at.
+        // Publish the visible (filtered) task ids so the relay can
+        // inject just the subset the user is looking at.
         const project = filterProjectName.value;
         const priority = filterPriority.value;
         const showingDone = showDone.value;
@@ -935,6 +943,9 @@ export function App() {
       return;
     }
   });
+}
+
+export function App() {
   return (
     <Layout
       rows="auto 1fr"

@@ -14,7 +14,7 @@
 // of sub-app content before the redirect would defeat the point and
 // leak half-rendered state into an unpaired device.
 
-import { useSignalEffect } from '@preact/signals';
+import { effect } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { BuildFreshnessBanner } from '#src/build-freshness.tsx';
 import { touchSelfDeviceEntry } from '#src/devices-state.ts';
@@ -46,8 +46,16 @@ interface RequirePairedProps {
   children: ComponentChildren;
 }
 
-export function RequirePaired({ children }: RequirePairedProps): preact.JSX.Element | null {
-  useSignalEffect(() => {
+let requirePairedEffectsInstalled = false;
+
+/** Drive the keyring + solo-mode hydration that RequirePaired used to
+ * run inside its own useSignalEffect. Called once from boot. */
+export function installRequirePairedEffects(): void {
+  if (requirePairedEffectsInstalled) {
+    return;
+  }
+  requirePairedEffectsInstalled = true;
+  effect(() => {
     if (knownPeerCount.value === null) {
       void refreshKeyringState();
     }
@@ -55,7 +63,9 @@ export function RequirePaired({ children }: RequirePairedProps): preact.JSX.Elem
       hydrateSoloDeviceMode();
     }
   });
+}
 
+export function RequirePaired({ children }: RequirePairedProps): preact.JSX.Element | null {
   if (knownPeerCount.value === null) {
     return null;
   }

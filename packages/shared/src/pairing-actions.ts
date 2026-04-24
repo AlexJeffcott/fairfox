@@ -457,6 +457,24 @@ function parsePairingHash(hash: string): ParsedHash | null {
   };
 }
 
+let hashListenerInstalled = false;
+
+/** Install a window-level listener that consumes `#pair=…` fragments
+ * pasted into an already-open tab. The boot sequence calls this once
+ * so MeshGate doesn't need a mount-time effect for the same purpose.
+ * Safe to call more than once. */
+export function installPairingHashListener(): void {
+  if (hashListenerInstalled || typeof window === 'undefined') {
+    return;
+  }
+  hashListenerInstalled = true;
+  window.addEventListener('hashchange', () => {
+    if (window.location.hash.startsWith('#pair=')) {
+      void consumePairingHash();
+    }
+  });
+}
+
 // Consume a `#pair=<token>[&s=<sessionId>][&invite=<blob>]` hash on
 // banner mount. Returns true if a token was present and submitted.
 // Always clears the fragment from the URL so it doesn't leak further

@@ -18,7 +18,7 @@
 // pointless.
 
 import { Button } from '@fairfox/polly/ui';
-import { signal, useSignalEffect } from '@preact/signals';
+import { signal } from '@preact/signals';
 
 interface BeforeInstallPromptEvent extends Event {
   readonly userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
@@ -32,30 +32,30 @@ function isBeforeInstallPromptEvent(event: Event): event is BeforeInstallPromptE
   return 'prompt' in event && typeof (event as { prompt?: unknown }).prompt === 'function';
 }
 
-export function PwaInstallPrompt(): preact.JSX.Element | null {
-  useSignalEffect(() => {
-    if (typeof window === 'undefined') {
+let pwaInstallListenersInstalled = false;
+
+/** Wire the window-level beforeinstallprompt / appinstalled listeners
+ * that feed the PwaInstallPrompt component's signals. Called once from
+ * boot; safe to call repeatedly. */
+export function installPwaInstallListeners(): void {
+  if (pwaInstallListenersInstalled || typeof window === 'undefined') {
+    return;
+  }
+  pwaInstallListenersInstalled = true;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    if (!isBeforeInstallPromptEvent(e)) {
       return;
     }
-    const onBeforeInstall = (e: Event): void => {
-      if (!isBeforeInstallPromptEvent(e)) {
-        return;
-      }
-      e.preventDefault();
-      deferredPrompt.value = e;
-    };
-    const onInstalled = (): void => {
-      installed.value = true;
-      deferredPrompt.value = null;
-    };
-    window.addEventListener('beforeinstallprompt', onBeforeInstall);
-    window.addEventListener('appinstalled', onInstalled);
-    return () => {
-      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
-      window.removeEventListener('appinstalled', onInstalled);
-    };
+    e.preventDefault();
+    deferredPrompt.value = e;
   });
+  window.addEventListener('appinstalled', () => {
+    installed.value = true;
+    deferredPrompt.value = null;
+  });
+}
 
+export function PwaInstallPrompt(): preact.JSX.Element | null {
   const prompt = deferredPrompt.value;
   if (!prompt || installed.value) {
     return null;

@@ -6,11 +6,9 @@ import { ActionInput, Button, Layout, Tabs } from '@fairfox/polly/ui';
 import { renderMarkdown } from '@fairfox/polly/ui/markdown';
 import { HubBack } from '@fairfox/shared/hub-back';
 import { setPageContext } from '@fairfox/shared/page-context';
-import { useSignal, useSignalEffect } from '@preact/signals';
+import { effect } from '@preact/signals';
 import type { Passage } from '#src/client/state.ts';
-import { progressState, storyState } from '#src/client/state.ts';
-
-type ViewId = 'story' | 'memory';
+import { progressState, storyState, theStruggleActiveTab } from '#src/client/state.ts';
 
 const TAB_LIST = [
   { id: 'story', label: 'Story' },
@@ -114,12 +112,24 @@ function MemoryView() {
   );
 }
 
-export function App() {
-  const activeTab = useSignal<ViewId>('story');
+let theStruggleEffectsInstalled = false;
 
-  useSignalEffect(() => {
-    setPageContext({ kind: 'struggle', label: `The Struggle · ${activeTab.value}` });
+/** Publish the current Struggle tab as page-context. */
+export function installTheStruggleEffects(): void {
+  if (theStruggleEffectsInstalled) {
+    return;
+  }
+  theStruggleEffectsInstalled = true;
+  effect(() => {
+    setPageContext({
+      kind: 'struggle',
+      label: `The Struggle · ${theStruggleActiveTab.value}`,
+    });
   });
+}
+
+export function App() {
+  const activeTab = theStruggleActiveTab.value;
 
   return (
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
@@ -128,11 +138,11 @@ export function App() {
           <h1 style={{ margin: 0 }}>The Struggle</h1>
           <HubBack />
         </Layout>
-        <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="game.tab" />
+        <Tabs tabs={TAB_LIST} activeTab={activeTab} action="game.tab" />
       </Layout>
       <div>
-        {activeTab.value === 'story' && <StoryView />}
-        {activeTab.value === 'memory' && <MemoryView />}
+        {activeTab === 'story' && <StoryView />}
+        {activeTab === 'memory' && <MemoryView />}
       </div>
     </Layout>
   );

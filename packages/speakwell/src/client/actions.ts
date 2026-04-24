@@ -7,8 +7,14 @@
 
 import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
-import type { Format, Language, Session, Turn } from '#src/client/state.ts';
-import { sessionsState } from '#src/client/state.ts';
+import type { Format, Language, Session, Turn, ViewId } from '#src/client/state.ts';
+import {
+  activeTab,
+  sessionsState,
+  startFormat,
+  startLanguage,
+  startTopic,
+} from '#src/client/state.ts';
 
 interface HandlerContext {
   data: Record<string, string>;
@@ -18,6 +24,7 @@ interface HandlerContext {
 
 const FORMATS = new Set<string>(['yarn', 'pitch', 'summary']);
 const LANGUAGES = new Set<string>(['en-GB', 'it-IT', 'de-DE']);
+const TABS = new Set<string>(['start', 'history']);
 
 function isFormat(s: string): s is Format {
   return FORMATS.has(s);
@@ -25,6 +32,10 @@ function isFormat(s: string): s is Format {
 
 function isLanguage(s: string): s is Language {
   return LANGUAGES.has(s);
+}
+
+function isTab(s: string): s is ViewId {
+  return TABS.has(s);
 }
 
 function generateId(): string {
@@ -99,7 +110,29 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     updateSession(id, (s) => ({ ...s, endedAt: new Date().toISOString() }));
   },
 
-  'speakwell.tab': () => {
-    // Tab changes handled by local signal in App — no CRDT mutation.
+  'speakwell.tab': (ctx) => {
+    const id = ctx.data.id;
+    if (id && isTab(id)) {
+      activeTab.value = id;
+    }
+  },
+
+  'speakwell.pick-format': (ctx) => {
+    const format = ctx.data.format;
+    if (format && isFormat(format)) {
+      startFormat.value = format;
+    }
+  },
+
+  'speakwell.pick-language': (ctx) => {
+    const language = ctx.data.language;
+    if (language && isLanguage(language)) {
+      startLanguage.value = language;
+    }
+  },
+
+  'speakwell.set-topic': (ctx) => {
+    const value = ctx.data.value ?? '';
+    startTopic.value = value;
   },
 };

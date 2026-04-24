@@ -3,7 +3,12 @@
 // writes to it when the player makes choices or inspects the world.
 
 import '@fairfox/shared/ensure-mesh';
+import { $state } from '@fairfox/polly';
 import { $meshState } from '@fairfox/polly/mesh';
+
+export type TheStruggleTabId = 'story' | 'memory';
+
+export const theStruggleActiveTab = $state<TheStruggleTabId>('story');
 
 export interface PassageContent {
   [key: string]: unknown;

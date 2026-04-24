@@ -18,9 +18,8 @@
 // nothing. Only once knownPeerCount settles does it route between
 // <LoginPage /> and the wrapped children.
 
-import { useSignalEffect } from '@preact/signals';
+import { effect } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
-import { useEffect } from 'preact/hooks';
 import { BuildFreshnessBanner } from '#src/build-freshness.tsx';
 import {
   addEndorsementToDevice,
@@ -154,25 +153,32 @@ async function bumpSelfLastSeen(): Promise<void> {
   touchSelfDeviceEntry(peerId, { agent: 'browser' });
 }
 
-/** Module-level guard so the once-per-mount heal/bump fires exactly
- * once even under Preact StrictMode double-mounts or rapid remounts
- * from the route switcher. */
+/** Module-level guard so the once-per-process heal/bump fires
+ * exactly once even if the effect's dependencies re-tick many times
+ * before userIdentity settles. */
 let selfHeartbeatFired = false;
 
-export function MeshGate({ children }: MeshGateProps): preact.JSX.Element | null {
-  // Bump the self device's lastSeenAt ONCE per process, out of band
-  // from the reactive signal-effect. Earlier this lived inside
-  // useSignalEffect, which caused an infinite write loop: the
-  // effect read devicesState.value, touchSelfDeviceEntry wrote to
-  // it, the write re-fired the effect, and round we went. That
-  // pinned WebRTC peers into constant tear-down and showed up as
-  // "all peers disconnected" on every paired device.
-  //
-  // The hydration fence for userIdentity is indirect: we wait for
-  // it to settle to something other than `undefined` before
-  // deciding which branch to run. The module-level flag guards
-  // against double-invocation from StrictMode remounts.
-  useSignalEffect(() => {
+let meshGateEffectsInstalled = false;
+
+/** Install the reactive effects that drive MeshGate's state:
+ * self-device heartbeat, keyring refresh, solo-mode hydration,
+ * user-identity hydration, and the reactive harvest of peer keys
+ * out of `mesh:devices`. Previously these ran inside two
+ * `useSignalEffect` blocks on MeshGate — moved out so the component
+ * body contains no hooks. Called once from boot. */
+export function installMeshGateEffects(): void {
+  if (meshGateEffectsInstalled) {
+    return;
+  }
+  meshGateEffectsInstalled = true;
+
+  // The self-device heartbeat. Waits for userIdentity to settle
+  // (leave `undefined`) before firing once. Previously inline in
+  // useSignalEffect — an earlier version lived inside the reactive
+  // harvest block below and caused an infinite write loop because
+  // touchSelfDeviceEntry rewrites devicesState, which re-ticked the
+  // effect. Splitting it out keeps that fix intact.
+  effect(() => {
     if (selfHeartbeatFired) {
       return;
     }
@@ -187,7 +193,7 @@ export function MeshGate({ children }: MeshGateProps): preact.JSX.Element | null
     }
   });
 
-  useSignalEffect(() => {
+  effect(() => {
     if (knownPeerCount.value === null) {
       void refreshKeyringState().then(() => {
         void consumePairingHash();
@@ -201,29 +207,14 @@ export function MeshGate({ children }: MeshGateProps): preact.JSX.Element | null
     }
     // Reactive harvest: whenever mesh:devices changes (including
     // the initial load), pull any unknown pubkeys into our keyring.
-    // `devicesState.value` is the dependency — reading it here
-    // subscribes this effect to doc-state changes.
+    // Reading devicesState.value subscribes this effect to doc-state
+    // changes.
     void devicesState.value;
     void harvestAndMaybeReload();
   });
+}
 
-  // A `#pair=…` URL pasted into an already-open tab changes only the
-  // hash, so Preact never re-mounts and the effect above never re-runs.
-  // Listen for the hashchange event directly so link consumption works
-  // regardless of how the user arrives at the fragment.
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return undefined;
-    }
-    const onHashChange = (): void => {
-      if (window.location.hash.startsWith('#pair=')) {
-        void consumePairingHash();
-      }
-    };
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
-  }, []);
-
+export function MeshGate({ children }: MeshGateProps): preact.JSX.Element | null {
   if (knownPeerCount.value === null) {
     return null;
   }

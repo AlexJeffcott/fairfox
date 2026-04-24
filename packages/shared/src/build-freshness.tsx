@@ -20,8 +20,7 @@
 // never fools the comparison. Network errors are treated as "still
 // connected" — an offline tab shouldn't flash a "new version" banner.
 
-import { signal, useSignalEffect } from '@preact/signals';
-import { useEffect } from 'preact/hooks';
+import { signal } from '@preact/signals';
 
 const DEFAULT_POLL_INTERVAL_MS = 2 * 60 * 1000;
 const META_SELECTOR = 'meta[name="fairfox-build-hash"]';
@@ -68,9 +67,9 @@ function readBundleHash(): string | null {
   return meta?.getAttribute('content') ?? null;
 }
 
-async function fetchServerHash(signal?: AbortSignal): Promise<string | null> {
+async function fetchServerHash(): Promise<string | null> {
   try {
-    const response = await fetch('/build-hash', { cache: 'no-store', signal });
+    const response = await fetch('/build-hash', { cache: 'no-store' });
     if (!response.ok) {
       return null;
     }
@@ -82,43 +81,33 @@ async function fetchServerHash(signal?: AbortSignal): Promise<string | null> {
   }
 }
 
+let pollInstalled = false;
+
+/** Start the server-hash poll as a singleton. Safe to call more than
+ * once; subsequent calls are no-ops. The poll runs for the lifetime
+ * of the page — there is no unmount — which matches the banner's
+ * role as a global concern rather than a component-scoped effect. */
+export function installBuildFreshnessPoll(): void {
+  if (pollInstalled || typeof window === 'undefined') {
+    return;
+  }
+  pollInstalled = true;
+  if (bundleHash.value === null) {
+    bundleHash.value = readBundleHash();
+  }
+  const tick = async (): Promise<void> => {
+    const fresh = await fetchServerHash();
+    if (fresh !== null) {
+      serverHash.value = fresh;
+    }
+    setTimeout(() => {
+      void tick();
+    }, pollInterval());
+  };
+  void tick();
+}
+
 export function BuildFreshnessBanner(): preact.JSX.Element | null {
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return undefined;
-    }
-    if (bundleHash.value === null) {
-      bundleHash.value = readBundleHash();
-    }
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    const tick = async (): Promise<void> => {
-      const fresh = await fetchServerHash(controller.signal);
-      if (fresh !== null) {
-        serverHash.value = fresh;
-      }
-      if (!controller.signal.aborted) {
-        timer = setTimeout(() => {
-          void tick();
-        }, pollInterval());
-      }
-    };
-
-    void tick();
-    return () => {
-      controller.abort();
-      if (timer) {
-        clearTimeout(timer);
-      }
-    };
-  }, []);
-
-  // Re-read the dismissal signal so the render reacts to it.
-  useSignalEffect(() => {
-    void dismissed.value;
-  });
-
   const local = bundleHash.value;
   const remote = serverHash.value;
   const stale = local !== null && remote !== null && local !== remote;

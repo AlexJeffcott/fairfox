@@ -8,7 +8,7 @@
 import { ActionInput, Badge, Button, Layout } from '@fairfox/polly/ui';
 import { HubBack } from '@fairfox/shared/hub-back';
 import { setPageContext } from '@fairfox/shared/page-context';
-import { signal, useSignalEffect } from '@preact/signals';
+import { effect, signal } from '@preact/signals';
 import type { Conversation, Message } from '#src/client/state.ts';
 import { chatState } from '#src/client/state.ts';
 
@@ -151,10 +151,20 @@ function ConversationRow({ convo }: { convo: Conversation }) {
   );
 }
 
-export function App() {
-  useSignalEffect(() => {
+let chatHistoryEffectsInstalled = false;
+
+/** Publish the page-context marker for the chat history view. */
+export function installChatHistoryEffects(): void {
+  if (chatHistoryEffectsInstalled) {
+    return;
+  }
+  chatHistoryEffectsInstalled = true;
+  effect(() => {
     setPageContext({ kind: 'hub', label: 'Chat history' });
   });
+}
+
+export function App() {
   const query = searchQuery.value;
   const archived = showArchived.value;
   const convos = chatState.value.conversations

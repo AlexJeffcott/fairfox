@@ -8,8 +8,14 @@
 
 import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
-import type { Device, DeviceKind, Human } from '#src/client/state.ts';
-import { directoryState } from '#src/client/state.ts';
+import type { Device, DeviceKind, FamilyPhoneTabId, Human } from '#src/client/state.ts';
+import { directoryState, familyPhoneActiveTab } from '#src/client/state.ts';
+
+const TAB_IDS = new Set<string>(['humans', 'devices']);
+
+function isFamilyPhoneTabId(s: string): s is FamilyPhoneTabId {
+  return TAB_IDS.has(s);
+}
 
 interface HandlerContext {
   data: Record<string, string>;
@@ -106,7 +112,10 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     };
   },
 
-  'directory.tab': () => {
-    // Tab changes handled by local signal in App — no CRDT mutation.
+  'directory.tab': (ctx) => {
+    const id = ctx.data.id;
+    if (id && isFamilyPhoneTabId(id)) {
+      familyPhoneActiveTab.value = id;
+    }
   },
 };

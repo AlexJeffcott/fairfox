@@ -6,7 +6,12 @@
 // admin UI, not the handset firmware itself.
 
 import '@fairfox/shared/ensure-mesh';
+import { $state } from '@fairfox/polly';
 import { $meshState } from '@fairfox/polly/mesh';
+
+export type FamilyPhoneTabId = 'humans' | 'devices';
+
+export const familyPhoneActiveTab = $state<FamilyPhoneTabId>('humans');
 
 export type DeviceKind = 'phone' | 'laptop' | 'desktop' | 'tablet' | 'handset' | 'other';
 

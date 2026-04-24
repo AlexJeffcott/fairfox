@@ -12,7 +12,7 @@ import { meshFingerprint, meshMetaState } from '@fairfox/shared/mesh-meta-state'
 import { setPageContext } from '@fairfox/shared/page-context';
 import { canDo } from '@fairfox/shared/policy';
 import { PwaInstallPrompt } from '@fairfox/shared/pwa-install';
-import { signal, useSignalEffect } from '@preact/signals';
+import { effect, signal } from '@preact/signals';
 import { HelpView } from '#src/client/HelpView.tsx';
 import { PeersView } from '#src/client/PeersView.tsx';
 import { selfPeerId } from '#src/client/self-peer.ts';
@@ -119,13 +119,24 @@ function AppsGrid() {
   );
 }
 
-export function Home() {
-  useSignalEffect(() => {
+let homeEffectsInstalled = false;
+
+/** Drive the Home view's fingerprint load and page-context publish.
+ * Previously useSignalEffect calls inside Home. */
+export function installHomeEffects(): void {
+  if (homeEffectsInstalled) {
+    return;
+  }
+  homeEffectsInstalled = true;
+  effect(() => {
     void loadFingerprint();
   });
-  useSignalEffect(() => {
+  effect(() => {
     setPageContext({ kind: 'hub', label: `Hub · ${activeView.value}` });
   });
+}
+
+export function Home() {
   const meshName = meshMetaState.value.name;
   const fp = meshFingerprintText.value;
   const devId = selfPeerId.value;

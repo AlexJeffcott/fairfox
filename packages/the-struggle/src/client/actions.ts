@@ -5,8 +5,14 @@
 
 import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
-import type { Choice, GameProgress } from '#src/client/state.ts';
-import { progressState, storyState } from '#src/client/state.ts';
+import type { Choice, GameProgress, TheStruggleTabId } from '#src/client/state.ts';
+import { progressState, storyState, theStruggleActiveTab } from '#src/client/state.ts';
+
+const TAB_IDS = new Set<string>(['story', 'memory']);
+
+function isTheStruggleTabId(s: string): s is TheStruggleTabId {
+  return TAB_IDS.has(s);
+}
 
 interface HandlerContext {
   data: Record<string, string>;
@@ -104,7 +110,10 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     progressState.value = { progress: null };
   },
 
-  'game.tab': () => {
-    // Tab changes handled by local signal in App — no CRDT mutation.
+  'game.tab': (ctx) => {
+    const id = ctx.data.id;
+    if (id && isTheStruggleTabId(id)) {
+      theStruggleActiveTab.value = id;
+    }
   },
 };

@@ -34,11 +34,24 @@ if (typeof window !== 'undefined') {
   });
 }
 
+import { installAgendaEffects } from '@fairfox/agenda/client';
+import { installChatHistoryEffects } from '@fairfox/chat/client';
+import { installDocsEffects } from '@fairfox/docs/client';
+import { installLibraryEffects } from '@fairfox/library/client';
 import { installEventDelegation } from '@fairfox/polly/actions';
+import { installBuildFreshnessPoll } from '@fairfox/shared/build-freshness';
 import { touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
 import { loadOrCreateKeyring } from '@fairfox/shared/keyring';
+import { installMeshGateEffects } from '@fairfox/shared/mesh-gate';
+import { installPairingHashListener } from '@fairfox/shared/pairing-actions';
+import { installPwaInstallListeners } from '@fairfox/shared/pwa-install';
+import { installQrCameraLifecycle, installQrPasteListener } from '@fairfox/shared/qr-scan';
+import { installRequirePairedEffects } from '@fairfox/shared/require-paired';
+import { installTheStruggleEffects } from '@fairfox/the-struggle/client';
+import { installTodoEffects } from '@fairfox/todo-v2/client';
 import { render } from 'preact';
 import { App } from '#src/client/App.tsx';
+import { installHomeEffects } from '#src/client/Home.tsx';
 import { dispatch } from '#src/client/registry.ts';
 import { setSelfPeerId } from '#src/client/self-peer.ts';
 
@@ -49,6 +62,20 @@ function derivePeerId(publicKey: Uint8Array): string {
 }
 
 installEventDelegation(dispatch);
+installBuildFreshnessPoll();
+installPairingHashListener();
+installQrCameraLifecycle();
+installQrPasteListener();
+installMeshGateEffects();
+installRequirePairedEffects();
+installPwaInstallListeners();
+installHomeEffects();
+installTodoEffects();
+installAgendaEffects();
+installLibraryEffects();
+installDocsEffects();
+installChatHistoryEffects();
+installTheStruggleEffects();
 
 // Populate the self-peer id as soon as the keyring resolves so
 // PeersView can flag this device's own row. Independent of

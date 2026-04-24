@@ -6,11 +6,14 @@
 
 import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
 import { HubBack } from '@fairfox/shared/hub-back';
-import { useSignal } from '@preact/signals';
 import type { Format, Language } from '#src/client/state.ts';
-import { sessionsState } from '#src/client/state.ts';
-
-type ViewId = 'start' | 'history';
+import {
+  activeTab,
+  sessionsState,
+  startFormat,
+  startLanguage,
+  startTopic,
+} from '#src/client/state.ts';
 
 const TAB_LIST = [
   { id: 'start', label: 'Start' },
@@ -30,9 +33,9 @@ const LANGUAGE_LABELS: Record<Language, string> = {
 };
 
 function StartView() {
-  const format = useSignal<Format>('yarn');
-  const language = useSignal<Language>('en-GB');
-  const topic = useSignal('');
+  const format = startFormat.value;
+  const language = startLanguage.value;
+  const topic = startTopic.value;
 
   return (
     <Layout rows="auto" gap="var(--polly-space-lg)">
@@ -44,7 +47,7 @@ function StartView() {
             <Button
               key={f}
               label={FORMAT_LABELS[f]}
-              tier={format.value === f ? 'primary' : 'secondary'}
+              tier={format === f ? 'primary' : 'secondary'}
               size="small"
               data-action="speakwell.pick-format"
               data-action-format={f}
@@ -59,7 +62,7 @@ function StartView() {
             <Button
               key={l}
               label={LANGUAGE_LABELS[l]}
-              tier={language.value === l ? 'primary' : 'secondary'}
+              tier={language === l ? 'primary' : 'secondary'}
               size="small"
               data-action="speakwell.pick-language"
               data-action-language={l}
@@ -68,7 +71,7 @@ function StartView() {
         </Layout>
       </Layout>
       <ActionInput
-        value={topic.value}
+        value={topic}
         variant="single"
         action="speakwell.set-topic"
         saveOn="blur"
@@ -78,10 +81,10 @@ function StartView() {
         label="Begin"
         tier="primary"
         data-action="session.start"
-        data-action-format={format.value}
-        data-action-language={language.value}
+        data-action-format={format}
+        data-action-language={language}
         data-action-speaker="Alex"
-        data-action-topic={topic.value}
+        data-action-topic={topic}
       />
     </Layout>
   );
@@ -123,7 +126,7 @@ function HistoryView() {
 }
 
 export function App() {
-  const activeTab = useSignal<ViewId>('start');
+  const current = activeTab.value;
 
   return (
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
@@ -132,11 +135,11 @@ export function App() {
           <h1 style={{ margin: 0 }}>Speakwell</h1>
           <HubBack />
         </Layout>
-        <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="speakwell.tab" />
+        <Tabs tabs={TAB_LIST} activeTab={current} action="speakwell.tab" />
       </Layout>
       <div>
-        {activeTab.value === 'start' && <StartView />}
-        {activeTab.value === 'history' && <HistoryView />}
+        {current === 'start' && <StartView />}
+        {current === 'history' && <HistoryView />}
       </div>
     </Layout>
   );

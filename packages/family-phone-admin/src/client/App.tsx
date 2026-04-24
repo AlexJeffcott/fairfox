@@ -5,10 +5,7 @@
 
 import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
 import { HubBack } from '@fairfox/shared/hub-back';
-import { useSignal } from '@preact/signals';
-import { directoryState } from '#src/client/state.ts';
-
-type ViewId = 'humans' | 'devices';
+import { directoryState, familyPhoneActiveTab } from '#src/client/state.ts';
 
 const TAB_LIST = [
   { id: 'humans', label: 'Humans' },
@@ -117,7 +114,7 @@ function DevicesView() {
 }
 
 export function App() {
-  const activeTab = useSignal<ViewId>('humans');
+  const activeTab = familyPhoneActiveTab.value;
 
   return (
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
@@ -126,11 +123,11 @@ export function App() {
           <h1 style={{ margin: 0 }}>Family Phone — Admin</h1>
           <HubBack />
         </Layout>
-        <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="directory.tab" />
+        <Tabs tabs={TAB_LIST} activeTab={activeTab} action="directory.tab" />
       </Layout>
       <div>
-        {activeTab.value === 'humans' && <HumansView />}
-        {activeTab.value === 'devices' && <DevicesView />}
+        {activeTab === 'humans' && <HumansView />}
+        {activeTab === 'devices' && <DevicesView />}
       </div>
     </Layout>
   );

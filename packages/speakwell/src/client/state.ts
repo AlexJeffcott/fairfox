@@ -5,10 +5,12 @@
 // device. See the project note on culturally-tuned per-locale coaching.
 
 import '@fairfox/shared/ensure-mesh';
+import { $state } from '@fairfox/polly';
 import { $meshState } from '@fairfox/polly/mesh';
 
 export type Format = 'yarn' | 'pitch' | 'summary';
 export type Language = 'en-GB' | 'it-IT' | 'de-DE';
+export type ViewId = 'start' | 'history';
 
 export interface Turn {
   [key: string]: unknown;
@@ -36,3 +38,13 @@ export interface SpeakwellDoc {
 }
 
 export const sessionsState = $meshState<SpeakwellDoc>('speakwell:sessions', { sessions: [] });
+
+// Tab-local UI state for the Start view pickers and the active tab.
+// Not mesh-synced: format/language/topic reset per-session on each
+// device, activeTab is trivially per-window. `$state` is polly's
+// non-mesh signal primitive so every reactive value in the app goes
+// through one abstraction.
+export const startFormat = $state<Format>('yarn');
+export const startLanguage = $state<Language>('en-GB');
+export const startTopic = $state<string>('');
+export const activeTab = $state<ViewId>('start');
