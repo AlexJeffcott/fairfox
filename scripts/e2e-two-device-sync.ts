@@ -32,6 +32,7 @@ import {
   waitFor,
   waitForText,
 } from './e2e-config.ts';
+import { createIdentity } from './e2e-identity.ts';
 
 const URL = process.env.TARGET_URL ?? 'https://fairfox-production-8273.up.railway.app/agenda';
 const HEADLESS = process.env.HEADLESS !== 'false';
@@ -57,18 +58,6 @@ async function clickByText(page: Page, text: string): Promise<void> {
   await element.click();
 }
 
-function readShareUrl(page: Page): Promise<string> {
-  return waitFor(
-    () =>
-      page.evaluate(() => {
-        const links = Array.from(document.querySelectorAll('a')) as HTMLAnchorElement[];
-        const hit = links.find((el) => el.href.includes('#pair='));
-        return hit?.href;
-      }),
-    { timeoutMs: SHORT_TIMEOUT_MS, description: 'share URL anchor' }
-  );
-}
-
 async function launch(label: string): Promise<{ browser: Browser; page: Page }> {
   const browser = await puppeteer.launch({
     headless: HEADLESS,
@@ -78,6 +67,12 @@ async function launch(label: string): Promise<{ browser: Browser; page: Page }> 
   const page = await browser.newPage();
   await page.setViewport({ width: 900, height: 900 });
   page.on('pageerror', (err) => TRACE(`${label}-pageerror`, err.message));
+  page.on('console', (m) => {
+    const text = m.text();
+    if (/\[policy\]/.test(text)) {
+      TRACE(`${label}-console`, text);
+    }
+  });
   return { browser, page };
 }
 
@@ -86,38 +81,101 @@ const phone = await launch('phone');
 let ok = false;
 
 try {
+  // Only the desktop bootstraps a user — fairfox's design is "admin
+  // bootstraps first, invites everyone else." Two fresh devices each
+  // self-bootstrapping creates two independent `mesh:users` docs that
+  // don't cleanly merge on pair; the CRDT keeps one and drops the
+  // other, leaving the replaced device without a UserEntry and with
+  // no permissions. Desktop issues the phone an invite baked into the
+  // share URL; the phone adopts that identity through
+  // `consumePairingHash` without ever needing its own WhoAreYou.
   TRACE('desktop', `navigate ${URL}`);
   await desktop.page.goto(URL, { waitUntil: 'domcontentloaded' });
+  await createIdentity(desktop.page, 'Desktop', (m) => TRACE('desktop', m));
   await waitForText(desktop.page, "This device isn't connected to your mesh yet.");
 
-  TRACE('phone', `navigate ${URL}`);
-  await phone.page.goto(URL, { waitUntil: 'domcontentloaded' });
-  await waitForText(phone.page, "This device isn't connected to your mesh yet.");
-
+  // One-scan ceremony with an invite: desktop shares a pair link,
+  // flips the invite toggle, names the invitee. The share URL now
+  // carries both the pair token and an invite blob. The phone opens
+  // the URL directly — its mesh-gate hash consumer pairs, adopts the
+  // invited identity, and both sides reload into the paired home
+  // within ~1s through the signalling-relay pair-return.
   TRACE('desktop', 'share a pairing link');
   await clickByText(desktop.page, 'Share a pairing link');
-  const desktopShare = await readShareUrl(desktop.page);
+  // Wait for the issue view (and its invite panel) to render before
+  // driving the invite toggle. The invite panel is inside a <details>
+  // collapsed by default — open it first so the toggle button is
+  // hit-testable.
+  await waitForText(desktop.page, 'Also invite a new user', SHORT_TIMEOUT_MS);
+  await desktop.page.evaluate(() => {
+    const details = Array.from(document.querySelectorAll('details')) as HTMLDetailsElement[];
+    const hit = details.find((d) => d.innerText.includes('Also invite a new user'));
+    if (hit) {
+      hit.open = true;
+    }
+  });
+  await clickByText(desktop.page, 'Invite: OFF');
+  await desktop.page.waitForSelector(
+    'button[data-action="invite.toggle"][data-polly-button][data-tier="primary"], ' +
+      'button[data-action="invite.toggle"]',
+    { timeout: SHORT_TIMEOUT_MS }
+  );
+  // Fill the invitee's display name so the invite blob lands in the
+  // share URL (`invite.name-input` regenerates the share URL).
+  const inviteInput = await desktop.page.$(
+    '[data-polly-action-input][aria-label="Invitee display name"]'
+  );
+  if (!inviteInput) {
+    throw new Error('invite name input not found');
+  }
+  await inviteInput.click();
+  await desktop.page.waitForSelector(
+    'input[data-polly-action-input][aria-label="Invitee display name"]',
+    { timeout: SHORT_TIMEOUT_MS }
+  );
+  const inviteInputEl = await desktop.page.$(
+    'input[data-polly-action-input][aria-label="Invitee display name"]'
+  );
+  if (!inviteInputEl) {
+    throw new Error('invite name editable input not found');
+  }
+  await inviteInputEl.type('Phone');
+  await inviteInputEl.press('Tab');
+  // Poll for the share URL to update with the `invite=` fragment —
+  // `invite.name-input` regenerates asynchronously.
+  const desktopShare = await waitFor(
+    () =>
+      desktop.page.evaluate(() => {
+        const links = Array.from(document.querySelectorAll('a')) as HTMLAnchorElement[];
+        const hit = links.find((el) => el.href.includes('#pair=') && el.href.includes('invite='));
+        return hit?.href;
+      }),
+    { timeoutMs: SHORT_TIMEOUT_MS, description: 'share URL with invite fragment' }
+  );
+  TRACE('desktop', `share url with invite (${desktopShare.length} chars)`);
+
+  // Start watching for the desktop's own reload BEFORE the phone
+  // consumes the hash — the pair-return frame arrives shortly after
+  // and triggers advanceAfter, which reloads the desktop without any
+  // click in between.
+  const desktopNav = desktop.page.waitForNavigation({
+    waitUntil: 'domcontentloaded',
+    timeout: PAIR_CEREMONY_TIMEOUT_MS,
+  });
 
   TRACE('phone', 'open desktop share link');
+  const phoneNav = phone.page.waitForNavigation({
+    waitUntil: 'domcontentloaded',
+    timeout: PAIR_CEREMONY_TIMEOUT_MS,
+  });
   await phone.page.goto(desktopShare, { waitUntil: 'domcontentloaded' });
-  await waitForText(phone.page, 'Show the raw token', PAIR_CEREMONY_TIMEOUT_MS);
-  const phoneShare = await readShareUrl(phone.page);
 
-  TRACE('desktop', 'advance to scan and open phone share link');
-  await clickByText(desktop.page, 'Continue — paste their link');
-  await desktop.page.goto(phoneShare, { waitUntil: 'domcontentloaded' });
-  await waitForText(desktop.page, 'Show the raw token', PAIR_CEREMONY_TIMEOUT_MS);
-
-  TRACE('both', 'drain the final issue leg on both sides');
-  // Each click triggers advanceAfter, which reloads the page once the
-  // ceremony drains to empty. Start the nav-wait before the click so the
-  // promise catches the reload rather than racing it.
-  const phoneNav = phone.page.waitForNavigation({ waitUntil: 'domcontentloaded' });
-  await clickByText(phone.page, "They accepted — we're done");
-  await phoneNav;
-  const desktopNav = desktop.page.waitForNavigation({ waitUntil: 'domcontentloaded' });
-  await clickByText(desktop.page, "They accepted — we're done");
-  await desktopNav;
+  // Scanner may land on the paired home without firing a distinct nav
+  // event when the initial load already sits through the 1s reload
+  // fence; swallow timeouts and fall through to the DOM assertion.
+  await phoneNav.catch(() => undefined);
+  await desktopNav.catch(() => undefined);
+  TRACE('both', 'both sides reloaded — waiting for paired home');
 
   await waitForText(desktop.page, 'Agenda', PAIR_CEREMONY_TIMEOUT_MS);
   await waitForText(phone.page, 'Agenda', PAIR_CEREMONY_TIMEOUT_MS);
@@ -139,6 +197,11 @@ try {
 
   const chore = `e2e-sync-${Date.now()}`;
   TRACE('desktop', `add chore "${chore}"`);
+  // The first ActionInput in the Items-tab form is the chore-name
+  // field (`draft.name`, saveOn="blur"). Promote it to an editable
+  // input, type the name, Tab out to commit the draft, then click
+  // the "Add" button — the form's submit is a separate action
+  // (`item.create-from-draft`), Enter on the name field only blurs.
   await desktop.page.click('[data-polly-action-input][data-state="empty"]');
   await desktop.page.waitForSelector(
     'input[data-polly-action-input], textarea[data-polly-action-input]',
@@ -150,8 +213,25 @@ try {
   if (!input) {
     throw new Error('no add-chore input on desktop');
   }
-  await input.type(chore);
-  await input.press('Enter');
+  // Preact re-renders the view-mode div into an <input> on click; the
+  // first character otherwise lands in the unmounting div and is
+  // dropped. Focus the new input and let the commit settle before
+  // typing.
+  await input.focus();
+  await sleep(100);
+  await desktop.page.keyboard.type(chore);
+  await desktop.page.keyboard.press('Tab');
+  // Give the blur-commit a moment to flush the draft before firing
+  // the create action — the draft.name handler runs through the same
+  // event loop, so a microtask-order gap is enough.
+  await sleep(200);
+  await desktop.page.click('button[data-action="item.create-from-draft"]');
+  await sleep(500);
+  const itemCreated = await desktop.page.evaluate(
+    (name) => document.body.innerText.includes(name),
+    chore
+  );
+  TRACE('desktop', `local item visible: ${itemCreated}`);
 
   TRACE('phone', 'wait for chore to converge');
   try {

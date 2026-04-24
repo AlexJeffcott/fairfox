@@ -44,6 +44,7 @@ import {
   waitFor,
   waitForText,
 } from './e2e-config.ts';
+import { createIdentity } from './e2e-identity.ts';
 
 const URL = process.env.TARGET_URL ?? 'https://fairfox-production-8273.up.railway.app/';
 const HEADLESS = process.env.HEADLESS !== 'false';
@@ -69,18 +70,6 @@ async function clickByText(page: Page, text: string): Promise<void> {
   await element.click();
 }
 
-function readShareUrl(page: Page): Promise<string> {
-  return waitFor(
-    () =>
-      page.evaluate(() => {
-        const links = Array.from(document.querySelectorAll('a')) as HTMLAnchorElement[];
-        const hit = links.find((el) => el.href.includes('#pair='));
-        return hit?.href;
-      }),
-    { timeoutMs: SHORT_TIMEOUT_MS, description: 'share URL anchor' }
-  );
-}
-
 async function launch(label: string): Promise<{ browser: Browser; page: Page }> {
   const browser = await puppeteer.launch({
     headless: HEADLESS,
@@ -98,21 +87,60 @@ const scanner = await launch('scanner');
 let ok = false;
 
 try {
+  // Only the issuer bootstraps. The scanner adopts the invite
+  // identity carried on the share URL; two fresh self-bootstraps on
+  // separate meshes don't cleanly merge their mesh:users docs. See
+  // `e2e-two-device-sync.ts` for the full rationale.
   TRACE('issuer', `navigate ${URL}`);
   await issuer.page.goto(URL, { waitUntil: 'networkidle2' });
+  await createIdentity(issuer.page, 'Issuer', (m) => TRACE('issuer', m));
   await waitForText(issuer.page, "This device isn't connected to your mesh yet.");
 
-  TRACE('scanner', `navigate ${URL}`);
-  await scanner.page.goto(URL, { waitUntil: 'networkidle2' });
-  await waitForText(scanner.page, "This device isn't connected to your mesh yet.");
-
-  // Give both signalling sockets a moment to establish before the
+  // Give the signalling socket a moment to establish before the
   // issuer sends its pair-issue frame.
   await new Promise((r) => setTimeout(r, 500));
 
-  TRACE('issuer', 'share a pairing link');
+  TRACE('issuer', 'share a pairing link with invite');
   await clickByText(issuer.page, 'Share a pairing link');
-  const shareUrl = await readShareUrl(issuer.page);
+  await waitForText(issuer.page, 'Also invite a new user', SHORT_TIMEOUT_MS);
+  await issuer.page.evaluate(() => {
+    const details = Array.from(document.querySelectorAll('details')) as HTMLDetailsElement[];
+    const hit = details.find((d) => d.innerText.includes('Also invite a new user'));
+    if (hit) {
+      hit.open = true;
+    }
+  });
+  await clickByText(issuer.page, 'Invite: OFF');
+  const inviteNameHandle = await issuer.page.$(
+    '[data-polly-action-input][aria-label="Invitee display name"]'
+  );
+  if (!inviteNameHandle) {
+    throw new Error('invite name input not found');
+  }
+  await inviteNameHandle.click();
+  await issuer.page.waitForSelector(
+    'input[data-polly-action-input][aria-label="Invitee display name"]',
+    { timeout: SHORT_TIMEOUT_MS }
+  );
+  const inviteNameEditable = await issuer.page.$(
+    'input[data-polly-action-input][aria-label="Invitee display name"]'
+  );
+  if (!inviteNameEditable) {
+    throw new Error('invite name editable input not found');
+  }
+  await inviteNameEditable.focus();
+  await new Promise((r) => setTimeout(r, 100));
+  await issuer.page.keyboard.type('Scanner');
+  await issuer.page.keyboard.press('Tab');
+  const shareUrl = await waitFor(
+    () =>
+      issuer.page.evaluate(() => {
+        const links = Array.from(document.querySelectorAll('a')) as HTMLAnchorElement[];
+        const hit = links.find((el) => el.href.includes('#pair=') && el.href.includes('invite='));
+        return hit?.href;
+      }),
+    { timeoutMs: SHORT_TIMEOUT_MS, description: 'share URL with invite fragment' }
+  );
   if (!shareUrl.includes('&s=')) {
     throw new Error(`share URL missing session id segment: ${shareUrl}`);
   }
