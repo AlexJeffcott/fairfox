@@ -675,6 +675,27 @@ async function processOne(
   );
 }
 
+/** Open `chat:main` and backfill missing top-level fields before
+ * returning the signal. polly's $meshState seeds defaults on
+ * doc creation only; older meshes that predate the conversation
+ * entity carry `{ messages }` without `conversations`, so any read
+ * of `value.conversations.length` blows up. Repair on load keeps
+ * existing data intact. */
+async function openChatDoc(): Promise<ReturnType<typeof $meshState<ChatDoc>>> {
+  const chatSignal = $meshState<ChatDoc>('chat:main', { conversations: [], messages: [] });
+  await chatSignal.loaded;
+  const v = chatSignal.value;
+  if (v.conversations === undefined || v.messages === undefined) {
+    chatSignal.value = {
+      ...v,
+      conversations: v.conversations ?? [],
+      messages: v.messages ?? [],
+    };
+    await flushOutgoing(500);
+  }
+  return chatSignal;
+}
+
 /** `fairfox chat send <text>` — writes a pending user message into
  * chat:main. Creates a fresh conversation when there is no active
  * one (the CLI has no notion of "active conversation" the way the
@@ -696,8 +717,7 @@ export async function chatSend(text: string): Promise<number> {
   const peerId = derivePeerId(keyring.identity.publicKey);
   const client = await openMeshClient({ peerId });
   try {
-    const chatSignal = $meshState<ChatDoc>('chat:main', { conversations: [], messages: [] });
-    await chatSignal.loaded;
+    const chatSignal = await openChatDoc();
     const now = new Date().toISOString();
     const convo: Conversation = {
       id: randomId(),
@@ -746,8 +766,7 @@ export async function chatDump(): Promise<number> {
   const peerId = derivePeerId(keyring.identity.publicKey);
   const client = await openMeshClient({ peerId });
   try {
-    const chatSignal = $meshState<ChatDoc>('chat:main', { conversations: [], messages: [] });
-    await chatSignal.loaded;
+    const chatSignal = await openChatDoc();
     process.stdout.write(`${JSON.stringify(chatSignal.value, null, 2)}\n`);
     return 0;
   } finally {
@@ -782,8 +801,7 @@ export async function chatServe(): Promise<number> {
   );
 
   await waitForPeer(client, 8000);
-  const chatSignal = $meshState<ChatDoc>('chat:main', { conversations: [], messages: [] });
-  await chatSignal.loaded;
+  const chatSignal = await openChatDoc();
   process.stdout.write(
     `[chat serve] chat:main loaded — ${chatSignal.value.conversations.length} conversation(s), ${chatSignal.value.messages.length} message(s)\n`
   );
