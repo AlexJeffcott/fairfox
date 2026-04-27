@@ -22,7 +22,7 @@
     "puppeteer": "^24.18.0",
     "elysia": "^1.4.28",
     "@elysiajs/static": "^1.4.7",
-    "@fairfox/polly": "0.29.4",
+    "@fairfox/polly": "0.30.0",
     "@anthropic-ai/claude-agent-sdk": "^0.2.118",
     "@automerge/automerge": "^3.2.0",
     "@automerge/automerge-repo": "^2.5.0",

@@ -5,7 +5,7 @@
 // active chat's message tail, a composer with the live page context
 // chip, and a small header with new / close controls.
 
-import { ActionInput, Button, Layout } from '@fairfox/polly/ui';
+import { ActionInput, Button, Layout, Surface } from '@fairfox/polly/ui';
 import { devicesState } from '@fairfox/shared/devices-state';
 import { currentPageContext, type PageContext } from '@fairfox/shared/page-context';
 import { userIdentity } from '@fairfox/shared/user-identity-state';
@@ -99,16 +99,15 @@ function anyPending(): boolean {
 
 function ContextChip({ ctx, onDetachAction }: { ctx: PageContext; onDetachAction?: string }) {
   return (
-    <span
+    <Surface
+      as="span"
+      variant="chip"
+      background="var(--polly-status-info-bg)"
       style={{
         display: 'inline-flex',
         alignItems: 'center',
         gap: '0.35rem',
-        padding: '0.15rem 0.55rem',
-        background: '#e8edf3',
-        color: '#1c1917',
-        border: '1px solid #c6cfd9',
-        borderRadius: '999px',
+        color: 'var(--polly-status-info-text)',
         fontSize: '0.78rem',
       }}
     >
@@ -128,38 +127,36 @@ function ContextChip({ ctx, onDetachAction }: { ctx: PageContext; onDetachAction
             fontSize: '0.9rem',
             lineHeight: 1,
             padding: 0,
-            color: '#6b7280',
+            color: 'var(--polly-text-muted)',
           }}
           aria-label={`Remove ${ctx.label}`}
         >
           ×
         </button>
       )}
-    </span>
+    </Surface>
   );
 }
 
 function FloatingButton() {
   const pending = anyPending();
   return (
-    <button
-      type="button"
+    <Surface
+      as="button"
+      variant="floating"
+      radius="full"
+      border="none"
+      background="var(--polly-accent)"
+      width={`${BUTTON_SIZE}px`}
+      height={`${BUTTON_SIZE}px`}
+      inset="auto 1rem 1rem auto"
+      zIndex={9998}
       data-action="chat.toggle-widget"
       aria-label="Open chat assistant"
       style={{
-        position: 'fixed',
-        right: '1rem',
-        bottom: '1rem',
-        width: `${BUTTON_SIZE}px`,
-        height: `${BUTTON_SIZE}px`,
-        borderRadius: '50%',
-        border: 'none',
-        background: '#2563eb',
-        color: 'white',
+        color: 'var(--polly-accent-contrast)',
         cursor: 'pointer',
         fontSize: '1.5rem',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-        zIndex: 9998,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -177,13 +174,13 @@ function FloatingButton() {
             right: '4px',
             width: '12px',
             height: '12px',
-            background: '#ef4444',
+            background: 'var(--polly-danger)',
             borderRadius: '50%',
-            border: '2px solid #2563eb',
+            border: '2px solid var(--polly-accent)',
           }}
         />
       )}
-    </button>
+    </Surface>
   );
 }
 
@@ -224,20 +221,19 @@ function MessageBubble({
           {message.pending && !isAssistant && ' · pending'}
         </span>
       </Layout>
-      <div
+      <Surface
+        variant="bubble"
+        background={bg}
         style={{
-          background: bg,
-          color: '#1c1917',
-          border: `1px solid ${border}`,
-          padding: '0.5rem 0.75rem',
-          borderRadius: '6px',
+          color: 'var(--polly-text)',
+          '--polly-border': border,
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',
           fontSize: '0.9rem',
         }}
       >
         {message.text}
-      </div>
+      </Surface>
       {isAssistant && (message.model || message.costUsd !== undefined || message.error) ? (
         <div
           style={{
@@ -265,9 +261,9 @@ function MessageBubble({
               aria-label="Regenerate this reply"
               style={{
                 background: 'transparent',
-                border: '1px solid #b45309',
-                color: '#b45309',
-                borderRadius: '999px',
+                border: '1px solid var(--polly-warning)',
+                color: 'var(--polly-warning)',
+                borderRadius: 'var(--polly-radius-full)',
                 padding: '0.05rem 0.5rem',
                 fontSize: '0.7rem',
                 cursor: 'pointer',
@@ -413,8 +409,13 @@ function ActiveCcSessions() {
   }
   const demoIds = overlayIds().sessions;
   return (
-    <div style={{ padding: '0.35rem 0', borderTop: '1px dashed #e7e5e4' }}>
-      <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>Claude Code:</span>
+    <Surface
+      borderSides="block-start"
+      border="default"
+      padding="0.35rem 0"
+      style={{ borderTopStyle: 'dashed' }}
+    >
+      <span style={{ fontSize: '0.7rem', color: 'var(--polly-text-muted)' }}>Claude Code:</span>
       {sessions.map((s) => {
         const leaf = `${s.cwd}`.split('/').slice(-2).join('/');
         const state = s.state;
@@ -441,7 +442,7 @@ function ActiveCcSessions() {
           </div>
         );
       })}
-    </div>
+    </Surface>
   );
 }
 
@@ -450,20 +451,19 @@ function DemoBanner() {
     return null;
   }
   return (
-    <div
+    <Surface
+      variant="callout"
+      background="var(--polly-status-warning-bg)"
       style={{
-        background: '#fef3c7',
-        border: '1px solid #f59e0b',
-        color: '#78350f',
-        padding: '0.35rem 0.6rem',
+        color: 'var(--polly-status-warning-text)',
+        '--polly-border': 'var(--polly-warning)',
         fontSize: '0.75rem',
-        borderRadius: '4px',
         margin: '0.25rem 0',
       }}
     >
       ⚠ This widget contains demo data from <code>#__inject=</code> in the URL. None of it is real
       or synced to your other devices.
-    </div>
+    </Surface>
   );
 }
 
@@ -478,38 +478,42 @@ function Panel({ selfPeerId }: { selfPeerId: string | null }) {
   const chat = activeChat();
   const messages = messagesForActive();
   const mobile = isMobile();
-  const panelStyle: preact.JSX.CSSProperties = mobile
+  const sharedSurfaceProps = mobile
     ? {
-        position: 'fixed',
-        inset: 0,
-        background: '#ffffff',
-        display: 'flex',
-        flexDirection: 'column',
-        zIndex: 9999,
+        position: 'fixed' as const,
+        inset: '0',
+        radius: 'none' as const,
+        border: 'none' as const,
+        shadow: 'none' as const,
+        background: 'raised' as const,
       }
     : {
-        position: 'fixed',
-        right: '1rem',
-        bottom: `${BUTTON_SIZE + 20}px`,
+        position: 'fixed' as const,
+        inset: `auto 1rem ${BUTTON_SIZE + 20}px auto`,
+        radius: 'lg' as const,
+        border: 'default' as const,
+        shadow: 'lg' as const,
+        background: 'raised' as const,
         width: '380px',
-        maxHeight: '70vh',
-        background: '#ffffff',
-        border: '1px solid #e7e5e4',
-        borderRadius: '12px',
-        boxShadow: '0 12px 32px rgba(0,0,0,0.18)',
-        display: 'flex',
-        flexDirection: 'column',
-        zIndex: 9999,
-        overflow: 'hidden',
       };
   return (
-    <div style={panelStyle}>
-      <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #e7e5e4' }}>
+    <Surface
+      {...sharedSurfaceProps}
+      maxInlineSize={mobile ? undefined : '380px'}
+      zIndex={9999}
+      style={{
+        maxHeight: mobile ? undefined : '70vh',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
+    >
+      <Surface borderSides="block-end" border="default" padding="0.75rem 1rem">
         <ChatHeader chat={chat} />
         <DemoBanner />
         <ChatContextStrip chat={chat} />
         <ActiveCcSessions />
-      </div>
+      </Surface>
       <div
         style={{
           flex: 1,
@@ -518,17 +522,23 @@ function Panel({ selfPeerId }: { selfPeerId: string | null }) {
         }}
       >
         {messages.length === 0 ? (
-          <p style={{ color: '#6b7280', fontSize: '0.85rem', margin: '0.5rem 0' }}>
+          <p
+            style={{
+              color: 'var(--polly-text-muted)',
+              fontSize: '0.85rem',
+              margin: '0.5rem 0',
+            }}
+          >
             New thread. Type below — the laptop's <code>fairfox chat serve</code> will reply.
           </p>
         ) : (
           messages.map((m) => <MessageBubble key={m.id} message={m} selfDeviceId={selfPeerId} />)
         )}
       </div>
-      <div style={{ padding: '0.75rem 1rem', borderTop: '1px solid #e7e5e4' }}>
+      <Surface borderSides="block-start" border="default" padding="0.75rem 1rem">
         <Composer selfPeerId={selfPeerId} />
-      </div>
-    </div>
+      </Surface>
+    </Surface>
   );
 }
 
