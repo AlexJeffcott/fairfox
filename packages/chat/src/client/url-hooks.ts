@@ -4,13 +4,13 @@
 //
 //   1. Always-on deep-links — pure view state.
 //      ?widget=open       open the widget panel on load
-//      #chat=<id>         open the widget to a specific conversation
-//      #ctx=<kind>:<id>   pin a context onto the active conversation
+//      #chat=<id>         open the widget to a specific chat
+//      #ctx=<kind>:<id>   pin a context onto the active chat
 //
 //   2. Injected demo overlay — also always-on but clearly marked
 //      and non-persistent.
 //      #__inject=<base64 JSON>
-//      { "messages": [...], "conversations": [...], "sessions": [...] }
+//      { "messages": [...], "chats": [...], "sessions": [...] }
 //
 // The inject payload writes to a VIEW-ONLY overlay signal
 // (`injectedOverlay` in ./state.ts), never to the mesh docs. That
@@ -27,14 +27,14 @@
 
 import type {
   AssistantMessageExtras,
-  ConversationExtras,
+  ChatExtras,
   SessionAnnouncement,
 } from '@fairfox/shared/assistant-state';
 import { toAbsolutePath, toSessionId } from '@fairfox/shared/assistant-state';
 import type { PageContext, PageContextKind } from '@fairfox/shared/page-context';
-import type { Conversation, Message } from '#src/client/state.ts';
+import type { Chat, Message } from '#src/client/state.ts';
 import {
-  activeConversationId,
+  activeChatId,
   chatState,
   injectedOverlay,
   pinnedContext,
@@ -44,17 +44,17 @@ import {
 
 interface InjectPayload {
   readonly messages?: readonly InjectedMessage[];
-  readonly conversations?: readonly InjectedConversation[];
+  readonly chats?: readonly InjectedChat[];
   readonly sessions?: readonly InjectedSession[];
 }
 
 type InjectedMessage = Partial<Message & AssistantMessageExtras> & {
   readonly id: string;
-  readonly conversationId: string;
+  readonly chatId: string;
   readonly sender: 'user' | 'assistant';
 };
 
-type InjectedConversation = Partial<Conversation & ConversationExtras> & {
+type InjectedChat = Partial<Chat & ChatExtras> & {
   readonly id: string;
 };
 
@@ -128,7 +128,7 @@ function applyCtxDeepLink(spec: string): void {
 function materialiseMessage(m: InjectedMessage): Message {
   return {
     id: m.id,
-    conversationId: m.conversationId,
+    chatId: m.chatId,
     sender: m.sender,
     senderUserId: m.senderUserId ?? 'demo',
     senderDeviceId: m.senderDeviceId ?? 'demo-device',
@@ -146,7 +146,7 @@ function materialiseMessage(m: InjectedMessage): Message {
   };
 }
 
-function materialiseConversation(c: InjectedConversation): Conversation {
+function materialiseChat(c: InjectedChat): Chat {
   return {
     id: c.id,
     title: c.title,
@@ -181,7 +181,7 @@ function isInjectPayload(v: unknown): v is InjectPayload {
   if (rec.messages !== undefined && !Array.isArray(rec.messages)) {
     return false;
   }
-  if (rec.conversations !== undefined && !Array.isArray(rec.conversations)) {
+  if (rec.chats !== undefined && !Array.isArray(rec.chats)) {
     return false;
   }
   if (rec.sessions !== undefined && !Array.isArray(rec.sessions)) {
@@ -191,14 +191,14 @@ function isInjectPayload(v: unknown): v is InjectPayload {
 }
 
 function applyInjection(payload: InjectPayload): void {
-  const nextConvos = (payload.conversations ?? []).map(materialiseConversation);
+  const nextChats = (payload.chats ?? []).map(materialiseChat);
   const nextMessages = (payload.messages ?? []).map(materialiseMessage);
   const nextSessions = (payload.sessions ?? []).map(materialiseSession);
-  if (nextConvos.length === 0 && nextMessages.length === 0 && nextSessions.length === 0) {
+  if (nextChats.length === 0 && nextMessages.length === 0 && nextSessions.length === 0) {
     return;
   }
   injectedOverlay.value = {
-    conversations: [...injectedOverlay.value.conversations, ...nextConvos],
+    chats: [...injectedOverlay.value.chats, ...nextChats],
     messages: [...injectedOverlay.value.messages, ...nextMessages],
     sessions: [...injectedOverlay.value.sessions, ...nextSessions],
     demoBannerSeen: injectedOverlay.value.demoBannerSeen,
@@ -223,7 +223,7 @@ export function applyUrlHooks(): void {
     widgetOpen.value = true;
   }
   if (hash.chat) {
-    activeConversationId.value = hash.chat;
+    activeChatId.value = hash.chat;
     widgetOpen.value = true;
   }
   if (hash.ctx) {

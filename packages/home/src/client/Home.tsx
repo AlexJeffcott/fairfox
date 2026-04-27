@@ -79,7 +79,7 @@ const SUBAPPS: readonly SubApp[] = [
   {
     path: '/chat',
     name: 'Chat history',
-    description: 'Past conversations — the live assistant is the widget, bottom-right',
+    description: 'Past chats — the live assistant is the widget, bottom-right',
   },
   { path: '/docs', name: 'Docs', description: 'Research notes and project writeups' },
   { path: '/the-struggle', name: 'The Struggle', description: 'Interactive sci-fi story' },

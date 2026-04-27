@@ -1,29 +1,28 @@
 /** @jsxImportSource preact */
-// Chat history archive — the `/chat` sub-app now lists past
-// conversations with their titles, context chips, and last
-// activity. The composer and live thread view live in the
-// always-mounted ChatWidget; this page is the "find me that
-// conversation from last Tuesday" surface.
+// Chat history archive — the `/chat` sub-app lists past chats with
+// their titles, context chips, and last activity. The composer and
+// live thread view live in the always-mounted ChatWidget; this page
+// is the "find me that chat from last Tuesday" surface.
 
 import { ActionInput, Badge, Button, Layout } from '@fairfox/polly/ui';
 import { HubBack } from '@fairfox/shared/hub-back';
 import { setPageContext } from '@fairfox/shared/page-context';
 import { effect, signal } from '@preact/signals';
-import type { Conversation, Message } from '#src/client/state.ts';
+import type { Chat, Message } from '#src/client/state.ts';
 import { chatState } from '#src/client/state.ts';
 
 const searchQuery = signal<string>('');
 const showArchived = signal<boolean>(false);
 
-function conversationMessages(conversationId: string): Message[] {
+function chatMessages(chatId: string): Message[] {
   return chatState.value.messages
-    .filter((m) => m.conversationId === conversationId)
+    .filter((m) => m.chatId === chatId)
     .slice()
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
-function lastMessageOf(conversationId: string): Message | undefined {
-  const msgs = conversationMessages(conversationId);
+function lastMessageOf(chatId: string): Message | undefined {
+  const msgs = chatMessages(chatId);
   return msgs[msgs.length - 1];
 }
 
@@ -51,15 +50,15 @@ function formatDateTime(iso: string): string {
   }
 }
 
-function matchesQuery(convo: Conversation, query: string): boolean {
+function matchesQuery(chat: Chat, query: string): boolean {
   if (!query) {
     return true;
   }
   const needle = query.toLowerCase();
-  if ((convo.title ?? '').toLowerCase().includes(needle)) {
+  if ((chat.title ?? '').toLowerCase().includes(needle)) {
     return true;
   }
-  for (const ctx of convo.contextRefs) {
+  for (const ctx of chat.contextRefs) {
     if (ctx.label.toLowerCase().includes(needle)) {
       return true;
     }
@@ -67,7 +66,7 @@ function matchesQuery(convo: Conversation, query: string): boolean {
       return true;
     }
   }
-  for (const m of conversationMessages(convo.id)) {
+  for (const m of chatMessages(chat.id)) {
     if (m.text.toLowerCase().includes(needle)) {
       return true;
     }
@@ -75,9 +74,9 @@ function matchesQuery(convo: Conversation, query: string): boolean {
   return false;
 }
 
-function ConversationRow({ convo }: { convo: Conversation }) {
-  const last = lastMessageOf(convo.id);
-  const msgCount = conversationMessages(convo.id).length;
+function ChatRow({ chat }: { chat: Chat }) {
+  const last = lastMessageOf(chat.id);
+  const msgCount = chatMessages(chat.id).length;
   return (
     <Layout
       columns="1fr auto auto"
@@ -87,12 +86,12 @@ function ConversationRow({ convo }: { convo: Conversation }) {
     >
       <div>
         <Layout columns="auto 1fr" gap="0.5rem" alignItems="center">
-          <strong>{convo.title ?? '(untitled)'}</strong>
-          {convo.archivedAt && <Badge variant="default">archived</Badge>}
+          <strong>{chat.title ?? '(untitled)'}</strong>
+          {chat.archivedAt && <Badge variant="default">archived</Badge>}
         </Layout>
-        {convo.contextRefs.length > 0 && (
+        {chat.contextRefs.length > 0 && (
           <div style={{ marginTop: '0.25rem' }}>
-            {convo.contextRefs.map((r) => (
+            {chat.contextRefs.map((r) => (
               <span
                 key={`${r.kind}:${r.id ?? ''}`}
                 style={{
@@ -127,23 +126,23 @@ function ConversationRow({ convo }: { convo: Conversation }) {
         )}
       </div>
       <span style={{ fontSize: 'var(--polly-text-sm)', color: 'var(--polly-text-muted)' }}>
-        {msgCount} msg · {formatDateTime(convo.updatedAt)}
+        {msgCount} msg · {formatDateTime(chat.updatedAt)}
       </span>
       <Layout columns="auto auto" gap="0.25rem">
         <Button
           label="Continue"
           tier="primary"
           size="small"
-          data-action="chat.open-conversation"
-          data-action-id={convo.id}
+          data-action="chat.open"
+          data-action-id={chat.id}
         />
-        {!convo.archivedAt && (
+        {!chat.archivedAt && (
           <Button
             label="Archive"
             tier="tertiary"
             size="small"
-            data-action="chat.archive-conversation"
-            data-action-id={convo.id}
+            data-action="chat.archive"
+            data-action-id={chat.id}
           />
         )}
       </Layout>
@@ -167,7 +166,7 @@ export function installChatHistoryEffects(): void {
 export function App() {
   const query = searchQuery.value;
   const archived = showArchived.value;
-  const convos = chatState.value.conversations
+  const chats = chatState.value.chats
     .filter((c) => (archived ? true : !c.archivedAt))
     .filter((c) => matchesQuery(c, query))
     .slice()
@@ -194,17 +193,17 @@ export function App() {
           size="small"
           data-action="chat.history-toggle-archived"
         />
-        <Button label="+ New" tier="primary" size="small" data-action="chat.new-conversation" />
+        <Button label="+ New" tier="primary" size="small" data-action="chat.new" />
       </Layout>
       <Layout rows="auto" gap="var(--polly-space-xs)">
-        {convos.length === 0 ? (
+        {chats.length === 0 ? (
           <p style={{ color: 'var(--polly-text-muted)' }}>
-            {chatState.value.conversations.length === 0
-              ? 'No conversations yet. Open the chat widget (bottom-right) to start one.'
-              : 'No conversations match your filter.'}
+            {chatState.value.chats.length === 0
+              ? 'No chats yet. Open the chat widget (bottom-right) to start one.'
+              : 'No chats match your filter.'}
           </p>
         ) : (
-          convos.map((c) => <ConversationRow key={c.id} convo={c} />)
+          chats.map((c) => <ChatRow key={c.id} chat={c} />)
         )}
       </Layout>
     </Layout>

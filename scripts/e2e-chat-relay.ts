@@ -16,7 +16,7 @@
  *   5. Wait for stdout to log "[chat serve] replied to …".
  *   6. Kill the relay.
  *   7. `fairfox chat dump` — parse JSON, assert:
- *        - 1 conversation, 2 messages.
+ *        - 1 chat, 2 messages.
  *        - 2nd message sender=assistant, text matches the stub,
  *          parentId == the user message id, pending=false.
  *        - 1st message pending flipped to false.
@@ -184,12 +184,12 @@ async function main(): Promise<void> {
     fail(`chat dump produced no JSON:\n${dump.stdout}`);
   }
   const parsed = JSON.parse(dump.stdout.slice(jsonStart));
-  const conversations = Array.isArray(parsed.conversations) ? parsed.conversations : [];
+  const chats = Array.isArray(parsed.chats) ? parsed.chats : [];
   const messages = Array.isArray(parsed.messages) ? parsed.messages : [];
 
-  if (conversations.length !== 1) {
+  if (chats.length !== 1) {
     console.error(JSON.stringify(parsed, null, 2));
-    fail(`expected 1 conversation, got ${conversations.length}`);
+    fail(`expected 1 chat, got ${chats.length}`);
   }
   if (messages.length !== 2) {
     console.error(JSON.stringify(parsed, null, 2));

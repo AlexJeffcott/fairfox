@@ -147,7 +147,7 @@ export interface AssistantMessageExtras {
   readonly finishedAt?: string;
 }
 
-export interface ConversationExtras {
+export interface ChatExtras {
   readonly typing?: boolean;
   readonly totalCostUsd?: number;
   readonly pinnedModel?: ModelId;

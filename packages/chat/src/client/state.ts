@@ -1,15 +1,15 @@
 // Chat state — household assistant threads held in a single $meshState
-// document. Two entities: conversations and messages. Each message
-// belongs to a conversation; each conversation owns the list of
-// contextRefs it has accumulated (page context automatically appends
-// here on send, so the relay keeps seeing the relevant records even
-// after the user navigates away).
+// document. Two entities: chats and messages. Each message belongs to
+// a chat; each chat owns the list of contextRefs it has accumulated
+// (page context automatically appends here on send, so the relay
+// keeps seeing the relevant records even after the user navigates
+// away).
 
 import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
 import type {
   AssistantMessageExtras,
-  ConversationExtras,
+  ChatExtras,
   SessionsActive,
 } from '@fairfox/shared/assistant-state';
 import { SESSIONS_ACTIVE_DOC_ID } from '@fairfox/shared/assistant-state';
@@ -18,18 +18,18 @@ import { signal } from '@preact/signals';
 
 export type Sender = 'user' | 'assistant';
 
-export interface Conversation extends ConversationExtras {
+export interface Chat extends ChatExtras {
   [key: string]: unknown;
   id: string;
   title?: string;
   createdAt: string;
   updatedAt: string;
   createdByUserId: string;
-  /** Context records the conversation has accumulated — page
-   * contexts attached from send sites, any manual additions. The
-   * relay reads this to build its prompt, so adding to the list on
-   * every send keeps the conversation "sticky" to its topic even
-   * when the user navigates. */
+  /** Context records the chat has accumulated — page contexts
+   * attached from send sites, any manual additions. The relay reads
+   * this to build its prompt, so adding to the list on every send
+   * keeps the chat "sticky" to its topic even when the user
+   * navigates. */
   contextRefs: PageContext[];
   archivedAt?: string;
 }
@@ -37,14 +37,14 @@ export interface Conversation extends ConversationExtras {
 export interface Message extends AssistantMessageExtras {
   [key: string]: unknown;
   id: string;
-  conversationId: string;
+  chatId: string;
   sender: Sender;
   senderUserId: string;
   senderDeviceId: string;
   text: string;
   pending: boolean;
   parentId?: string;
-  /** Per-message context override — rarely set; the conversation's
+  /** Per-message context override — rarely set; the chat's
    * contextRefs usually supply everything the relay needs. */
   contextRef?: PageContext;
   createdAt: string;
@@ -52,13 +52,28 @@ export interface Message extends AssistantMessageExtras {
 
 export interface ChatDoc {
   [key: string]: unknown;
-  conversations: Conversation[];
+  chats: Chat[];
   messages: Message[];
 }
 
 export const chatState = $meshState<ChatDoc>('chat:main', {
-  conversations: [],
+  chats: [],
   messages: [],
+});
+
+// Pre-rename meshes carry `{ conversations, messages }` with
+// `Message.conversationId`. Wipe on first load — the test pings
+// don't carry forward.
+void chatState.loaded.then(() => {
+  const v = chatState.value as unknown as Record<string, unknown>;
+  const firstMsg =
+    Array.isArray(v.messages) && v.messages.length > 0
+      ? (v.messages[0] as unknown as Record<string, unknown>)
+      : undefined;
+  const hasOldShape = v.conversations !== undefined || firstMsg?.conversationId !== undefined;
+  if (hasOldShape) {
+    chatState.value = { chats: [], messages: [] };
+  }
 });
 
 /** Mesh doc of live Claude Code sessions — populated by the daemon's
@@ -77,25 +92,24 @@ export const sessionsActive = $meshState<SessionsActive>(SESSIONS_ACTIVE_DOC_ID,
  * visible "(demo)" badge so they're impossible to confuse with real
  * traffic. */
 export interface InjectedOverlay {
-  readonly conversations: readonly Conversation[];
+  readonly chats: readonly Chat[];
   readonly messages: readonly Message[];
   readonly sessions: readonly import('@fairfox/shared/assistant-state').SessionAnnouncement[];
   readonly demoBannerSeen: boolean;
 }
 
 export const injectedOverlay = signal<InjectedOverlay>({
-  conversations: [],
+  chats: [],
   messages: [],
   sessions: [],
   demoBannerSeen: false,
 });
 
-/** Which conversation the widget is currently rendering, per
- * device. View state, not mesh state — each device keeps its own
- * active pointer so opening the widget on one device doesn't yank
- * another device's view. `null` means "start a new one on next
- * send". */
-export const activeConversationId = signal<string | null>(null);
+/** Which chat the widget is currently rendering, per device. View
+ * state, not mesh state — each device keeps its own active pointer
+ * so opening the widget on one device doesn't yank another device's
+ * view. `null` means "start a new one on next send". */
+export const activeChatId = signal<string | null>(null);
 
 /** Whether the widget panel is expanded (modal/sheet open) or
  * collapsed (button only). */
@@ -105,9 +119,9 @@ export const widgetOpen = signal<boolean>(false);
  * text doesn't replicate to every peer before Send. */
 export const draftText = signal<string>('');
 
-/** Pinned context override for the active conversation. When set,
- * every send uses this instead of the current page context. Cleared
- * on "Start fresh" or explicit detach. */
+/** Pinned context override for the active chat. When set, every
+ * send uses this instead of the current page context. Cleared on
+ * "Start fresh" or explicit detach. */
 export const pinnedContext = signal<PageContext | null>(null);
 
 export function resetDraft(): void {

@@ -2,17 +2,17 @@
 // ChatWidget — the always-mounted floating assistant. Collapsed it
 // renders a single bottom-right button; expanded it's a full-screen
 // modal on mobile and a docked panel on wider screens. Shows the
-// active conversation's message tail, a composer with the live page
-// context chip, and a small header with new / close controls.
+// active chat's message tail, a composer with the live page context
+// chip, and a small header with new / close controls.
 
 import { ActionInput, Button, Layout } from '@fairfox/polly/ui';
 import { devicesState } from '@fairfox/shared/devices-state';
 import { currentPageContext, type PageContext } from '@fairfox/shared/page-context';
 import { userIdentity } from '@fairfox/shared/user-identity-state';
 import { usersState } from '@fairfox/shared/users-state';
-import type { Conversation, Message } from '#src/client/state.ts';
+import type { Chat, Message } from '#src/client/state.ts';
 import {
-  activeConversationId,
+  activeChatId,
   chatState,
   draftText,
   injectedOverlay,
@@ -53,43 +53,43 @@ function formatTime(iso: string): string {
   }
 }
 
-/** IDs of messages + sessions + conversations that came from a URL
+/** IDs of messages + sessions + chats that came from a URL
  * #__inject= payload. Used to tag overlay entries with a "(demo)"
  * marker and to render a banner so nothing injected can pass for a
  * real message. */
-function overlayIds(): { messages: Set<string>; sessions: Set<string>; convos: Set<string> } {
+function overlayIds(): { messages: Set<string>; sessions: Set<string>; chats: Set<string> } {
   const ov = injectedOverlay.value;
   return {
     messages: new Set(ov.messages.map((m) => m.id)),
     sessions: new Set(ov.sessions.map((s) => `${s.sessionId}`)),
-    convos: new Set(ov.conversations.map((c) => c.id)),
+    chats: new Set(ov.chats.map((c) => c.id)),
   };
 }
 
 function hasOverlay(): boolean {
   const ov = injectedOverlay.value;
-  return ov.messages.length > 0 || ov.sessions.length > 0 || ov.conversations.length > 0;
+  return ov.messages.length > 0 || ov.sessions.length > 0 || ov.chats.length > 0;
 }
 
-function activeConversation(): Conversation | undefined {
-  const id = activeConversationId.value;
+function activeChat(): Chat | undefined {
+  const id = activeChatId.value;
   if (!id) {
     return undefined;
   }
-  const mesh = chatState.value.conversations.find((c) => c.id === id);
+  const mesh = chatState.value.chats.find((c) => c.id === id);
   if (mesh) {
     return mesh;
   }
-  return injectedOverlay.value.conversations.find((c) => c.id === id);
+  return injectedOverlay.value.chats.find((c) => c.id === id);
 }
 
 function messagesForActive(): Message[] {
-  const convo = activeConversation();
-  if (!convo) {
+  const chat = activeChat();
+  if (!chat) {
     return [];
   }
-  const mesh = chatState.value.messages.filter((m) => m.conversationId === convo.id);
-  const overlay = injectedOverlay.value.messages.filter((m) => m.conversationId === convo.id);
+  const mesh = chatState.value.messages.filter((m) => m.chatId === chat.id);
+  const overlay = injectedOverlay.value.messages.filter((m) => m.chatId === chat.id);
   return [...mesh, ...overlay].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
@@ -344,8 +344,8 @@ function Composer({ selfPeerId }: { selfPeerId: string | null }) {
   );
 }
 
-function ConversationHeader({ convo }: { convo: Conversation | undefined }) {
-  const title = convo?.title ?? 'New conversation';
+function ChatHeader({ chat }: { chat: Chat | undefined }) {
+  const title = chat?.title ?? 'New chat';
   return (
     <Layout columns="1fr auto auto" gap="0.35rem" alignItems="center">
       <strong style={{ fontSize: '0.95rem' }}>{title}</strong>
@@ -353,16 +353,16 @@ function ConversationHeader({ convo }: { convo: Conversation | undefined }) {
         label="New"
         tier="tertiary"
         size="small"
-        data-action="chat.new-conversation"
-        title="Start a fresh conversation — current one stays in history"
+        data-action="chat.new"
+        title="Start a fresh chat — current one stays in history"
       />
       <Button label="Close" tier="tertiary" size="small" data-action="chat.close-widget" />
     </Layout>
   );
 }
 
-function ConversationContextStrip({ convo }: { convo: Conversation | undefined }) {
-  if (!convo || convo.contextRefs.length === 0) {
+function ChatContextStrip({ chat }: { chat: Chat | undefined }) {
+  if (!chat || chat.contextRefs.length === 0) {
     return null;
   }
   return (
@@ -375,7 +375,7 @@ function ConversationContextStrip({ convo }: { convo: Conversation | undefined }
       }}
     >
       <span style={{ fontSize: '0.75rem', color: '#6b7280', alignSelf: 'center' }}>Following:</span>
-      {convo.contextRefs.map((ctx) => {
+      {chat.contextRefs.map((ctx) => {
         const key = `${ctx.kind}:${ctx.id ?? ''}`;
         return (
           <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -383,9 +383,9 @@ function ConversationContextStrip({ convo }: { convo: Conversation | undefined }
             <button
               type="button"
               data-action="chat.remove-context"
-              data-action-conversation-id={convo.id}
+              data-action-chat-id={chat.id}
               data-action-key={key}
-              aria-label={`Remove ${ctx.label} from this conversation`}
+              aria-label={`Remove ${ctx.label} from this chat`}
               style={{
                 background: 'transparent',
                 border: 'none',
@@ -475,7 +475,7 @@ function isMobile(): boolean {
 }
 
 function Panel({ selfPeerId }: { selfPeerId: string | null }) {
-  const convo = activeConversation();
+  const chat = activeChat();
   const messages = messagesForActive();
   const mobile = isMobile();
   const panelStyle: preact.JSX.CSSProperties = mobile
@@ -505,9 +505,9 @@ function Panel({ selfPeerId }: { selfPeerId: string | null }) {
   return (
     <div style={panelStyle}>
       <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #e7e5e4' }}>
-        <ConversationHeader convo={convo} />
+        <ChatHeader chat={chat} />
         <DemoBanner />
-        <ConversationContextStrip convo={convo} />
+        <ChatContextStrip chat={chat} />
         <ActiveCcSessions />
       </div>
       <div

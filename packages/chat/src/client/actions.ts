@@ -8,9 +8,9 @@ import { currentPageContext, type PageContext } from '@fairfox/shared/page-conte
 import { pairingActions } from '@fairfox/shared/pairing-actions';
 import { userIdentity } from '@fairfox/shared/user-identity-state';
 import { historyViewSignals } from '#src/client/App.tsx';
-import type { Conversation, Message } from '#src/client/state.ts';
+import type { Chat, Message } from '#src/client/state.ts';
 import {
-  activeConversationId,
+  activeChatId,
   chatState,
   draftText,
   pinnedContext,
@@ -35,12 +35,12 @@ async function derivePeerId(): Promise<string> {
     .join('');
 }
 
-/** Find an existing conversation matching a page-context "anchor",
- * so repeatedly opening the widget on the same entity page
- * continues the same thread. Returns undefined when no match. */
-function findAnchorConversation(ctx: PageContext): Conversation | undefined {
+/** Find an existing chat matching a page-context "anchor", so
+ * repeatedly opening the widget on the same entity page continues
+ * the same thread. Returns undefined when no match. */
+function findAnchorChat(ctx: PageContext): Chat | undefined {
   const key = `${ctx.kind}:${ctx.id ?? ''}`;
-  return chatState.value.conversations.find((c) => {
+  return chatState.value.chats.find((c) => {
     if (c.archivedAt) {
       return false;
     }
@@ -62,30 +62,30 @@ function shortTitleFrom(text: string): string {
   return stripped.length <= 60 ? stripped : `${stripped.slice(0, 57)}…`;
 }
 
-/** Ensure there's an active conversation: reuse one anchored to the
- * current page context if available, otherwise start a fresh one.
- * Returns the conversation that should carry the next message. */
-function ensureActiveConversation(
+/** Ensure there's an active chat: reuse one anchored to the current
+ * page context if available, otherwise start a fresh one. Returns
+ * the chat that should carry the next message. */
+function ensureActiveChat(
   creatorUserId: string,
   seedText: string,
   pageCtx: PageContext | null
-): Conversation {
-  const activeId = activeConversationId.value;
+): Chat {
+  const activeId = activeChatId.value;
   if (activeId) {
-    const existing = chatState.value.conversations.find((c) => c.id === activeId);
+    const existing = chatState.value.chats.find((c) => c.id === activeId);
     if (existing) {
       return existing;
     }
   }
   if (pageCtx) {
-    const anchor = findAnchorConversation(pageCtx);
+    const anchor = findAnchorChat(pageCtx);
     if (anchor) {
-      activeConversationId.value = anchor.id;
+      activeChatId.value = anchor.id;
       return anchor;
     }
   }
   const now = new Date().toISOString();
-  const fresh: Conversation = {
+  const fresh: Chat = {
     id: generateId(),
     title: shortTitleFrom(seedText) || undefined,
     createdAt: now,
@@ -95,17 +95,17 @@ function ensureActiveConversation(
   };
   chatState.value = {
     ...chatState.value,
-    conversations: [...chatState.value.conversations, fresh],
+    chats: [...chatState.value.chats, fresh],
   };
-  activeConversationId.value = fresh.id;
+  activeChatId.value = fresh.id;
   return fresh;
 }
 
-function appendContextToConversation(conversationId: string, ctx: PageContext): void {
+function appendContextToChat(chatId: string, ctx: PageContext): void {
   chatState.value = {
     ...chatState.value,
-    conversations: chatState.value.conversations.map((c) => {
-      if (c.id !== conversationId) {
+    chats: chatState.value.chats.map((c) => {
+      if (c.id !== chatId) {
         return c;
       }
       if (contextAlreadyPresent(c.contextRefs, ctx)) {
@@ -116,13 +116,11 @@ function appendContextToConversation(conversationId: string, ctx: PageContext): 
   };
 }
 
-function bumpConversationTimestamp(conversationId: string): void {
+function bumpChatTimestamp(chatId: string): void {
   const now = new Date().toISOString();
   chatState.value = {
     ...chatState.value,
-    conversations: chatState.value.conversations.map((c) =>
-      c.id === conversationId ? { ...c, updatedAt: now } : c
-    ),
+    chats: chatState.value.chats.map((c) => (c.id === chatId ? { ...c, updatedAt: now } : c)),
   };
 }
 
@@ -130,9 +128,9 @@ export const CHAT_WRITE_ACTIONS: ReadonlySet<string> = new Set([
   'chat.send',
   'chat.delete',
   'chat.cancel-pending',
-  'chat.new-conversation',
-  'chat.open-conversation',
-  'chat.archive-conversation',
+  'chat.new',
+  'chat.open',
+  'chat.archive',
   'chat.remove-context',
   'chat.regenerate',
 ]);
@@ -154,23 +152,23 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     draftText.value = ctx.data.value ?? '';
   },
 
-  // Conversation lifecycle --------------------------------------
-  'chat.new-conversation': () => {
-    activeConversationId.value = null;
+  // Chat lifecycle ----------------------------------------------
+  'chat.new': () => {
+    activeChatId.value = null;
     pinnedContext.value = null;
     resetDraft();
   },
 
-  'chat.open-conversation': (ctx) => {
+  'chat.open': (ctx) => {
     const id = ctx.data.id;
     if (!id) {
       return;
     }
-    activeConversationId.value = id;
+    activeChatId.value = id;
     widgetOpen.value = true;
   },
 
-  'chat.archive-conversation': (ctx) => {
+  'chat.archive': (ctx) => {
     const id = ctx.data.id;
     if (!id) {
       return;
@@ -178,25 +176,23 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     const now = new Date().toISOString();
     chatState.value = {
       ...chatState.value,
-      conversations: chatState.value.conversations.map((c) =>
-        c.id === id ? { ...c, archivedAt: now } : c
-      ),
+      chats: chatState.value.chats.map((c) => (c.id === id ? { ...c, archivedAt: now } : c)),
     };
-    if (activeConversationId.value === id) {
-      activeConversationId.value = null;
+    if (activeChatId.value === id) {
+      activeChatId.value = null;
     }
   },
 
   'chat.remove-context': (ctx) => {
-    const conversationId = ctx.data.conversationId;
+    const chatId = ctx.data.chatId;
     const key = ctx.data.key;
-    if (!conversationId || !key) {
+    if (!chatId || !key) {
       return;
     }
     chatState.value = {
       ...chatState.value,
-      conversations: chatState.value.conversations.map((c) => {
-        if (c.id !== conversationId) {
+      chats: chatState.value.chats.map((c) => {
+        if (c.id !== chatId) {
           return c;
         }
         return {
@@ -227,13 +223,13 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     }
     const pageCtx = effectiveContext();
     void derivePeerId().then((peerId) => {
-      const convo = ensureActiveConversation(identity.userId, text, pageCtx);
+      const chat = ensureActiveChat(identity.userId, text, pageCtx);
       if (pageCtx) {
-        appendContextToConversation(convo.id, pageCtx);
+        appendContextToChat(chat.id, pageCtx);
       }
       const message: Message = {
         id: generateId(),
-        conversationId: convo.id,
+        chatId: chat.id,
         sender: 'user',
         senderUserId: identity.userId,
         senderDeviceId: peerId,
@@ -245,7 +241,7 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
         ...chatState.value,
         messages: [...chatState.value.messages, message],
       };
-      bumpConversationTimestamp(convo.id);
+      bumpChatTimestamp(chat.id);
       resetDraft();
     });
   },

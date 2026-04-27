@@ -4,23 +4,23 @@
 // Idempotent: a user message is "handled" when the doc already
 // carries an assistant message whose parentId points at it.
 //
-// Conversations own a list of contextRefs that accumulate as the
-// user sends messages from different pages. The relay pulls every
-// entry on the conversation's contextRefs list into the prompt.
-// History window: messages in the SAME conversation, last 30
-// minutes up to the target, capped at 20 entries.
+// Chats own a list of contextRefs that accumulate as the user sends
+// messages from different pages. The relay pulls every entry on the
+// chat's contextRefs list into the prompt. History window: messages
+// in the SAME chat, last 30 minutes up to the target, capped at 20
+// entries.
 //
 // Per-turn model routing: `pickModel` picks Sonnet by default, Opus
 // for long or thinking-triggered prompts, Haiku for short / quick
-// turns. A conversation's `pinnedModel` (set from the widget) always
-// wins. Usage (tokens, cost) is recorded on the assistant message's
-// extras block so the UI can show a per-message badge and a rolling
-// conversation total.
+// turns. A chat's `pinnedModel` (set from the widget) always wins.
+// Usage (tokens, cost) is recorded on the assistant message's extras
+// block so the UI can show a per-message badge and a rolling chat
+// total.
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type {
   AssistantMessageExtras,
-  ConversationExtras,
+  ChatExtras,
   LeaderLease,
   ModelId,
   TurnError,
@@ -57,7 +57,7 @@ interface ContextRef {
   details?: Record<string, unknown>;
 }
 
-interface Conversation extends ConversationExtras {
+interface Chat extends ChatExtras {
   [key: string]: unknown;
   id: string;
   title?: string;
@@ -71,7 +71,7 @@ interface Conversation extends ConversationExtras {
 interface Message extends AssistantMessageExtras {
   [key: string]: unknown;
   id: string;
-  conversationId: string;
+  chatId: string;
   sender: Sender;
   senderUserId: string;
   senderDeviceId: string;
@@ -84,7 +84,7 @@ interface Message extends AssistantMessageExtras {
 
 interface ChatDoc {
   [key: string]: unknown;
-  conversations: Conversation[];
+  chats: Chat[];
   messages: Message[];
 }
 
@@ -163,9 +163,9 @@ function envModel(): ModelId | undefined {
   }
 }
 
-function pickModel(convo: Conversation | undefined, target: Message): ModelId {
-  if (convo?.pinnedModel) {
-    return convo.pinnedModel;
+function pickModel(chat: Chat | undefined, target: Message): ModelId {
+  if (chat?.pinnedModel) {
+    return chat.pinnedModel;
   }
   const text = target.text;
   if (text.length < 20) {
@@ -198,7 +198,7 @@ function historyFor(doc: ChatDoc, target: Message): Message[] {
   const cutoff = targetMs - HISTORY_WINDOW_MS;
   return doc.messages
     .filter((m) => {
-      if (m.conversationId !== target.conversationId) {
+      if (m.chatId !== target.chatId) {
         return false;
       }
       const ms = new Date(m.createdAt).getTime();
@@ -291,21 +291,21 @@ function resolveContext(ref: ContextRef): string {
   return '';
 }
 
-function conversationContext(doc: ChatDoc, conversationId: string): string {
-  const convo = doc.conversations.find((c) => c.id === conversationId);
-  if (!convo || convo.contextRefs.length === 0) {
+function chatContext(doc: ChatDoc, chatId: string): string {
+  const chat = doc.chats.find((c) => c.id === chatId);
+  if (!chat || chat.contextRefs.length === 0) {
     return '';
   }
-  const blocks = convo.contextRefs.map((ref) => {
+  const blocks = chat.contextRefs.map((ref) => {
     const body = resolveContext(ref);
     return `— ${ref.kind}${ref.id ? ` ${ref.id}` : ''} (${ref.label}):\n${body}`;
   });
-  return `\n\nContext (conversation-wide):\n${blocks.join('\n\n')}`;
+  return `\n\nContext (chat-wide):\n${blocks.join('\n\n')}`;
 }
 
 function buildPrompt(doc: ChatDoc, target: Message): string {
   const history = renderHistory(historyFor(doc, target));
-  const convoContext = conversationContext(doc, target.conversationId);
+  const ctxBlock = chatContext(doc, target.chatId);
   const msgContext = target.contextRef
     ? `\n\nMessage-specific context — ${target.contextRef.kind}${target.contextRef.id ? ` ${target.contextRef.id}` : ''}:\n${resolveContext(target.contextRef)}`
     : '';
@@ -314,9 +314,9 @@ function buildPrompt(doc: ChatDoc, target: Message): string {
     'Messages are attributed; the latest user message is the one to answer.',
     'Keep responses concise and practical — readers are likely on a phone.',
     'You have access to the laptop (files, git, commands).',
-    convoContext,
+    ctxBlock,
     msgContext,
-    `\nConversation so far:\n${history}`,
+    `\nChat so far:\n${history}`,
     `\nLatest user message (from ${target.senderUserId.slice(0, 8)}): ${target.text}`,
     '\nRespond. If asked to do something on the laptop, do it and report back briefly.',
   ].join('\n');
@@ -483,7 +483,7 @@ function monthlyCostCapUsd(): number | undefined {
  * explicitly set the cap, not asked us to hard-refuse above it. */
 function writeCapWarning(
   chatSignal: ReturnType<typeof $meshState<ChatDoc>>,
-  convoId: string,
+  chatId: string,
   selfUserId: string,
   selfPeerId: string,
   mtd: number,
@@ -492,7 +492,7 @@ function writeCapWarning(
   const nowIso = new Date().toISOString();
   const warning: Message = {
     id: randomId(),
-    conversationId: convoId,
+    chatId,
     sender: 'assistant',
     senderUserId: selfUserId,
     senderDeviceId: selfPeerId,
@@ -587,7 +587,7 @@ function sweepStaleTurns(
   const nowIso = new Date().toISOString();
   const errors: Message[] = toMark.map((m) => ({
     id: randomId(),
-    conversationId: m.conversationId,
+    chatId: m.chatId,
     sender: 'assistant',
     senderUserId: selfUserId,
     senderDeviceId: selfPeerId,
@@ -614,8 +614,8 @@ function sweepStaleTurns(
   return toMark.length;
 }
 
-function findConversation(doc: ChatDoc, conversationId: string): Conversation | undefined {
-  return doc.conversations.find((c) => c.id === conversationId);
+function findChat(doc: ChatDoc, chatId: string): Chat | undefined {
+  return doc.chats.find((c) => c.id === chatId);
 }
 
 async function processOne(
@@ -625,7 +625,7 @@ async function processOne(
   selfPeerId: string
 ): Promise<void> {
   const prompt = buildPrompt(chatSignal.value, target);
-  const model = pickModel(findConversation(chatSignal.value, target.conversationId), target);
+  const model = pickModel(findChat(chatSignal.value, target.chatId), target);
   const startedAt = new Date().toISOString();
   process.stdout.write(
     `[chat serve] processing ${target.id} via ${model} (${target.text.slice(0, 60).replace(/\n/g, ' ')}…)\n`
@@ -641,7 +641,7 @@ async function processOne(
     });
   const reply: Message = {
     id: randomId(),
-    conversationId: target.conversationId,
+    chatId: target.chatId,
     sender: 'assistant',
     senderUserId: selfUserId,
     senderDeviceId: selfPeerId,
@@ -655,8 +655,8 @@ async function processOne(
   };
   chatSignal.value = {
     ...chatSignal.value,
-    conversations: chatSignal.value.conversations.map((c) =>
-      c.id === target.conversationId
+    chats: chatSignal.value.chats.map((c) =>
+      c.id === target.chatId
         ? {
             ...c,
             updatedAt: reply.createdAt,
@@ -675,31 +675,31 @@ async function processOne(
   );
 }
 
-/** Open `chat:main` and backfill missing top-level fields before
- * returning the signal. polly's $meshState seeds defaults on
- * doc creation only; older meshes that predate the conversation
- * entity carry `{ messages }` without `conversations`, so any read
- * of `value.conversations.length` blows up. Repair on load keeps
- * existing data intact. */
+/** Open `chat:main` and reset on a pre-rename shape. Older meshes
+ * (and the brief CLI-only window before the widget shipped) used
+ * `{ conversations, messages }` with `Message.conversationId`. We
+ * wipe rather than migrate — the test pings from that window aren't
+ * worth carrying forward. */
 async function openChatDoc(): Promise<ReturnType<typeof $meshState<ChatDoc>>> {
-  const chatSignal = $meshState<ChatDoc>('chat:main', { conversations: [], messages: [] });
+  const chatSignal = $meshState<ChatDoc>('chat:main', { chats: [], messages: [] });
   await chatSignal.loaded;
-  const v = chatSignal.value;
-  if (v.conversations === undefined || v.messages === undefined) {
-    chatSignal.value = {
-      ...v,
-      conversations: v.conversations ?? [],
-      messages: v.messages ?? [],
-    };
+  const v = chatSignal.value as unknown as Record<string, unknown>;
+  const firstMsg =
+    Array.isArray(v.messages) && v.messages.length > 0
+      ? (v.messages[0] as unknown as Record<string, unknown>)
+      : undefined;
+  const hasOldShape = v.conversations !== undefined || firstMsg?.conversationId !== undefined;
+  if (hasOldShape || v.chats === undefined || v.messages === undefined) {
+    chatSignal.value = { chats: [], messages: [] };
     await flushOutgoing(500);
   }
   return chatSignal;
 }
 
 /** `fairfox chat send <text>` — writes a pending user message into
- * chat:main. Creates a fresh conversation when there is no active
- * one (the CLI has no notion of "active conversation" the way the
- * widget does, so every invocation starts a new one). Primarily for
+ * chat:main. Creates a fresh chat when there is no active one (the
+ * CLI has no notion of "active chat" the way the widget does, so
+ * every invocation starts a new one). Primarily for
  * scripts/e2e-chat-relay.ts, but a useful standalone way to drop a
  * message into the assistant thread from a shell. */
 export async function chatSend(text: string): Promise<number> {
@@ -717,9 +717,10 @@ export async function chatSend(text: string): Promise<number> {
   const peerId = derivePeerId(keyring.identity.publicKey);
   const client = await openMeshClient({ peerId });
   try {
+    await waitForPeer(client, 8000);
     const chatSignal = await openChatDoc();
     const now = new Date().toISOString();
-    const convo: Conversation = {
+    const chat: Chat = {
       id: randomId(),
       title: text.slice(0, 60),
       createdAt: now,
@@ -729,7 +730,7 @@ export async function chatSend(text: string): Promise<number> {
     };
     const message: Message = {
       id: randomId(),
-      conversationId: convo.id,
+      chatId: chat.id,
       sender: 'user',
       senderUserId: identity.userId,
       senderDeviceId: peerId,
@@ -738,11 +739,11 @@ export async function chatSend(text: string): Promise<number> {
       createdAt: now,
     };
     chatSignal.value = {
-      conversations: [...chatSignal.value.conversations, convo],
+      chats: [...chatSignal.value.chats, chat],
       messages: [...chatSignal.value.messages, message],
     };
-    await flushOutgoing(500);
-    process.stdout.write(`wrote message ${message.id} in conversation ${convo.id}\n`);
+    await flushOutgoing(2500);
+    process.stdout.write(`wrote message ${message.id} in chat ${chat.id}\n`);
     return 0;
   } finally {
     try {
@@ -803,7 +804,7 @@ export async function chatServe(): Promise<number> {
   await waitForPeer(client, 8000);
   const chatSignal = await openChatDoc();
   process.stdout.write(
-    `[chat serve] chat:main loaded — ${chatSignal.value.conversations.length} conversation(s), ${chatSignal.value.messages.length} message(s)\n`
+    `[chat serve] chat:main loaded — ${chatSignal.value.chats.length} chat(s), ${chatSignal.value.messages.length} message(s)\n`
   );
 
   const leaseSignal = $meshState<LeaderLease>(LEADER_LEASE_DOC_ID, {
@@ -842,13 +843,13 @@ export async function chatServe(): Promise<number> {
     try {
       const next = pickNextPending(chatSignal.value);
       if (next) {
-        const convo = findConversation(chatSignal.value, next.conversationId);
-        const chosenModel = pickModel(convo, next);
+        const chat = findChat(chatSignal.value, next.chatId);
+        const chosenModel = pickModel(chat, next);
         if (cap !== undefined) {
           const mtd = monthCostSoFar(chatSignal.value, monthKey(next.createdAt));
           const estimate = estimatedUsdForTurn(next.text, chosenModel);
           if (mtd + estimate >= cap) {
-            writeCapWarning(chatSignal, next.conversationId, identity.userId, peerId, mtd, cap);
+            writeCapWarning(chatSignal, next.chatId, identity.userId, peerId, mtd, cap);
             await flushOutgoing(500);
           }
         }
@@ -878,7 +879,7 @@ export async function chatServe(): Promise<number> {
     const held =
       lease.daemonId === daemonId ? 'self' : lease.daemonId.length > 0 ? 'other' : 'none';
     process.stdout.write(
-      `[${now}] peers=${peers} convos=${chatSignal.value.conversations.length} messages=${msgs.length} pending=${pending} lease=${held}\n`
+      `[${now}] peers=${peers} chats=${chatSignal.value.chats.length} messages=${msgs.length} pending=${pending} lease=${held}\n`
     );
   }, 10_000);
   void tick();
