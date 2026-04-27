@@ -152,6 +152,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     draftText.value = ctx.data.value ?? '';
   },
 
+  'chat.reload-for-self-endorse': () => {
+    if (typeof window !== 'undefined') {
+      window.location.reload();
+    }
+  },
+
   // Chat lifecycle ----------------------------------------------
   'chat.new': () => {
     activeChatId.value = null;

@@ -299,7 +299,35 @@ function Composer({ selfPeerId }: { selfPeerId: string | null }) {
     );
   }
   if (!selfPeerId) {
-    return null;
+    // The user is paired (identity is present) but mesh:devices has
+    // no row binding our peerId to our userId. This is the
+    // post-pair IndexedDB-flush race: the device-endorsement write
+    // didn't land before the reload, and in-memory hydration came
+    // back without it. Returning null here would silently swallow
+    // the failure — the panel would mount with no input and the
+    // user would think they sent something they never wrote.
+    // Surface the state and offer the repair the boot effect would
+    // apply automatically (re-run selfEndorseDevice via reload, or
+    // a more targeted heal on the next devicesState tick).
+    return (
+      <Layout rows="auto auto" gap="0.35rem" padding="0.5rem">
+        <p
+          style={{
+            margin: 0,
+            color: 'var(--polly-status-warning-text)',
+            fontSize: '0.85rem',
+          }}
+        >
+          Setting up this device — your endorsement hasn't replicated yet. Reload to repair.
+        </p>
+        <Button
+          label="Reload"
+          tier="secondary"
+          size="small"
+          data-action="chat.reload-for-self-endorse"
+        />
+      </Layout>
+    );
   }
   const live = pinnedContext.value ?? currentPageContext.value;
   const pinned = pinnedContext.value !== null;

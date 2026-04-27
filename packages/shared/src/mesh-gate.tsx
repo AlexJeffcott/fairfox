@@ -96,10 +96,10 @@ interface MeshGateProps {
  * false on everything because `liveUser()` can't find the id. The
  * repair is idempotent — if someone else's copy of the entry shows
  * up later via sync, CRDT merge handles the duplicate. */
-async function selfHealIdentity(): Promise<void> {
+async function selfHealIdentity(): Promise<boolean> {
   const identity = userIdentity.value;
   if (!identity) {
-    return;
+    return false;
   }
   await Promise.all([usersState.loaded, devicesState.loaded]);
   if (!usersState.value.users[identity.userId]) {
@@ -134,10 +134,15 @@ async function selfHealIdentity(): Promise<void> {
     // never updates its own row, and its Peers-tab entry reads as
     // stale "last seen 16h ago" for as long as the PWA is open.
     touchSelfDeviceEntry(peerId, { agent: 'browser' });
-  } else {
-    touchSelfDeviceEntry(peerId, { agent: 'browser' });
-    addEndorsementToDevice(peerId, signEndorsement(identity, peerId));
+    return true;
   }
+  touchSelfDeviceEntry(peerId, { agent: 'browser' });
+  addEndorsementToDevice(peerId, signEndorsement(identity, peerId));
+  // Confirm the write landed in memory before declaring success.
+  // upsertDeviceEntry is synchronous over the signal, so the row is
+  // present immediately after addEndorsementToDevice returns.
+  const after = devicesState.value.devices[peerId];
+  return (after?.endorsements ?? []).some((e) => e.userId === identity.userId);
 }
 
 /** Minimal "I'm still here" heartbeat for a device with no user
@@ -153,10 +158,16 @@ async function bumpSelfLastSeen(): Promise<void> {
   touchSelfDeviceEntry(peerId, { agent: 'browser' });
 }
 
-/** Module-level guard so the once-per-process heal/bump fires
- * exactly once even if the effect's dependencies re-tick many times
- * before userIdentity settles. */
-let selfHeartbeatFired = false;
+/** Module-level guards. The plain heartbeat (`bumpSelfLastSeen`) is
+ * one-and-done — it just wants a fresh lastSeenAt on mount. The
+ * heal path is "fire until our row is endorsed", because the
+ * post-pair IndexedDB flush race can leave devicesState rehydrated
+ * without our self-endorsement and only a re-run lands the row in
+ * memory. The retry guard tracks whether we've successfully healed
+ * (signedByMe == true seen at least once) so subsequent re-ticks
+ * skip the work. */
+let bumpFired = false;
+let selfHealCompletedForUserId: string | null = null;
 
 let meshGateEffectsInstalled = false;
 
@@ -173,24 +184,44 @@ export function installMeshGateEffects(): void {
   meshGateEffectsInstalled = true;
 
   // The self-device heartbeat. Waits for userIdentity to settle
-  // (leave `undefined`) before firing once. Previously inline in
+  // (leave `undefined`) before firing. Previously inline in
   // useSignalEffect — an earlier version lived inside the reactive
   // harvest block below and caused an infinite write loop because
   // touchSelfDeviceEntry rewrites devicesState, which re-ticked the
   // effect. Splitting it out keeps that fix intact.
+  //
+  // Heal path subscribes to devicesState too: post-pair, our
+  // self-endorsement may not be in the rehydrated doc, in which
+  // case selfHealIdentity adds it. The retry guard
+  // (selfHealCompletedForUserId) flips once we've seen our
+  // endorsement settle — subsequent ticks skip the work, so
+  // touchSelfDeviceEntry can't loop. The bump path stays
+  // one-and-done because it doesn't need to monitor doc state.
   effect(() => {
-    if (selfHeartbeatFired) {
-      return;
-    }
     if (userIdentity.value === undefined) {
       return;
     }
-    selfHeartbeatFired = true;
-    if (userIdentity.value) {
-      void selfHealIdentity();
-    } else {
+    const identity = userIdentity.value;
+    if (!identity) {
+      if (bumpFired) {
+        return;
+      }
+      bumpFired = true;
       void bumpSelfLastSeen();
+      return;
     }
+    // Read devicesState so this effect re-ticks when it changes —
+    // that is what gives selfHealIdentity another chance after the
+    // post-pair reload's hydrate races the IDB flush.
+    void devicesState.value;
+    if (selfHealCompletedForUserId === identity.userId) {
+      return;
+    }
+    void selfHealIdentity().then((settled) => {
+      if (settled) {
+        selfHealCompletedForUserId = identity.userId;
+      }
+    });
   });
 
   effect(() => {

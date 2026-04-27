@@ -331,20 +331,27 @@ function advanceAfter(step: PairingStep): void {
     // reconstructs the mesh stack with the new keyring and the
     // peers-present / peer-joined notifications do the rest.
     //
-    // A short fence before the reload gives Automerge's IndexedDB
-    // storage a chance to flush the pending mesh:users /
-    // mesh:devices writes from the invite-accept path. Without it
-    // Leo's UserEntry and his device row endorsement can vanish
-    // behind the reload — the subsequent post-reload render then
-    // shows the synced-from-admin state only, which is missing our
-    // own rows. 1 s covers even slow machines without being
-    // noticeable; the earlier 200 ms cushion was tuned for a
-    // lighter write load and proved too tight for the full
-    // users+permissions flow.
+    // Before reloading, await the Automerge repo's storage flush so
+    // the pending mesh:users / mesh:devices writes from the
+    // invite-accept path are durable in IndexedDB. The earlier
+    // setTimeout-based cushion (200 ms, then 1 s) raced the flush
+    // and routinely lost the device's self-endorsement on slow
+    // disks — post-reload hydration would read pre-flush IDB and
+    // useSelfPeerId would stay null indefinitely (silently breaking
+    // ChatWidget's Composer, which gates on that signal). repo.flush
+    // resolves once every dirty doc is written, no guesswork.
     if (typeof window !== 'undefined') {
-      setTimeout(() => {
+      void (async () => {
+        if (mesh) {
+          try {
+            await mesh.repo.flush();
+          } catch {
+            // best-effort; if flush rejects we still reload — the
+            // subsequent selfHeal effect will attempt repair.
+          }
+        }
         window.location.reload();
-      }, 1000);
+      })();
     }
     return;
   }
