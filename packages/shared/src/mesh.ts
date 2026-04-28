@@ -36,6 +36,12 @@ const PRESENCE_POLL_MS = 2_000;
 export async function createMeshConnection(
   options: CreateMeshConnectionOptions
 ): Promise<MeshConnection> {
+  // Lazy-import the connection-state signals so the module-init
+  // graph stays acyclic — mesh-connection-state.ts imports `mesh`
+  // from ensure-mesh.ts, which awaits this function.
+  const { signalingConnected, lastSignalingErrorAt, lastSignalingErrorMessage } = await import(
+    '#src/mesh-connection-state.ts'
+  );
   const client = await createMeshClient({
     signaling: {
       url: options.signalingUrl,
@@ -43,12 +49,29 @@ export async function createMeshConnection(
       onCustomFrame: (frame) => {
         dispatchCustomFrame(frame);
       },
+      // Polly types onError as `(reason: string, targetPeerId?:
+      // string) => void` — a server-emitted error string, not a
+      // JS Error. Capture the reason so the UI can surface it
+      // alongside the disconnected badge.
+      onError: (reason) => {
+        lastSignalingErrorAt.value = new Date().toISOString();
+        lastSignalingErrorMessage.value = reason;
+      },
     },
     keyring: options.keyring,
     repoStorage: new IndexedDBStorageAdapter('fairfox-mesh'),
   });
+  // Polly's createMeshClient typed surface only exposes onError /
+  // onCustomFrame for the signaling client. onOpen/onClose are
+  // accepted by MeshSignalingClient's constructor but private once
+  // set. So we poll `isConnected` instead — the getter is just
+  // `joined && socket.readyState === OPEN`, no IO. Same cadence
+  // as peers-presence; bundling them feels right since both are
+  // transport health.
+  signalingConnected.value = client.signaling.isConnected;
   const poll = setInterval(() => {
     markPeersPresent(client.repo.peers);
+    signalingConnected.value = client.signaling.isConnected;
   }, PRESENCE_POLL_MS);
   // Prime the signal immediately so the initial render doesn't show
   // every paired peer as offline for two seconds while the first tick
@@ -60,6 +83,7 @@ export async function createMeshConnection(
     disconnect: () => {
       clearInterval(poll);
       resetPeersPresent();
+      signalingConnected.value = false;
       void client.close();
     },
   };

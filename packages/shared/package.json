@@ -9,6 +9,8 @@
     "./keyring": "./src/keyring.ts",
     "./pairing": "./src/pairing.ts",
     "./mesh": "./src/mesh.ts",
+    "./mesh-connection-state": "./src/mesh-connection-state.ts",
+    "./connection-recovery": "./src/connection-recovery.ts",
     "./mesh-gate": "./src/mesh-gate.tsx",
     "./require-paired": "./src/require-paired.tsx",
     "./pwa-install": "./src/pwa-install.tsx",

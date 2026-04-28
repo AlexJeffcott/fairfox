@@ -8,6 +8,10 @@
 import { ActionInput, Button, Layout, Surface } from '@fairfox/polly/ui';
 import type { RelayHealth } from '@fairfox/shared/assistant-state';
 import { devicesState } from '@fairfox/shared/devices-state';
+import {
+  lastSignalingErrorMessage,
+  signalingConnected,
+} from '@fairfox/shared/mesh-connection-state';
 import { currentPageContext, type PageContext } from '@fairfox/shared/page-context';
 import { userIdentity } from '@fairfox/shared/user-identity-state';
 import { usersState } from '@fairfox/shared/users-state';
@@ -376,7 +380,11 @@ function Composer({ selfPeerId }: { selfPeerId: string | null }) {
 const RELAY_LIVE_MS = 30_000;
 const RELAY_STALE_MS = 5 * 60 * 1000;
 
-type RelayBadgeKind = 'live' | 'stale' | 'gone' | 'none';
+/** "disconnected" wins over chat:health-derived states. If our own
+ * signalling WebSocket is down, the relay-staleness rendering is
+ * misleading — chat:health rows are stale because we are not
+ * receiving anything, not because the relay stopped writing. */
+type RelayBadgeKind = 'disconnected' | 'live' | 'stale' | 'gone' | 'none';
 
 interface RelayBadgeState {
   readonly kind: RelayBadgeKind;
@@ -385,6 +393,12 @@ interface RelayBadgeState {
 }
 
 function relayBadgeState(): RelayBadgeState {
+  if (!signalingConnected.value) {
+    // Reading chatHealth on top of a dead signalling channel
+    // would render a misleading "stale" — the relay may be fine,
+    // we just aren't hearing it. Surface the actual problem.
+    return { kind: 'disconnected' };
+  }
   const relays = Object.values(chatHealth.value.relays);
   if (relays.length === 0) {
     return { kind: 'none' };
@@ -423,6 +437,28 @@ function formatAge(ms: number): string {
 
 function RelayBadge() {
   const state = relayBadgeState();
+  if (state.kind === 'disconnected') {
+    const errorMsg = lastSignalingErrorMessage.value;
+    const tip = errorMsg
+      ? `Reconnecting to the mesh… last error: ${errorMsg}`
+      : 'Reconnecting to the mesh…';
+    return (
+      <span
+        title={tip}
+        style={{
+          fontSize: '0.7rem',
+          padding: '0.1rem 0.4rem',
+          borderRadius: 'var(--polly-radius-full)',
+          background: 'var(--polly-status-warning-bg)',
+          color: 'var(--polly-status-warning-text)',
+          fontWeight: 500,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        reconnecting…
+      </span>
+    );
+  }
   if (state.kind === 'none') {
     return (
       <span
