@@ -6,6 +6,7 @@
 // chip, and a small header with new / close controls.
 
 import { ActionInput, Button, Layout, Surface } from '@fairfox/polly/ui';
+import type { RelayHealth } from '@fairfox/shared/assistant-state';
 import { devicesState } from '@fairfox/shared/devices-state';
 import { currentPageContext, type PageContext } from '@fairfox/shared/page-context';
 import { userIdentity } from '@fairfox/shared/user-identity-state';
@@ -13,6 +14,7 @@ import { usersState } from '@fairfox/shared/users-state';
 import type { Chat, Message } from '#src/client/state.ts';
 import {
   activeChatId,
+  chatHealth,
   chatState,
   draftText,
   injectedOverlay,
@@ -368,11 +370,128 @@ function Composer({ selfPeerId }: { selfPeerId: string | null }) {
   );
 }
 
+/** A relay is "live" if it ticked within 30 s, "stale" if within
+ * 5 min, otherwise "gone". 30 s matches the relay's heartbeat
+ * interval (10 s) plus a 3x cushion for slow networks. */
+const RELAY_LIVE_MS = 30_000;
+const RELAY_STALE_MS = 5 * 60 * 1000;
+
+type RelayBadgeKind = 'live' | 'stale' | 'gone' | 'none';
+
+interface RelayBadgeState {
+  readonly kind: RelayBadgeKind;
+  readonly relay?: RelayHealth;
+  readonly ageMs?: number;
+}
+
+function relayBadgeState(): RelayBadgeState {
+  const relays = Object.values(chatHealth.value.relays);
+  if (relays.length === 0) {
+    return { kind: 'none' };
+  }
+  const now = Date.now();
+  let best: RelayHealth | undefined;
+  let bestAge = Number.POSITIVE_INFINITY;
+  for (const r of relays) {
+    const age = now - new Date(r.lastTickAt).getTime();
+    if (age < bestAge) {
+      bestAge = age;
+      best = r;
+    }
+  }
+  if (!best) {
+    return { kind: 'none' };
+  }
+  if (bestAge <= RELAY_LIVE_MS) {
+    return { kind: 'live', relay: best, ageMs: bestAge };
+  }
+  if (bestAge <= RELAY_STALE_MS) {
+    return { kind: 'stale', relay: best, ageMs: bestAge };
+  }
+  return { kind: 'gone', relay: best, ageMs: bestAge };
+}
+
+function formatAge(ms: number): string {
+  if (ms < 60_000) {
+    return `${Math.max(1, Math.round(ms / 1000))}s ago`;
+  }
+  if (ms < 60 * 60_000) {
+    return `${Math.round(ms / 60_000)}m ago`;
+  }
+  return `${Math.round(ms / (60 * 60_000))}h ago`;
+}
+
+function RelayBadge() {
+  const state = relayBadgeState();
+  if (state.kind === 'none') {
+    return (
+      <span
+        title="No laptop is running `fairfox chat serve` on this mesh. Messages will pile up as pending until one starts."
+        style={{
+          fontSize: '0.7rem',
+          padding: '0.1rem 0.4rem',
+          borderRadius: 'var(--polly-radius-full)',
+          background: 'var(--polly-status-warning-bg)',
+          color: 'var(--polly-status-warning-text)',
+          fontWeight: 500,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        no relay
+      </span>
+    );
+  }
+  const r = state.relay;
+  if (!r) {
+    return null;
+  }
+  const ageMs = state.ageMs ?? 0;
+  const errLabel = r.lastErrorKind ? ` · last error: ${r.lastErrorKind}` : '';
+  const tooltip = `relay ${r.peerId.slice(0, 8)} · v${r.version}\nstarted ${r.startedAt}\nlast tick ${formatAge(ageMs)}\npending ${r.pending} · peers ${r.peers}${errLabel}`;
+  if (state.kind === 'live') {
+    return (
+      <span
+        title={tooltip}
+        style={{
+          fontSize: '0.7rem',
+          padding: '0.1rem 0.4rem',
+          borderRadius: 'var(--polly-radius-full)',
+          background: r.lastErrorKind
+            ? 'var(--polly-status-warning-bg)'
+            : 'var(--polly-status-success-bg, #dcfce7)',
+          color: r.lastErrorKind ? 'var(--polly-status-warning-text)' : '#166534',
+          fontWeight: 500,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        relay live{r.pending > 0 ? ` · ${r.pending} pending` : ''}
+      </span>
+    );
+  }
+  return (
+    <span
+      title={tooltip}
+      style={{
+        fontSize: '0.7rem',
+        padding: '0.1rem 0.4rem',
+        borderRadius: 'var(--polly-radius-full)',
+        background: 'var(--polly-status-warning-bg)',
+        color: 'var(--polly-status-warning-text)',
+        fontWeight: 500,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      relay {state.kind === 'stale' ? 'stale' : 'gone'} · {formatAge(ageMs)}
+    </span>
+  );
+}
+
 function ChatHeader({ chat }: { chat: Chat | undefined }) {
   const title = chat?.title ?? 'New chat';
   return (
-    <Layout columns="1fr auto auto" gap="0.35rem" alignItems="center">
+    <Layout columns="1fr auto auto auto" gap="0.35rem" alignItems="center">
       <strong style={{ fontSize: '0.95rem' }}>{title}</strong>
+      <RelayBadge />
       <Button
         label="New"
         tier="tertiary"

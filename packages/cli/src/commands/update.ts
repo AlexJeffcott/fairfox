@@ -49,7 +49,7 @@ function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
 }
 
-function localVersion(): string {
+export function localVersion(): string {
   if (typeof __FAIRFOX_CLI_VERSION__ === 'string') {
     return __FAIRFOX_CLI_VERSION__;
   }

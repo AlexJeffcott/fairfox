@@ -36,6 +36,7 @@ import { agendaAdd, agendaList } from '#src/commands/agenda.ts';
 import { chatDump, chatSend, chatServe } from '#src/commands/chat.ts';
 import { daemon } from '#src/commands/daemon.ts';
 import { deploy } from '#src/commands/deploy.ts';
+import { doctor } from '#src/commands/doctor.ts';
 import { mesh } from '#src/commands/mesh.ts';
 import { pair } from '#src/commands/pair.ts';
 import { peers } from '#src/commands/peers.ts';
@@ -75,6 +76,7 @@ function printUsage(): void {
       '  fairfox deploy status         List recent Railway deployments.',
       '  fairfox deploy logs           Tail Railway logs for the current service.',
       '  fairfox update                Fetch the latest CLI bundle if it has drifted.',
+      '  fairfox doctor                Diagnose chat: process, mesh, relay health, pendings.',
       '  fairfox chat serve            Reply to pending chat messages via `claude -p`.',
       '  fairfox daemon install        Install launchd/systemd unit; keep the mesh open.',
       '  fairfox daemon start          Start the installed unit (use --foreground to run).',
@@ -143,6 +145,10 @@ function main(): Promise<number> {
 
   if (subcommand === 'update') {
     return update();
+  }
+
+  if (subcommand === 'doctor') {
+    return doctor();
   }
 
   if (subcommand === 'chat') {

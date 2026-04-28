@@ -21,12 +21,21 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import type {
   AssistantMessageExtras,
   ChatExtras,
+  ChatHealth,
   LeaderLease,
   ModelId,
+  RelayHealth,
   TurnError,
 } from '@fairfox/shared/assistant-state';
-import { computeCostUsd, LEADER_LEASE_DOC_ID, parseModelId } from '@fairfox/shared/assistant-state';
+import {
+  CHAT_HEALTH_DOC_ID,
+  CHAT_HEALTH_INITIAL,
+  computeCostUsd,
+  LEADER_LEASE_DOC_ID,
+  parseModelId,
+} from '@fairfox/shared/assistant-state';
 import { $meshState } from '@fairfox/shared/polly';
+import { localVersion } from '#src/commands/update.ts';
 import {
   derivePeerId,
   flushOutgoing,
@@ -618,15 +627,23 @@ function findChat(doc: ChatDoc, chatId: string): Chat | undefined {
   return doc.chats.find((c) => c.id === chatId);
 }
 
+interface ProcessResult {
+  readonly replyId: string;
+  readonly replyAt: string;
+  readonly durationMs: number;
+  readonly error?: TurnError;
+}
+
 async function processOne(
   chatSignal: ReturnType<typeof $meshState<ChatDoc>>,
   target: Message,
   selfUserId: string,
   selfPeerId: string
-): Promise<void> {
+): Promise<ProcessResult> {
   const prompt = buildPrompt(chatSignal.value, target);
   const model = pickModel(findChat(chatSignal.value, target.chatId), target);
   const startedAt = new Date().toISOString();
+  const startedMs = Date.now();
   process.stdout.write(
     `[chat serve] processing ${target.id} via ${model} (${target.text.slice(0, 60).replace(/\n/g, ' ')}…)\n`
   );
@@ -673,6 +690,12 @@ async function processOne(
   process.stdout.write(
     `[chat serve] replied to ${target.id} (${replyText.length} chars · $${finalCost.toFixed(4)})\n`
   );
+  return {
+    replyId: reply.id,
+    replyAt: reply.createdAt,
+    durationMs: Date.now() - startedMs,
+    error: extras.error,
+  };
 }
 
 /** Open `chat:main` and reset on a pre-rename shape. Older meshes
@@ -817,6 +840,40 @@ export async function chatServe(): Promise<number> {
   const daemonId = randomId();
   const leaderCtx: LeaderContext = { daemonId, deviceId: peerId };
 
+  // chat:health — self-reported relay state. Every running relay
+  // upserts its own row keyed by peerId on each heartbeat tick. The
+  // widget reads this doc and renders a "relay live / stale / none"
+  // badge so the user can see at a glance whether their laptop is
+  // ready to reply, without having to ssh in and pgrep. A crashed
+  // relay leaves a stale row; a manual `fairfox chat clear-health`
+  // could prune it later, but stale-with-old-lastTickAt is more
+  // informative than missing.
+  const healthSignal = $meshState<ChatHealth>(CHAT_HEALTH_DOC_ID, CHAT_HEALTH_INITIAL);
+  await healthSignal.loaded;
+  const startedAt = new Date().toISOString();
+  const cliVersion = localVersion();
+
+  function writeHealth(patch: Partial<RelayHealth>): void {
+    const prev: RelayHealth = healthSignal.value.relays[peerId] ?? {
+      peerId,
+      daemonId,
+      version: cliVersion,
+      startedAt,
+      lastTickAt: startedAt,
+      peers: 0,
+      pending: 0,
+      chats: 0,
+      messages: 0,
+      leader: false,
+    };
+    const next: RelayHealth = { ...prev, ...patch, peerId, daemonId, version: cliVersion };
+    healthSignal.value = {
+      ...healthSignal.value,
+      relays: { ...healthSignal.value.relays, [peerId]: next },
+    };
+  }
+  writeHealth({ startedAt, lastTickAt: startedAt });
+
   // Startup sweep: mark crashed-mid-turn messages with daemon-restarted
   // so the widget can surface a regenerate affordance instead of
   // leaving the user staring at a forever-pending spinner.
@@ -853,7 +910,23 @@ export async function chatServe(): Promise<number> {
             await flushOutgoing(500);
           }
         }
-        await processOne(chatSignal, next, identity.userId, peerId);
+        const result = await processOne(chatSignal, next, identity.userId, peerId);
+        if (result.error) {
+          writeHealth({
+            lastErrorAt: result.replyAt,
+            lastErrorKind: result.error.kind,
+            lastErrorMessage:
+              'message' in result.error && typeof result.error.message === 'string'
+                ? result.error.message.slice(0, 200)
+                : undefined,
+          });
+        } else {
+          writeHealth({
+            lastRepliedAt: result.replyAt,
+            lastReplyId: result.replyId,
+            lastReplyDurationMs: result.durationMs,
+          });
+        }
         await flushOutgoing(1500);
       }
     } finally {
@@ -874,13 +947,22 @@ export async function chatServe(): Promise<number> {
     const pending = msgs.filter(
       (m) => m.sender === 'user' && m.pending && !hasAssistantReply(chatSignal.value, m.id)
     ).length;
-    const now = new Date().toISOString().slice(11, 19);
+    const nowIso = new Date().toISOString();
+    const now = nowIso.slice(11, 19);
     const lease = leaseSignal.value;
     const held =
       lease.daemonId === daemonId ? 'self' : lease.daemonId.length > 0 ? 'other' : 'none';
     process.stdout.write(
       `[${now}] peers=${peers} chats=${chatSignal.value.chats.length} messages=${msgs.length} pending=${pending} lease=${held}\n`
     );
+    writeHealth({
+      lastTickAt: nowIso,
+      peers,
+      pending,
+      chats: chatSignal.value.chats.length,
+      messages: msgs.length,
+      leader: lease.daemonId === daemonId,
+    });
   }, 10_000);
   void tick();
 

@@ -157,6 +157,47 @@ export interface ChatExtras {
 // --- mesh doc ids ----------------------------------------------
 export const SESSIONS_ACTIVE_DOC_ID = 'sessions:active';
 export const LEADER_LEASE_DOC_ID = 'daemon:leader';
+export const CHAT_HEALTH_DOC_ID = 'chat:health';
+
+// --- chat:health -----------------------------------------------
+//
+// Self-reported relay state, written by `fairfox chat serve` on
+// every heartbeat tick. Replaces "ssh into the laptop and pgrep
+// chat serve": the widget reads this doc and renders a badge.
+//
+// Multiple laptops can run a relay simultaneously; the leader
+// lease decides which one processes turns, but every running
+// relay still publishes its row so the widget can show "two
+// relays online, one is leader". A relay is considered "live" if
+// its lastTickAt is within ~30s; "stale" within 5min; otherwise
+// gone (the widget surfaces the row anyway so a crashed relay is
+// visible until someone manually clears it).
+export interface RelayHealth {
+  [key: string]: unknown;
+  readonly peerId: string;
+  readonly daemonId: string;
+  readonly version: string;
+  readonly startedAt: string;
+  readonly lastTickAt: string;
+  readonly peers: number;
+  readonly pending: number;
+  readonly chats: number;
+  readonly messages: number;
+  readonly leader: boolean;
+  readonly lastRepliedAt?: string;
+  readonly lastReplyId?: string;
+  readonly lastReplyDurationMs?: number;
+  readonly lastErrorAt?: string;
+  readonly lastErrorKind?: string;
+  readonly lastErrorMessage?: string;
+}
+
+export interface ChatHealth {
+  [key: string]: unknown;
+  readonly relays: Record<string, RelayHealth>;
+}
+
+export const CHAT_HEALTH_INITIAL: ChatHealth = { relays: {} };
 
 // --- leader lease / sessions:active ----------------------------
 export interface LeaderLease {

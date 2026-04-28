@@ -10,9 +10,14 @@ import { $meshState } from '@fairfox/polly/mesh';
 import type {
   AssistantMessageExtras,
   ChatExtras,
+  ChatHealth,
   SessionsActive,
 } from '@fairfox/shared/assistant-state';
-import { SESSIONS_ACTIVE_DOC_ID } from '@fairfox/shared/assistant-state';
+import {
+  CHAT_HEALTH_DOC_ID,
+  CHAT_HEALTH_INITIAL,
+  SESSIONS_ACTIVE_DOC_ID,
+} from '@fairfox/shared/assistant-state';
 import type { PageContext } from '@fairfox/shared/page-context';
 import { signal } from '@preact/signals';
 
@@ -84,6 +89,15 @@ void chatState.loaded.then(() => {
 export const sessionsActive = $meshState<SessionsActive>(SESSIONS_ACTIVE_DOC_ID, {
   sessions: [],
 });
+
+/** Self-reported relay state. Every running `fairfox chat serve`
+ * upserts its own row keyed by peerId on each heartbeat tick.
+ * Empty `relays` means no relay has ever announced itself on this
+ * mesh; a row with an old `lastTickAt` means a relay started but
+ * stopped (crashed or ctrl-c'd). The widget renders a header
+ * badge derived from this so the user can tell at a glance
+ * whether the laptop is ready to reply. */
+export const chatHealth = $meshState<ChatHealth>(CHAT_HEALTH_DOC_ID, CHAT_HEALTH_INITIAL);
 
 /** View-only overlay for demo / test injections. URL hooks
  * (#__inject=...) write here instead of the mesh doc, so injected
