@@ -884,7 +884,17 @@ export async function chatDump(): Promise<number> {
   const peerId = derivePeerId(keyring.identity.publicKey);
   const client = await openMeshClient({ peerId });
   try {
+    // Give Automerge a chance to exchange sync messages with at
+    // least one peer before reading. Without this, dump is "what's
+    // on disk locally" — which excludes anything written by another
+    // device since this CLI was last connected. waitForPeer +
+    // flushOutgoing widen the window to "what every connected peer
+    // has agreed on as of right now". The waits are bounded so a
+    // disconnected dump still returns within seconds with the
+    // local state.
+    await waitForPeer(client, 4000);
     const chatSignal = await openChatDoc();
+    await flushOutgoing(2000);
     process.stdout.write(`${JSON.stringify(chatSignal.value, null, 2)}\n`);
     return 0;
   } finally {
