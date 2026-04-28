@@ -190,6 +190,17 @@ export interface RelayHealth {
   readonly lastErrorAt?: string;
   readonly lastErrorKind?: string;
   readonly lastErrorMessage?: string;
+  // Sync telemetry — Automerge sync messages exchanged through the
+  // network adapter. peers > 0 only proves signalling found a
+  // peer; non-zero counters here prove data is actually flowing
+  // through the WebRTC channel. The per-peer breakdown isolates
+  // "this specific peer isn't talking" from "no peer is talking".
+  readonly syncMessagesSent?: number;
+  readonly syncMessagesReceived?: number;
+  readonly lastSyncSentAt?: string;
+  readonly lastSyncReceivedAt?: string;
+  readonly lastSyncFromPeer?: string;
+  readonly lastSyncToPeer?: string;
 }
 
 export interface ChatHealth {

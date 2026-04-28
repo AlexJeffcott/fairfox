@@ -923,6 +923,34 @@ export async function chatServe(): Promise<number> {
   }
   writeHealth({ startedAt, lastTickAt: startedAt });
 
+  // Sync telemetry — listen to the Repo's doc-metrics events so the
+  // heartbeat can report whether Automerge sync messages are
+  // actually flowing across the WebRTC data channel. peers=1 from
+  // the network adapter only means signalling matched us with a
+  // peer; non-zero sent/received counters prove the channel is
+  // alive and exchanging ops. Most useful when you're chasing
+  // "the laptop sees the phone but the phone's writes never
+  // arrive": if received counter stays at 0 while peers=1, the
+  // data channel is broken even though signalling is happy.
+  let syncSent = 0;
+  let syncReceived = 0;
+  let lastSyncSentAt: string | undefined;
+  let lastSyncReceivedAt: string | undefined;
+  let lastSyncFromPeer: string | undefined;
+  let lastSyncToPeer: string | undefined;
+  client.repo.on('doc-metrics', (m) => {
+    const now = new Date().toISOString();
+    if (m.type === 'receive-sync-message') {
+      syncReceived += 1;
+      lastSyncReceivedAt = now;
+      lastSyncFromPeer = String(m.fromPeer);
+    } else if (m.type === 'generate-sync-message') {
+      syncSent += 1;
+      lastSyncSentAt = now;
+      lastSyncToPeer = String(m.forPeer);
+    }
+  });
+
   // Startup sweep: mark crashed-mid-turn messages with daemon-restarted
   // so the widget can surface a regenerate affordance instead of
   // leaving the user staring at a forever-pending spinner.
@@ -1002,7 +1030,7 @@ export async function chatServe(): Promise<number> {
     const held =
       lease.daemonId === daemonId ? 'self' : lease.daemonId.length > 0 ? 'other' : 'none';
     process.stdout.write(
-      `[${now}] peers=${peers} chats=${chatSignal.value.chats.length} messages=${msgs.length} pending=${pending} lease=${held}\n`
+      `[${now}] peers=${peers} chats=${chatSignal.value.chats.length} messages=${msgs.length} pending=${pending} lease=${held} sync(rx=${syncReceived} tx=${syncSent})\n`
     );
     writeHealth({
       lastTickAt: nowIso,
@@ -1011,6 +1039,12 @@ export async function chatServe(): Promise<number> {
       chats: chatSignal.value.chats.length,
       messages: msgs.length,
       leader: lease.daemonId === daemonId,
+      syncMessagesSent: syncSent,
+      syncMessagesReceived: syncReceived,
+      ...(lastSyncSentAt ? { lastSyncSentAt } : {}),
+      ...(lastSyncReceivedAt ? { lastSyncReceivedAt } : {}),
+      ...(lastSyncFromPeer ? { lastSyncFromPeer } : {}),
+      ...(lastSyncToPeer ? { lastSyncToPeer } : {}),
     });
   }, 10_000);
   void tick();

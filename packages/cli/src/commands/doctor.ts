@@ -264,11 +264,25 @@ export async function doctor(): Promise<number> {
         const replyBlock = r.lastRepliedAt
           ? `\n  last reply ${ageOf(r.lastRepliedAt)} (id=${r.lastReplyId ?? '?'}, ${r.lastReplyDurationMs ?? '?'}ms)`
           : '';
+        const syncSent = r.syncMessagesSent ?? 0;
+        const syncRecv = r.syncMessagesReceived ?? 0;
+        const syncBlock =
+          syncSent === 0 && syncRecv === 0
+            ? '\n  sync: rx=0 tx=0 (NO Automerge sync messages exchanged — peers signalling-paired but data channel silent)'
+            : `\n  sync: rx=${syncRecv}${
+                r.lastSyncReceivedAt
+                  ? ` (last ${ageOf(r.lastSyncReceivedAt)} from ${shortPeer(r.lastSyncFromPeer)})`
+                  : ''
+              } tx=${syncSent}${
+                r.lastSyncSentAt
+                  ? ` (last ${ageOf(r.lastSyncSentAt)} to ${shortPeer(r.lastSyncToPeer)})`
+                  : ''
+              }`;
         lines.push(
           `${shortPeer(r.peerId)} · v${r.version} · started ${ageOf(r.startedAt)} · ` +
             `last tick ${tickAge} · pending ${r.pending} · peers ${r.peers}${
               r.leader ? ' · LEADER' : ''
-            }${replyBlock}${errBlock}`
+            }${syncBlock}${replyBlock}${errBlock}`
         );
       }
     }
