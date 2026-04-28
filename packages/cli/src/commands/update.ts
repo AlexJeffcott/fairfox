@@ -18,13 +18,12 @@
 // peers` doesn't feel slow or flaky.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { fairfoxPath } from '#src/paths.ts';
 
 declare const __FAIRFOX_CLI_VERSION__: string;
 
-const BUNDLE_PATH = join(homedir(), '.fairfox', 'fairfox.js');
-const STAMP_PATH = join(homedir(), '.fairfox', 'update-check.json');
+const BUNDLE_PATH = fairfoxPath('fairfox.js');
+const STAMP_PATH = fairfoxPath('update-check.json');
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 4000;
 

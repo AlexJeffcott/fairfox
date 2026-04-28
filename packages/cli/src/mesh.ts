@@ -3,16 +3,23 @@
 // under ~/.fairfox/keyring.json, and the WebSocket global that Bun
 // already exposes. Shared by every subcommand that reaches into the mesh.
 
-import { homedir, hostname } from 'node:os';
-import { join } from 'node:path';
+import { hostname } from 'node:os';
 import { NodeFSStorageAdapter } from '@automerge/automerge-repo-storage-nodefs';
 import { devicesState, harvestPeerKeys, touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
 import type { KeyringStorage, MeshClient } from '@fairfox/shared/polly';
 import { createMeshClient, fileKeyringStorage } from '@fairfox/shared/polly';
 import { RTCPeerConnection } from 'werift';
+import { fairfoxPath } from '#src/paths.ts';
 
-export const KEYRING_PATH = join(homedir(), '.fairfox', 'keyring.json');
-export const REPO_STORAGE_PATH = join(homedir(), '.fairfox', 'mesh');
+// Path getters resolve FAIRFOX_HOME each call so two CLI processes
+// with different env can share this module without aliasing. The
+// function-style export looks like a constant to existing callers
+// — `fairfoxPath` evaluates to a stable string per process so each
+// consumer's `KEYRING_PATH` value is computed once at import time.
+// If you need a different path within a single process, pass
+// FAIRFOX_HOME via the subprocess env, not via runtime mutation.
+export const KEYRING_PATH = fairfoxPath('keyring.json');
+export const REPO_STORAGE_PATH = fairfoxPath('mesh');
 
 export function defaultSignalingUrl(): string {
   const base = process.env.FAIRFOX_URL ?? 'https://fairfox-production-8273.up.railway.app';

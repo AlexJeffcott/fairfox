@@ -20,8 +20,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { isRecord, type SigningKeyPair, signingKeyPairFromSecret } from '@fairfox/shared/polly';
 import {
   decodeRecoveryBlob,
@@ -30,8 +29,9 @@ import {
   type UserIdentity,
 } from '@fairfox/shared/user-identity';
 import { encodePublicKeyHex } from '@fairfox/shared/users-state';
+import { fairfoxPath } from '#src/paths.ts';
 
-export const USER_IDENTITY_PATH = join(homedir(), '.fairfox', 'user-identity.json');
+export const USER_IDENTITY_PATH = fairfoxPath('user-identity.json');
 
 interface PersistedUserIdentity {
   /** Hex userId for quick inspection; authoritative value is the

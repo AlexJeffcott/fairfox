@@ -16,8 +16,15 @@
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fairfoxPath } from '#src/paths.ts';
 
 export const LAUNCH_AGENT_LABEL = 'com.fairfox.daemon';
+// LaunchAgents and systemd unit paths are intentionally NOT
+// FAIRFOX_HOME-aware. Those are OS-level service-supervisor paths;
+// macOS launchd and systemd-user pin to one location per user
+// account. A namespaced fairfox install can still run a daemon by
+// invoking `fairfox daemon start --foreground` directly with
+// FAIRFOX_HOME set; the supervisor unit isn't part of that path.
 export const LAUNCH_AGENT_PATH = join(
   homedir(),
   'Library',
@@ -31,7 +38,10 @@ export const SYSTEMD_UNIT_PATH = join(
   'user',
   'fairfox-daemon.service'
 );
-export const DAEMON_DIR = join(homedir(), '.fairfox', 'daemon');
+// Daemon state (logs, runtime files) is fairfox-specific and DOES
+// follow FAIRFOX_HOME so a namespaced install gets its own log
+// stream rather than racing with the canonical install.
+export const DAEMON_DIR = fairfoxPath('daemon');
 export const DAEMON_LOG_DIR = join(DAEMON_DIR, 'log');
 export const DAEMON_STDOUT = join(DAEMON_LOG_DIR, 'stdout.log');
 export const DAEMON_STDERR = join(DAEMON_LOG_DIR, 'stderr.log');

@@ -187,9 +187,11 @@ export async function doctor(): Promise<number> {
   lines.push(`fairfox doctor — ${new Date().toISOString()}`);
   lines.push(`CLI version: ${localVersion()}`);
   lines.push(`HOME: ${homedir()}`);
+  const fxHome = process.env.FAIRFOX_HOME ?? join(homedir(), '.fairfox');
+  lines.push(
+    `FAIRFOX_HOME: ${fxHome}${process.env.FAIRFOX_HOME ? ' (set)' : ' (default)'} ${existsSync(fxHome) ? '(present)' : '(missing)'}`
+  );
   lines.push(`keyring: ${KEYRING_PATH} ${existsSync(KEYRING_PATH) ? '(present)' : '(missing)'}`);
-  const idDir = join(homedir(), '.fairfox');
-  lines.push(`fairfox dir: ${idDir} ${existsSync(idDir) ? '(present)' : '(missing)'}`);
 
   lines.push(header('chat serve process'));
   lines.push(checkChatServeProcess());

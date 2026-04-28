@@ -20,6 +20,11 @@
 
 import { hostname } from 'node:os';
 import {
+  decodeInviteBlob,
+  type InvitePayload,
+  verifyInviteSignature,
+} from '@fairfox/shared/invite';
+import {
   applyPairingToken,
   createPairingToken,
   DEFAULT_MESH_KEY_ID,
@@ -29,7 +34,9 @@ import {
   generateSigningKeyPair,
   type KeyringStorage,
   type MeshKeyring,
+  signingKeyPairFromSecret,
 } from '@fairfox/shared/polly';
+import { decodeUserPublicKey } from '@fairfox/shared/users-state';
 import {
   derivePeerId,
   flushOutgoing,
@@ -37,17 +44,46 @@ import {
   keyringStorage,
   openMeshClient,
 } from '#src/mesh.ts';
+import { saveUserIdentityFile } from '#src/user-identity-node.ts';
 
-function extractToken(input: string): string {
+interface ShareParts {
+  readonly pair: string;
+  readonly sessionId?: string;
+  readonly invite?: string;
+}
+
+function parseShareInput(input: string): ShareParts {
   const trimmed = input.trim();
-  const hashIndex = trimmed.indexOf('#pair=');
-  if (hashIndex >= 0) {
-    return decodeURIComponent(trimmed.slice(hashIndex + '#pair='.length));
+  // The fragment portion after `#`, or the raw string if it's
+  // already just key=value pairs. Falls through to "treat as raw
+  // base64 token" if no `=` is present.
+  const fragment = (() => {
+    const hashIdx = trimmed.indexOf('#');
+    if (hashIdx >= 0) {
+      return trimmed.slice(hashIdx + 1);
+    }
+    if (trimmed.includes('=')) {
+      return trimmed;
+    }
+    return null;
+  })();
+  if (fragment === null) {
+    return { pair: decodeURIComponent(trimmed) };
   }
-  if (trimmed.startsWith('pair=')) {
-    return decodeURIComponent(trimmed.slice('pair='.length));
+  const params = new URLSearchParams(fragment);
+  const pair = params.get('pair');
+  const sessionId = params.get('s') ?? undefined;
+  const invite = params.get('invite') ?? undefined;
+  if (!pair) {
+    // No `pair=` field — treat the whole fragment as the bare
+    // token (the older single-value form `pair=XXX`).
+    return { pair: decodeURIComponent(fragment) };
   }
-  return decodeURIComponent(trimmed);
+  return {
+    pair,
+    ...(sessionId ? { sessionId } : {}),
+    ...(invite ? { invite } : {}),
+  };
 }
 
 async function loadOrCreateKeyring(storage: KeyringStorage): Promise<MeshKeyring> {
@@ -63,6 +99,51 @@ async function loadOrCreateKeyring(storage: KeyringStorage): Promise<MeshKeyring
   };
   await storage.save(fresh);
   return fresh;
+}
+
+interface InviteApplyOk {
+  readonly kind: 'ok';
+  readonly displayName: string;
+  readonly payload: InvitePayload;
+}
+interface InviteApplyError {
+  readonly kind: 'error';
+  readonly message: string;
+}
+
+/** Mirror of pairing-actions.ts:`acceptInviteBlob` for the CLI.
+ * Decodes the admin-signed invite blob, verifies the signature
+ * against the admin's pubkey embedded in the payload, imports the
+ * invitee's user key as this device's identity, and writes
+ * user-identity.json. The corresponding UserEntry write into
+ * mesh:users happens when openMeshClient runs below — we can't
+ * upsertUser here because polly's $meshState needs the Repo
+ * configured. */
+function applyInviteBlob(blob: string): InviteApplyOk | InviteApplyError {
+  let payload: InvitePayload;
+  try {
+    payload = decodeInviteBlob(blob);
+  } catch (err) {
+    return {
+      kind: 'error',
+      message: `decode failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  const adminPublicKey = decodeUserPublicKey(payload.createdByUserId);
+  if (!adminPublicKey) {
+    return { kind: 'error', message: 'admin user id malformed' };
+  }
+  if (!verifyInviteSignature(payload, adminPublicKey)) {
+    return { kind: 'error', message: 'invite signature invalid' };
+  }
+  const secretKey = new Uint8Array(payload.secretKey);
+  const keypair = signingKeyPairFromSecret(secretKey);
+  saveUserIdentityFile({
+    userId: payload.userId,
+    displayName: payload.displayName,
+    keypair,
+  });
+  return { kind: 'ok', displayName: payload.displayName, payload };
 }
 
 function parseArgs(rest: readonly string[]): {
@@ -85,19 +166,26 @@ function parseArgs(rest: readonly string[]): {
 
 export async function pair(tokenInputOrArgs: string | readonly string[]): Promise<number> {
   const rest = typeof tokenInputOrArgs === 'string' ? [tokenInputOrArgs] : tokenInputOrArgs;
-  const { token: tokenInput, sessionId } = parseArgs(rest);
+  const { token: tokenInput, sessionId: sessionIdArg } = parseArgs(rest);
   if (!tokenInput) {
     process.stderr.write('fairfox pair: expected a pairing token or URL as the first argument.\n');
     return 1;
   }
 
+  // Share URLs from `mesh invite open` carry pair=, s=, and invite=
+  // chained with `&` after the `#`. parseShareInput extracts each so
+  // a single positional argument carries the full ceremony — matching
+  // the browser flow where the URL hash drives everything.
+  const shareParts = parseShareInput(tokenInput);
+  const sessionId = sessionIdArg ?? shareParts.sessionId;
+  const inviteBlob = shareParts.invite;
+
   const storage = keyringStorage();
   const keyring = await loadOrCreateKeyring(storage);
-  const encoded = extractToken(tokenInput);
 
   let decoded: ReturnType<typeof decodePairingToken>;
   try {
-    decoded = decodePairingToken(encoded);
+    decoded = decodePairingToken(shareParts.pair);
   } catch (err) {
     process.stderr.write(
       `fairfox pair: could not decode token — ${err instanceof Error ? err.message : String(err)}\n`
@@ -107,6 +195,21 @@ export async function pair(tokenInputOrArgs: string | readonly string[]): Promis
 
   applyPairingToken(decoded, keyring);
   await storage.save(keyring);
+
+  // If the share URL also carried an invite blob, apply it: import
+  // the invitee's user key as this CLI's identity and mint the
+  // corresponding UserEntry. Mirrors `acceptInviteBlob` in the
+  // browser pairing-actions.ts. Without this the CLI is paired but
+  // has no user identity, and `chat send` / `users invite` /
+  // anything that signs as a user fails.
+  if (inviteBlob) {
+    const inviteResult = applyInviteBlob(inviteBlob);
+    if (inviteResult.kind === 'error') {
+      process.stderr.write(`fairfox pair: invite blob rejected — ${inviteResult.message}\n`);
+      return 1;
+    }
+    process.stdout.write(`fairfox pair: adopted invitee identity "${inviteResult.displayName}"\n`);
+  }
 
   // Mint our own pair token BEFORE we open the mesh. We'll both
   // print it (for manual paste) and, if we have a session id, ship

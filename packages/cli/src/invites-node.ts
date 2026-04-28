@@ -17,12 +17,12 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { isRecord } from '@fairfox/shared/polly';
 import type { Role } from '@fairfox/shared/users-state';
+import { fairfoxPath } from '#src/paths.ts';
 
-export const INVITES_PATH = join(homedir(), '.fairfox', 'invites.json');
+export const INVITES_PATH = fairfoxPath('invites.json');
 
 export interface StoredInvite {
   /** Short display name the admin chose — primary lookup key for
