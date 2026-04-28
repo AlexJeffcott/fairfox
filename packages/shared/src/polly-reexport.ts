@@ -6,6 +6,11 @@
 // Result: `devicesState.loaded` in a CLI command throws
 // "no Repo configured" even after `openMeshClient` has run.
 
+// Re-export the bare Repo so storage-only readers (the doctor)
+// can open the same docs as a running mesh client without
+// joining the signalling network — same keyring would otherwise
+// produce a peerId clash that kicks the running relay off.
+export { Repo } from '@automerge/automerge-repo/slim';
 export { isRecord } from '@fairfox/polly/guards';
 export {
   $meshState,

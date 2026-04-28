@@ -17,6 +17,7 @@ import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { NodeFSStorageAdapter } from '@automerge/automerge-repo-storage-nodefs';
 import {
   CHAT_HEALTH_DOC_ID,
   CHAT_HEALTH_INITIAL,
@@ -24,16 +25,15 @@ import {
   LEADER_LEASE_DOC_ID,
   type LeaderLease,
 } from '@fairfox/shared/assistant-state';
-import { devicesState } from '@fairfox/shared/devices-state';
-import { $meshState } from '@fairfox/shared/polly';
+import type { DevicesDoc } from '@fairfox/shared/devices-state';
+import { $meshState, configureMeshState, Repo } from '@fairfox/shared/polly';
 import { localVersion } from '#src/commands/update.ts';
 import {
   defaultSignalingUrl,
   derivePeerId,
   KEYRING_PATH,
   keyringStorage,
-  openMeshClient,
-  waitForPeer,
+  REPO_STORAGE_PATH,
 } from '#src/mesh.ts';
 import { loadUserIdentityFile } from '#src/user-identity-node.ts';
 
@@ -215,15 +215,24 @@ export async function doctor(): Promise<number> {
   lines.push(`userId:    ${identity ? identity.userId : '(no user identity)'}`);
   lines.push(`displayName: ${identity?.displayName ?? '(none)'}`);
 
-  const client = await openMeshClient({ peerId });
+  // Storage-only Repo: doctor reads the same Automerge docs the
+  // running relay does, but joins no signalling network. Without
+  // this, opening a real MeshClient would derive the same peerId
+  // as the running `chat serve` (peerId comes from the keyring's
+  // identity public key) and the signalling server would kick
+  // the relay's WebSocket off the moment doctor connects. Storage-
+  // only means doctor reflects whatever the relay last persisted
+  // to ~/.fairfox/mesh/ on disk, with no live cross-talk.
+  const repo = new Repo({
+    storage: new NodeFSStorageAdapter(REPO_STORAGE_PATH),
+  });
+  configureMeshState(repo);
   try {
-    const peered = await waitForPeer(client, 6000);
-    lines.push(
-      `peers right now: ${client.repo.peers.length} ${peered ? '' : '(no peers within 6s)'}`
-    );
+    lines.push('peers right now: (storage-only doctor — see relay heartbeat for live count)');
 
-    await devicesState.loaded;
-    const ourRow = devicesState.value.devices[peerId];
+    const devicesSignal = $meshState<DevicesDoc>('mesh:devices', { devices: {} });
+    await devicesSignal.loaded;
+    const ourRow = devicesSignal.value.devices[peerId];
     const ourEndorsements = ourRow?.endorsements ?? [];
     const ourOwnerIds = ourRow?.ownerUserIds ?? [];
     lines.push(header('mesh:devices self-row'));
@@ -335,7 +344,7 @@ export async function doctor(): Promise<number> {
     }
   } finally {
     try {
-      await client.close();
+      await repo.shutdown();
     } catch {
       // best-effort
     }
