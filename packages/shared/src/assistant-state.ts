@@ -201,6 +201,13 @@ export interface RelayHealth {
   readonly lastSyncReceivedAt?: string;
   readonly lastSyncFromPeer?: string;
   readonly lastSyncToPeer?: string;
+  // Per-doc sync breakdown. Keys are friendly logical doc names
+  // when known (chat:main, chat:health, daemon:leader, …), or a
+  // truncated docId when not. Values are { rx, tx } counts. When
+  // chat:main shows rx=0 while the aggregate has thousands, the
+  // peer isn't sharing chat:main — a per-doc share-set bug, not
+  // a connection bug.
+  readonly syncByDoc?: Record<string, { rx: number; tx: number }>;
 }
 
 export interface ChatHealth {

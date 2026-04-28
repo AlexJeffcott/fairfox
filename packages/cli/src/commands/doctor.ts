@@ -266,6 +266,17 @@ export async function doctor(): Promise<number> {
           : '';
         const syncSent = r.syncMessagesSent ?? 0;
         const syncRecv = r.syncMessagesReceived ?? 0;
+        const docBreakdown = r.syncByDoc
+          ? Object.entries(r.syncByDoc)
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([name, c]) => `${name}=${c.rx}/${c.tx}`)
+              .join(' ')
+          : '';
+        const chatMainCounts = r.syncByDoc?.['chat:main'];
+        const chatMainSilent =
+          chatMainCounts !== undefined && chatMainCounts.rx === 0 && chatMainCounts.tx === 0;
+        const chatMainOnlyTx =
+          chatMainCounts !== undefined && chatMainCounts.rx === 0 && chatMainCounts.tx > 0;
         const syncBlock =
           syncSent === 0 && syncRecv === 0
             ? '\n  sync: rx=0 tx=0 (NO Automerge sync messages exchanged — peers signalling-paired but data channel silent)'
@@ -277,6 +288,12 @@ export async function doctor(): Promise<number> {
                 r.lastSyncSentAt
                   ? ` (last ${ageOf(r.lastSyncSentAt)} to ${shortPeer(r.lastSyncToPeer)})`
                   : ''
+              }${docBreakdown ? `\n  per-doc rx/tx: ${docBreakdown}` : ''}${
+                chatMainSilent
+                  ? '\n  WARNING: chat:main rx=0 tx=0 — peer is connected but not exchanging chat:main ops at all'
+                  : chatMainOnlyTx
+                    ? '\n  WARNING: chat:main rx=0 — laptop sends but peer never replies for this doc'
+                    : ''
               }`;
         lines.push(
           `${shortPeer(r.peerId)} · v${r.version} · started ${ageOf(r.startedAt)} · ` +

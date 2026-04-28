@@ -932,22 +932,53 @@ export async function chatServe(): Promise<number> {
   // "the laptop sees the phone but the phone's writes never
   // arrive": if received counter stays at 0 while peers=1, the
   // data channel is broken even though signalling is happy.
+  //
+  // Per-doc counters split a deeper failure mode: sync flowing in
+  // aggregate (rx=10000+) but ZERO ops for chat:main specifically.
+  // When that happens, the peers are exchanging data for other
+  // docs (mesh:devices, mesh:users, agenda:main) but the chat:main
+  // handle on one side is somehow not in the share set with the
+  // other peer. A breakdown by docId tells us "everything else
+  // syncs, chat:main doesn't."
   let syncSent = 0;
   let syncReceived = 0;
   let lastSyncSentAt: string | undefined;
   let lastSyncReceivedAt: string | undefined;
   let lastSyncFromPeer: string | undefined;
   let lastSyncToPeer: string | undefined;
+  const syncByDocId = new Map<string, { rx: number; tx: number }>();
+  function bumpDoc(docId: string, dir: 'rx' | 'tx'): void {
+    const cur = syncByDocId.get(docId) ?? { rx: 0, tx: 0 };
+    cur[dir] += 1;
+    syncByDocId.set(docId, cur);
+  }
+  // Map known logical keys to their docIds via the open handles.
+  // We hold chat:main, chat:health, and daemon:leader open here;
+  // the other docs (mesh:devices, mesh:users, agenda:main, etc.)
+  // get touched by openMeshClient or appear later. The map fills
+  // out as we discover new docIds in sync events.
+  const docNameById = new Map<string, string>();
+  function noteDoc(handle: { documentId?: string } | undefined, name: string): void {
+    const id = handle?.documentId;
+    if (typeof id === 'string') {
+      docNameById.set(id, name);
+    }
+  }
+  noteDoc(chatSignal.handle, 'chat:main');
+  noteDoc(healthSignal.handle, 'chat:health');
+  noteDoc(leaseSignal.handle, 'daemon:leader');
   client.repo.on('doc-metrics', (m) => {
     const now = new Date().toISOString();
     if (m.type === 'receive-sync-message') {
       syncReceived += 1;
       lastSyncReceivedAt = now;
       lastSyncFromPeer = String(m.fromPeer);
+      bumpDoc(String(m.documentId), 'rx');
     } else if (m.type === 'generate-sync-message') {
       syncSent += 1;
       lastSyncSentAt = now;
       lastSyncToPeer = String(m.forPeer);
+      bumpDoc(String(m.documentId), 'tx');
     }
   });
 
@@ -1029,9 +1060,22 @@ export async function chatServe(): Promise<number> {
     const lease = leaseSignal.value;
     const held =
       lease.daemonId === daemonId ? 'self' : lease.daemonId.length > 0 ? 'other' : 'none';
+    // Per-doc breakdown inline. Surfaces the failure mode where
+    // overall sync is flowing but chat:main has zero ops because
+    // the peer hasn't joined that share set.
+    const perDoc: string[] = [];
+    for (const [docId, counts] of syncByDocId) {
+      const name = docNameById.get(docId) ?? docId.slice(0, 8);
+      perDoc.push(`${name}=${counts.rx}/${counts.tx}`);
+    }
     process.stdout.write(
-      `[${now}] peers=${peers} chats=${chatSignal.value.chats.length} messages=${msgs.length} pending=${pending} lease=${held} sync(rx=${syncReceived} tx=${syncSent})\n`
+      `[${now}] peers=${peers} chats=${chatSignal.value.chats.length} messages=${msgs.length} pending=${pending} lease=${held} sync(rx=${syncReceived} tx=${syncSent}) docs[${perDoc.join(' ')}]\n`
     );
+    const syncByDocOut: Record<string, { rx: number; tx: number }> = {};
+    for (const [docId, counts] of syncByDocId) {
+      const name = docNameById.get(docId) ?? docId.slice(0, 12);
+      syncByDocOut[name] = { rx: counts.rx, tx: counts.tx };
+    }
     writeHealth({
       lastTickAt: nowIso,
       peers,
@@ -1041,6 +1085,7 @@ export async function chatServe(): Promise<number> {
       leader: lease.daemonId === daemonId,
       syncMessagesSent: syncSent,
       syncMessagesReceived: syncReceived,
+      syncByDoc: syncByDocOut,
       ...(lastSyncSentAt ? { lastSyncSentAt } : {}),
       ...(lastSyncReceivedAt ? { lastSyncReceivedAt } : {}),
       ...(lastSyncFromPeer ? { lastSyncFromPeer } : {}),
