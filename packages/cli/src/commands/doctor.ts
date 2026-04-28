@@ -232,6 +232,18 @@ export async function doctor(): Promise<number> {
 
     const devicesSignal = $meshState<DevicesDoc>('mesh:devices', { devices: {} });
     await devicesSignal.loaded;
+    const allDevices = Object.values(devicesSignal.value.devices);
+    lines.push(header(`mesh:devices (${allDevices.length} known)`));
+    for (const d of allDevices) {
+      const tag = d.peerId === peerId ? ' [self]' : '';
+      const owners = (d.ownerUserIds ?? []).map(shortPeer).join(', ') || '(unendorsed)';
+      const endorsementCount = (d.endorsements ?? []).length;
+      const lastSeen = d.lastSeenAt ? ageOf(d.lastSeenAt) : 'never';
+      lines.push(
+        `  ${shortPeer(d.peerId)}${tag} · agent=${d.agent} · name=${d.name || '(unnamed)'} · ` +
+          `owners=${owners} · endorsements=${endorsementCount} · lastSeen=${lastSeen}`
+      );
+    }
     const ourRow = devicesSignal.value.devices[peerId];
     const ourEndorsements = ourRow?.endorsements ?? [];
     const ourOwnerIds = ourRow?.ownerUserIds ?? [];
