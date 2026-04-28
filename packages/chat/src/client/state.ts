@@ -67,18 +67,48 @@ export const chatState = $meshState<ChatDoc>('chat:main', {
 });
 
 // Pre-rename meshes carry `{ conversations, messages }` with
-// `Message.conversationId`. Wipe on first load — the test pings
-// don't carry forward.
+// `Message.conversationId`. Use handle.change to delete legacy
+// keys at the Automerge level — assigning to chatState.value
+// only writes the keys we set, so a top-level overwrite leaves
+// `conversations` in place and the migration condition stays
+// true forever, wiping fresh pendings on every load. Only
+// strip legacy-shape messages; new ones survive.
 void chatState.loaded.then(() => {
   const v = chatState.value as unknown as Record<string, unknown>;
-  const firstMsg =
-    Array.isArray(v.messages) && v.messages.length > 0
-      ? (v.messages[0] as unknown as Record<string, unknown>)
-      : undefined;
-  const hasOldShape = v.conversations !== undefined || firstMsg?.conversationId !== undefined;
-  if (hasOldShape) {
-    chatState.value = { chats: [], messages: [] };
+  const handle = chatState.handle;
+  if (!handle) {
+    return;
   }
+  const hasLegacyKey = v.conversations !== undefined;
+  const messagesField = v.messages;
+  const hasLegacyMessages =
+    Array.isArray(messagesField) &&
+    messagesField.some(
+      (m): boolean =>
+        typeof m === 'object' &&
+        m !== null &&
+        'conversationId' in m &&
+        (m as unknown as Record<string, unknown>).conversationId !== undefined
+    );
+  if (!hasLegacyKey && !hasLegacyMessages) {
+    return;
+  }
+  handle.change((doc: Record<string, unknown>) => {
+    if (doc.conversations !== undefined) {
+      delete doc.conversations;
+    }
+    if (Array.isArray(doc.messages) && hasLegacyMessages) {
+      doc.messages = doc.messages.filter(
+        (m: unknown): boolean =>
+          typeof m === 'object' &&
+          m !== null &&
+          !(
+            'conversationId' in m &&
+            (m as unknown as Record<string, unknown>).conversationId !== undefined
+          )
+      );
+    }
+  });
 });
 
 /** Mesh doc of live Claude Code sessions — populated by the daemon's

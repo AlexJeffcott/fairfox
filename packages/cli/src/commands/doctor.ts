@@ -99,9 +99,13 @@ function header(title: string): string {
 }
 
 function checkChatServeProcess(): string {
-  // pgrep is BSD on macOS, GNU on Linux. -fa works on both.
+  // Use `ps` directly; macOS pgrep's -a flag exists but emits a
+  // different format than GNU pgrep, and we want the full command
+  // line so the user can see WHICH version of fairfox is running
+  // (a stale pre-doctor relay surfaces as a process whose path
+  // points at an old `fairfox.js`).
   try {
-    const out = execSync('pgrep -fa "fairfox.*chat.*serve" || true', {
+    const out = execSync('ps -ax -o pid=,command=', {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     });
@@ -111,16 +115,18 @@ function checkChatServeProcess(): string {
       .filter(
         (l) =>
           l.length > 0 &&
-          // Strip the doctor command itself + the pgrep launcher.
+          /fairfox/.test(l) &&
+          /chat/.test(l) &&
+          /serve/.test(l) &&
           !/fairfox\s+doctor/.test(l) &&
-          !/pgrep/.test(l)
+          !/grep/.test(l)
       );
     if (lines.length === 0) {
       return 'no `fairfox chat serve` process found on this machine';
     }
     return lines.join('\n');
   } catch (err) {
-    return `pgrep failed: ${err instanceof Error ? err.message : String(err)}`;
+    return `ps failed: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
 

@@ -698,24 +698,73 @@ async function processOne(
   };
 }
 
-/** Open `chat:main` and reset on a pre-rename shape. Older meshes
+/** Open `chat:main` and clean up a pre-rename shape. Older meshes
  * (and the brief CLI-only window before the widget shipped) used
- * `{ conversations, messages }` with `Message.conversationId`. We
- * wipe rather than migrate — the test pings from that window aren't
- * worth carrying forward. */
+ * `{ conversations, messages }` with `Message.conversationId`.
+ *
+ * Two failure modes the previous "wipe to empty" pass missed:
+ *
+ * 1. Setting `signal.value = { chats: [], messages: [] }` does NOT
+ *    delete the legacy `conversations` key from the underlying
+ *    Automerge doc — polly's applyTopLevel only iterates the
+ *    incoming value's keys. So the wipe condition stayed true
+ *    forever and every relay restart kept nuking the doc on each
+ *    boot, including any in-flight pendings.
+ *
+ * 2. Wiping `messages` indiscriminately threw away pendings the
+ *    user had just written. We only need to drop messages whose
+ *    `conversationId` field shows the legacy shape; new-shape
+ *    messages can stay.
+ *
+ * The fix uses handle.change to delete the legacy keys at the
+ * Automerge level (real key removal, propagates to peers as a
+ * delete op), and only filters out messages with the legacy
+ * `conversationId` field while preserving everything else. */
 async function openChatDoc(): Promise<ReturnType<typeof $meshState<ChatDoc>>> {
   const chatSignal = $meshState<ChatDoc>('chat:main', { chats: [], messages: [] });
   await chatSignal.loaded;
   const v = chatSignal.value as unknown as Record<string, unknown>;
-  const firstMsg =
-    Array.isArray(v.messages) && v.messages.length > 0
-      ? (v.messages[0] as unknown as Record<string, unknown>)
-      : undefined;
-  const hasOldShape = v.conversations !== undefined || firstMsg?.conversationId !== undefined;
-  if (hasOldShape || v.chats === undefined || v.messages === undefined) {
-    chatSignal.value = { chats: [], messages: [] };
-    await flushOutgoing(500);
+  const handle = chatSignal.handle;
+  if (!handle) {
+    return chatSignal;
   }
+  const hasLegacyKey = v.conversations !== undefined;
+  const messagesField = v.messages;
+  const hasLegacyMessages =
+    Array.isArray(messagesField) &&
+    messagesField.some(
+      (m): boolean =>
+        typeof m === 'object' &&
+        m !== null &&
+        'conversationId' in m &&
+        (m as unknown as Record<string, unknown>).conversationId !== undefined
+    );
+  const hasMissingFields = v.chats === undefined || v.messages === undefined;
+  if (!hasLegacyKey && !hasLegacyMessages && !hasMissingFields) {
+    return chatSignal;
+  }
+  handle.change((doc: Record<string, unknown>) => {
+    if (doc.conversations !== undefined) {
+      delete doc.conversations;
+    }
+    if (doc.chats === undefined) {
+      doc.chats = [];
+    }
+    if (doc.messages === undefined) {
+      doc.messages = [];
+    } else if (Array.isArray(doc.messages) && hasLegacyMessages) {
+      doc.messages = doc.messages.filter(
+        (m: unknown): boolean =>
+          typeof m === 'object' &&
+          m !== null &&
+          !(
+            'conversationId' in m &&
+            (m as unknown as Record<string, unknown>).conversationId !== undefined
+          )
+      );
+    }
+  });
+  await flushOutgoing(500);
   return chatSignal;
 }
 
