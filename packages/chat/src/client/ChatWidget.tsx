@@ -231,7 +231,12 @@ function MessageBubble({
         variant="bubble"
         background={bg}
         style={{
-          color: 'var(--polly-text)',
+          // Bubble backgrounds are hardcoded light (#ffffff,
+          // #e8edf3, #dbeafe, #fef3c7); the text color must be
+          // hardcoded dark too. Reading var(--polly-text) made
+          // white-on-white when the user agent's polly theme
+          // resolved that variable to a near-white value.
+          color: '#1c1917',
           '--polly-border': border,
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',
@@ -374,10 +379,15 @@ function Composer({ selfPeerId }: { selfPeerId: string | null }) {
   );
 }
 
-/** A relay is "live" if it ticked within 30 s, "stale" if within
- * 5 min, otherwise "gone". 30 s matches the relay's heartbeat
- * interval (10 s) plus a 3x cushion for slow networks. */
-const RELAY_LIVE_MS = 30_000;
+/** A relay is "live" if it ticked within 90 s, "stale" if within
+ * 5 min, otherwise "gone". The threshold is the relay's heartbeat
+ * interval (10 s) plus generous slack for clock drift between
+ * peers. We compute age as `Date.now() - lastTickAt` where one is
+ * the local phone clock and the other is the laptop's; iOS phones
+ * routinely drift 30-60 s after a wake. A short threshold there
+ * read "stale" while the laptop was actively ticking every 10 s,
+ * which is the failure case the user reported. */
+const RELAY_LIVE_MS = 90_000;
 const RELAY_STALE_MS = 5 * 60 * 1000;
 
 /** "disconnected" wins over chat:health-derived states. If our own
@@ -524,10 +534,30 @@ function RelayBadge() {
 
 function ChatHeader({ chat }: { chat: Chat | undefined }) {
   const title = chat?.title ?? 'New chat';
+  // Show the archive button only when there is an active chat to
+  // archive — the empty "New chat" placeholder has nothing to act
+  // on. Calls the existing `chat.archive` action which sets
+  // archivedAt and hides the chat from the main thread; full
+  // history is still reachable via /chat for now (rename if/when
+  // a hard-delete affordance lands).
   return (
-    <Layout columns="1fr auto auto auto" gap="0.35rem" alignItems="center">
+    <Layout
+      columns={chat ? '1fr auto auto auto auto' : '1fr auto auto auto'}
+      gap="0.35rem"
+      alignItems="center"
+    >
       <strong style={{ fontSize: '0.95rem' }}>{title}</strong>
       <RelayBadge />
+      {chat ? (
+        <Button
+          label="Archive"
+          tier="tertiary"
+          size="small"
+          data-action="chat.archive"
+          data-action-id={chat.id}
+          title="Archive this chat. It stays in /chat history but moves out of the widget."
+        />
+      ) : null}
       <Button
         label="New"
         tier="tertiary"

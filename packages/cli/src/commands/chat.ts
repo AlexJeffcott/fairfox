@@ -217,9 +217,13 @@ function pickModel(chat: Chat | undefined, target: Message): ModelId {
     return chat.pinnedModel;
   }
   const text = target.text;
-  if (text.length < 20) {
-    return parseModelId('claude-haiku-4-5');
-  }
+  // Haiku is intentionally disabled here. The Agent SDK's invocation
+  // of the local `claude` binary errors on `claude-haiku-4-5` in the
+  // observed install — the binary accepts a different alias format
+  // for haiku than the API does, and silently failing every short
+  // turn is worse than paying Sonnet pricing for short turns.
+  // Re-enable once we know the right model id (likely just "haiku"
+  // or "claude-haiku-4-5-20251001" — TBD).
   if (THINKING_TRIGGER.test(text) || text.length > LONG_PROMPT_CHARS) {
     return parseModelId('claude-opus-4-7');
   }
