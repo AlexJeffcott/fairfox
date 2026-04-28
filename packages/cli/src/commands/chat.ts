@@ -17,6 +17,8 @@
 // block so the UI can show a per-message badge and a rolling chat
 // total.
 
+import { execSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type {
   AssistantMessageExtras,
@@ -151,6 +153,44 @@ const AGENT_IDLE_TIMEOUT_MS = 60_000;
 const THINKING_TRIGGER = /\b(think|plan|design|debug|why|prove)\b/i;
 const LONG_PROMPT_CHARS = 500;
 const HARD_DEFAULT_MODEL: ModelId = parseModelId('claude-sonnet-4-6');
+
+/** Locate a usable `claude` CLI binary for the Agent SDK.
+ *
+ * The bundled fairfox CLI ships @anthropic-ai/claude-agent-sdk
+ * inside `fairfox.js`, but the SDK depends on a per-platform
+ * native binary distributed as an OPTIONAL dependency. If
+ * `bun install` ran with `--omit=optional` (or the bundler dropped
+ * the platform-specific package the user is on), `query()` throws
+ * at first call: "Native CLI binary for darwin-arm64 not found".
+ * Every chat turn then writes an `error: unknown` reply and the
+ * user sees a thread of broken responses.
+ *
+ * The user almost certainly has `claude` on their PATH — Claude
+ * Code is a near-prerequisite for fairfox in practice. So check
+ * for an explicit override, then fall back to `which claude`.
+ * Returning undefined lets the SDK try its bundled binary; the
+ * resulting error message is now the existing one with a clearer
+ * diagnostic in the first chat:health row. */
+function findClaudeBinary(): string | undefined {
+  const explicit = process.env.FAIRFOX_CLAUDE_PATH;
+  if (explicit && existsSync(explicit)) {
+    return explicit;
+  }
+  try {
+    const found = execSync('command -v claude', {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (found && existsSync(found)) {
+      return found;
+    }
+  } catch {
+    // claude not on PATH; let the SDK fall through to its bundled binary.
+  }
+  return undefined;
+}
+
+const CLAUDE_BINARY = findClaudeBinary();
 
 const LEASE_TTL_MS = 30_000;
 const LEASE_RENEW_MS = 10_000;
@@ -376,6 +416,7 @@ async function runAgent(prompt: string, model: ModelId, startedAt: string): Prom
         model,
         cwd: RELAY_CWD,
         abortController: abort,
+        ...(CLAUDE_BINARY ? { pathToClaudeCodeExecutable: CLAUDE_BINARY } : {}),
         systemPrompt: [
           'You are the fairfox household assistant running on the laptop.',
           'The user may be on a phone, iPad, or the laptop itself.',
@@ -872,6 +913,13 @@ export async function chatServe(): Promise<number> {
   process.stdout.write(
     `fairfox chat serve — peerId ${peerId} · userId ${identity.userId.slice(0, 16)}. Ctrl-c to close.\n`
   );
+  if (CLAUDE_BINARY) {
+    process.stdout.write(`[chat serve] claude binary: ${CLAUDE_BINARY}\n`);
+  } else {
+    process.stdout.write(
+      '[chat serve] WARNING: no `claude` binary found on PATH; SDK will use its bundled native binary or fail. Set FAIRFOX_CLAUDE_PATH if needed.\n'
+    );
+  }
 
   await waitForPeer(client, 8000);
   const chatSignal = await openChatDoc();
