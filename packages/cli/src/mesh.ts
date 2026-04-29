@@ -137,3 +137,32 @@ export async function waitForPeer(client: MeshClient, timeoutMs: number): Promis
 export async function flushOutgoing(ms = 1500): Promise<void> {
   await new Promise((r) => setTimeout(r, ms));
 }
+
+/**
+ * Close a mesh client durably. Always pair with the corresponding
+ * `await openMeshClient(...)` rather than calling `client.close()`
+ * directly: the bare polly close runs `repo.shutdown()` but does
+ * NOT block on storage-adapter writes draining, so a CLI that
+ * writes-then-exits (mesh init, todo task add, chat send, users
+ * invite, …) can lose the in-flight write to disk and a follow-up
+ * read sees an empty doc. Calling `repo.flush()` first blocks
+ * until every dirty doc is persistent.
+ */
+export async function closeMesh(client: MeshClient): Promise<void> {
+  try {
+    // Two passes: the first flush ensures any in-flight Automerge
+    // change ops are queued at the storage adapter. The 200 ms
+    // settle gives polly's signal→handle effect chain a chance
+    // to run for any pending writes (`signal.value = ...`
+    // triggers an effect that calls handle.change, which queues
+    // to storage — without the settle, repo.flush can return
+    // before the queue receives the writes). Then a final flush
+    // drains everything to disk.
+    await client.repo.flush();
+    await new Promise((r) => setTimeout(r, 200));
+    await client.repo.flush();
+  } catch {
+    // best-effort; even if flush throws, still close.
+  }
+  await client.close();
+}

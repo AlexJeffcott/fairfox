@@ -15,6 +15,7 @@
 
 import { $meshState } from '@fairfox/shared/polly';
 import {
+  closeMesh,
   derivePeerId,
   flushOutgoing,
   keyringStorage,
@@ -102,7 +103,7 @@ export async function agendaList(): Promise<number> {
     }
     return 0;
   } finally {
-    await client.close();
+    await closeMesh(client);
   }
 }
 
@@ -126,14 +127,32 @@ export async function agendaAdd(name: string): Promise<number> {
       points: 1,
       active: true,
     };
-    agenda.value = {
-      ...agenda.value,
-      items: [...agenda.value.items, item],
-    };
+    // Push directly through the Automerge handle. Going via
+    // `agenda.value = { ..., items: [...prev, item] }` produces a
+    // list-replace op at the Automerge level (polly's
+    // applyTopLevel does `doc.items = newArray`), and two peers
+    // doing that concurrently lose one of the writes — whichever
+    // sync arrives last clobbers the other's list. A handle.change
+    // with `.push` produces an insert op that merges cleanly with
+    // a concurrent insert from another peer.
+    const handle = agenda.handle;
+    if (handle) {
+      handle.change((doc: AgendaDoc) => {
+        if (!Array.isArray(doc.items)) {
+          doc.items = [];
+        }
+        doc.items.push(item);
+      });
+    } else {
+      agenda.value = {
+        ...agenda.value,
+        items: [...agenda.value.items, item],
+      };
+    }
     await flushOutgoing();
     process.stdout.write(`added: ${name}\n`);
     return 0;
   } finally {
-    await client.close();
+    await closeMesh(client);
   }
 }

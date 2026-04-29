@@ -12,6 +12,7 @@ import {
 } from '@fairfox/shared/devices-state';
 import { $meshState, revokePeerLocally } from '@fairfox/shared/polly';
 import {
+  closeMesh,
   derivePeerId,
   flushOutgoing,
   keyringStorage,
@@ -68,7 +69,7 @@ export function peersList(): Promise<number> {
       }
       return 0;
     } finally {
-      await client.close();
+      await closeMesh(client);
     }
   })();
 }
@@ -91,7 +92,7 @@ export function peersRenameSelf(name: string): Promise<number> {
       process.stdout.write(`renamed: ${trimmed}\n`);
       return 0;
     } finally {
-      await client.close();
+      await closeMesh(client);
     }
   })();
 }

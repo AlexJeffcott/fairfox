@@ -47,7 +47,13 @@ import {
   writeLaunchAgent,
   writeSystemdUnit,
 } from '#src/daemon-install.ts';
-import { derivePeerId, flushOutgoing, keyringStorage, openMeshClient } from '#src/mesh.ts';
+import {
+  closeMesh,
+  derivePeerId,
+  flushOutgoing,
+  keyringStorage,
+  openMeshClient,
+} from '#src/mesh.ts';
 
 const HOOK_FLUSH_MS = 500;
 const HOOK_STDIN_TIMEOUT_MS = 2000;
@@ -198,7 +204,7 @@ async function daemonHook(kindRaw: string): Promise<number> {
     return 0;
   } finally {
     try {
-      await client.close();
+      await closeMesh(client);
     } catch {
       // best-effort
     }
@@ -274,7 +280,7 @@ async function daemonRunForeground(): Promise<number> {
   } catch {
     // best-effort
   }
-  await client.close();
+  await closeMesh(client);
   return 0;
 }
 

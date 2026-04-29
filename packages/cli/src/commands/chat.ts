@@ -39,6 +39,7 @@ import {
 import { $meshState } from '@fairfox/shared/polly';
 import { localVersion } from '#src/commands/update.ts';
 import {
+  closeMesh,
   derivePeerId,
   flushOutgoing,
   keyringStorage,
@@ -389,7 +390,18 @@ async function runAgent(prompt: string, model: ModelId, startedAt: string): Prom
   // the env is deliberately unfamiliar and no CI workflow sets it.
   const stub = process.env.FAIRFOX_CLAUDE_STUB;
   if (stub !== undefined) {
-    const text = stub.length > 0 ? stub : `[stub] acknowledged: ${prompt.split('\n').at(-2) ?? ''}`;
+    // The literal sentinel `__ECHO_PROMPT__` makes the stub return
+    // the full prompt as the reply text — used by the context-
+    // resolution e2e to assert that the prompt actually carries
+    // the resolved task body, not just an opaque "(no task)"
+    // placeholder. Anything else: literal text or the default
+    // "[stub] acknowledged: <last line>" echo.
+    const text =
+      stub === '__ECHO_PROMPT__'
+        ? prompt
+        : stub.length > 0
+          ? stub
+          : `[stub] acknowledged: ${prompt.split('\n').at(-2) ?? ''}`;
     return {
       text,
       extras: {
@@ -836,7 +848,25 @@ export async function chatSend(text: string): Promise<number> {
   try {
     await waitForPeer(client, 8000);
     const chatSignal = await openChatDoc();
-    const now = new Date().toISOString();
+    // Test hook: FAIRFOX_CHAT_SEND_CREATED_AT lets the e2e sweep
+    // test backdate a fresh pending past STALE_TURN_MS so the
+    // restart sweep should mark it daemon-restarted. Never used
+    // in production — same posture as FAIRFOX_CLAUDE_STUB.
+    const stampOverride = process.env.FAIRFOX_CHAT_SEND_CREATED_AT;
+    const now =
+      stampOverride && stampOverride.length > 0 ? stampOverride : new Date().toISOString();
+    // Test hook: FAIRFOX_CHAT_SEND_PINNED_MODEL pins the chat to a
+    // specific model so the e2e pinned-model test can assert that
+    // pickModel honours it.
+    const pinnedModelRaw = process.env.FAIRFOX_CHAT_SEND_PINNED_MODEL;
+    let pinnedModel: ModelId | undefined;
+    if (pinnedModelRaw) {
+      try {
+        pinnedModel = parseModelId(pinnedModelRaw);
+      } catch {
+        // Invalid; ignore.
+      }
+    }
     const chat: Chat = {
       id: randomId(),
       title: text.slice(0, 60),
@@ -844,7 +874,14 @@ export async function chatSend(text: string): Promise<number> {
       updatedAt: now,
       createdByUserId: identity.userId,
       contextRefs: [],
+      ...(pinnedModel ? { pinnedModel } : {}),
     };
+    // Test hook: FAIRFOX_CHAT_SEND_CONTEXT_TASK_ID lets the e2e
+    // context-resolution test attach a task ref to the user's
+    // message so the relay's prompt builder pulls in the task
+    // body.
+    const taskCtxId = process.env.FAIRFOX_CHAT_SEND_CONTEXT_TASK_ID;
+    const taskCtxLabel = process.env.FAIRFOX_CHAT_SEND_CONTEXT_TASK_LABEL;
     const message: Message = {
       id: randomId(),
       chatId: chat.id,
@@ -854,6 +891,15 @@ export async function chatSend(text: string): Promise<number> {
       text,
       pending: true,
       createdAt: now,
+      ...(taskCtxId
+        ? {
+            contextRef: {
+              kind: 'task' as const,
+              id: taskCtxId,
+              label: taskCtxLabel ?? `task ${taskCtxId}`,
+            },
+          }
+        : {}),
     };
     chatSignal.value = {
       chats: [...chatSignal.value.chats, chat],
@@ -864,7 +910,7 @@ export async function chatSend(text: string): Promise<number> {
     return 0;
   } finally {
     try {
-      await client.close();
+      await closeMesh(client);
     } catch {
       // best-effort
     }
@@ -899,7 +945,7 @@ export async function chatDump(): Promise<number> {
     return 0;
   } finally {
     try {
-      await client.close();
+      await closeMesh(client);
     } catch {
       // best-effort
     }
@@ -1174,6 +1220,6 @@ export async function chatServe(): Promise<number> {
   } catch {
     // best-effort
   }
-  await client.close();
+  await closeMesh(client);
   return 0;
 }

@@ -38,6 +38,7 @@ import {
 } from '@fairfox/shared/polly';
 import { decodeUserPublicKey } from '@fairfox/shared/users-state';
 import {
+  closeMesh,
   derivePeerId,
   flushOutgoing,
   KEYRING_PATH,
@@ -287,7 +288,7 @@ export async function pair(tokenInputOrArgs: string | readonly string[]): Promis
       }
       await flushOutgoing(500);
     } finally {
-      await client.close();
+      await closeMesh(client);
     }
   } catch {
     // Pair already succeeded — the self-row publish and pair-return

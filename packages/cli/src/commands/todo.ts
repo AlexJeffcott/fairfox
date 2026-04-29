@@ -17,6 +17,7 @@
 
 import { $meshState } from '@fairfox/shared/polly';
 import {
+  closeMesh,
   derivePeerId,
   flushOutgoing,
   keyringStorage,
@@ -120,7 +121,7 @@ async function withMesh<T>(
     }
     return await runner({ projects, tasks, captures }, peered);
   } finally {
-    await client.close();
+    await closeMesh(client);
   }
 }
 

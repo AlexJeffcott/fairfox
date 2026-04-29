@@ -51,6 +51,7 @@ import {
   type StoredInvite,
 } from '#src/invites-node.ts';
 import {
+  closeMesh,
   derivePeerId,
   flushOutgoing,
   KEYRING_PATH,
@@ -234,6 +235,18 @@ async function meshInit(rest: readonly string[]): Promise<number> {
       storedInvites.push(stored);
     }
     await flushOutgoing(2000);
+    // Belt-and-braces: an extra long settle plus an explicit
+    // repo.flush BEFORE the closeMesh() call. Polly's
+    // `signal.value = ...` triggers an effect that queues a
+    // handle.change op; we want every queued op to have hit the
+    // NodeFS storage adapter and been written to disk before we
+    // return. The closeMesh() in finally already calls repo.flush
+    // again — this is the redundant safety net for the case where
+    // a fresh handle is in 'ready' transition right when we
+    // started writing.
+    await new Promise((r) => setTimeout(r, 1000));
+    await client.repo.flush();
+    await new Promise((r) => setTimeout(r, 500));
 
     // Tell the user what just happened. Plain text, not JSON — the
     // admin reads this once.
@@ -269,7 +282,7 @@ async function meshInit(rest: readonly string[]): Promise<number> {
     );
     return 0;
   } finally {
-    await client.close();
+    await closeMesh(client);
   }
 }
 
@@ -311,7 +324,7 @@ async function meshInviteList(): Promise<number> {
     }
     return 0;
   } finally {
-    await client.close();
+    await closeMesh(client);
   }
 }
 
@@ -444,7 +457,7 @@ async function meshInviteOpen(rest: readonly string[]): Promise<number> {
     });
     return 0;
   } finally {
-    await client.close();
+    await closeMesh(client);
   }
 }
 
@@ -491,7 +504,7 @@ async function meshWhoami(): Promise<number> {
     // NodeFS so the close can't contribute anything we need. Swallow
     // a failure here rather than mask the successful read above.
     try {
-      await client.close();
+      await closeMesh(client);
     } catch {
       // intentional
     }
@@ -610,7 +623,7 @@ async function meshAddDevice(): Promise<number> {
     });
     return 0;
   } finally {
-    await client.close();
+    await closeMesh(client);
   }
 }
 
@@ -682,7 +695,7 @@ async function meshServe(): Promise<number> {
   } catch {
     // best-effort
   }
-  await client.close();
+  await closeMesh(client);
   return 0;
 }
 

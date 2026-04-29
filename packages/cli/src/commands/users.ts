@@ -25,6 +25,7 @@ import {
   type UsersDoc,
 } from '@fairfox/shared/users-state';
 import {
+  closeMesh,
   derivePeerId,
   flushOutgoing,
   keyringStorage,
@@ -92,7 +93,7 @@ export function usersList(): Promise<number> {
       }
       return 0;
     } finally {
-      await client.close();
+      await closeMesh(client);
     }
   })();
 }
@@ -132,7 +133,7 @@ export function usersWhoami(): Promise<number> {
       }
       return 0;
     } finally {
-      await client.close();
+      await closeMesh(client);
     }
   })();
 }
@@ -177,7 +178,7 @@ export function usersBootstrap(name: string): Promise<number> {
       process.stdout.write(`\n${blob}\n\n`);
       return 0;
     } finally {
-      await client.close();
+      await closeMesh(client);
     }
   })();
 }
@@ -308,7 +309,7 @@ export function usersInvite(rest: readonly string[]): Promise<number> {
       );
       return 0;
     } finally {
-      await client.close();
+      await closeMesh(client);
     }
   })();
 }
@@ -356,7 +357,7 @@ export function usersRevoke(targetUserId: string): Promise<number> {
       process.stdout.write(`revoked ${targetUserId}\n`);
       return 0;
     } finally {
-      await client.close();
+      await closeMesh(client);
     }
   })();
 }
