@@ -1,11 +1,19 @@
-import { beforeAll, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 // Smoke-test the dispatcher by running the real web server on an ephemeral
 // port and issuing real HTTP requests. This exercises strip(), prefix
 // ordering, and the lazy import of sub-apps end-to-end.
+
+const REPO_ROOT = resolve(import.meta.dir, '..', '..', '..');
+const LOCAL_BUNDLE_CANDIDATES = [
+  join(REPO_ROOT, 'dist', 'fairfox-web.zip'),
+  join(REPO_ROOT, 'data', 'fairfox-web.zip'),
+];
+const localBundle = LOCAL_BUNDLE_CANDIDATES.find((p) => existsSync(p));
+const haveBundle = localBundle !== undefined;
 
 type ServerHandle = { url: string; close: () => Promise<void> };
 
@@ -17,44 +25,42 @@ async function startServer(): Promise<ServerHandle> {
     PORT: '0',
   } as Record<string, string>;
   delete env.RAILWAY_ENVIRONMENT;
+  // FAIRFOX_LOCAL_BUNDLE short-circuits the GitHub-release fetch in
+  // fetch-app.ts. Without it, the dispatcher tries to download a
+  // web-v* release and falls back to a disk cache; on a fresh DATA_DIR
+  // with no network access the SPA routes 503 even though /health
+  // works. Point it at the most recent local bundle if there is one.
+  if (haveBundle && localBundle) {
+    env.FAIRFOX_LOCAL_BUNDLE = localBundle;
+  }
   const proc = Bun.spawn(['bun', new URL('../src/server.ts', import.meta.url).pathname], {
     env,
     stdout: 'pipe',
     stderr: 'pipe',
   });
 
+  // Read stdout via async iteration until the "listening on :PORT" line
+  // surfaces. The earlier Promise.race-with-queued-read() pattern leaked
+  // pending reads on every iteration and stalled bun:test's hook timer.
   const decoder = new TextDecoder();
   let stdoutAcc = '';
-  let stderrAcc = '';
   let port = 0;
-  const deadline = Date.now() + 10000;
-  const stdoutReader = proc.stdout.getReader();
-  const stderrReader = proc.stderr.getReader();
-
-  while (Date.now() < deadline && port === 0) {
-    const stdoutRead = stdoutReader.read();
-    const stderrRead = stderrReader.read();
-    const winner = await Promise.race([
-      stdoutRead.then((v) => ({ which: 'out' as const, v })),
-      stderrRead.then((v) => ({ which: 'err' as const, v })),
-      new Promise<{ which: 'timeout' }>((r) => setTimeout(() => r({ which: 'timeout' }), 500)),
-    ]);
-    if (winner.which === 'out' && !winner.v.done && winner.v.value) {
-      stdoutAcc += decoder.decode(winner.v.value);
-    } else if (winner.which === 'err' && !winner.v.done && winner.v.value) {
-      stderrAcc += decoder.decode(winner.v.value);
-    }
+  const deadline = Date.now() + 10_000;
+  for await (const chunk of proc.stdout) {
+    stdoutAcc += decoder.decode(chunk);
     const m = stdoutAcc.match(/listening on :(\d+)/);
     if (m?.[1]) {
       port = Number(m[1]);
+      break;
+    }
+    if (Date.now() > deadline) {
+      break;
     }
   }
-  stdoutReader.releaseLock();
-  stderrReader.releaseLock();
 
   if (port === 0) {
     proc.kill();
-    throw new Error(`server did not bind within 10s\nstdout: ${stdoutAcc}\nstderr: ${stderrAcc}`);
+    throw new Error(`server did not bind within 10s\nstdout: ${stdoutAcc}`);
   }
 
   return {
@@ -74,13 +80,17 @@ describe('web dispatcher', () => {
     server = await startServer();
   });
 
+  afterAll(async () => {
+    await server.close();
+  });
+
   test('/health returns {ok:true}', async () => {
     const res = await fetch(`${server.url}/health`);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
   });
 
-  test('/ returns the unified SPA shell', async () => {
+  test.if(haveBundle)('/ returns the unified SPA shell', async () => {
     const res = await fetch(`${server.url}/`);
     expect(res.status).toBe(200);
     const html = await res.text();
@@ -88,7 +98,7 @@ describe('web dispatcher', () => {
     expect(html).toContain('/home/boot-');
   });
 
-  test('/todo-v2 returns the same SPA shell (client-side routed)', async () => {
+  test.if(haveBundle)('/todo-v2 returns the same SPA shell (client-side routed)', async () => {
     const res = await fetch(`${server.url}/todo-v2`);
     expect(res.status).toBe(200);
     const html = await res.text();
@@ -98,14 +108,5 @@ describe('web dispatcher', () => {
   test('unknown paths 404', async () => {
     const res = await fetch(`${server.url}/nope`);
     expect(res.status).toBe(404);
-  });
-
-  test('unknown path returns 404', async () => {
-    const res = await fetch(`${server.url}/nope`);
-    expect(res.status).toBe(404);
-  });
-
-  test('close server', async () => {
-    await server.close();
   });
 });
