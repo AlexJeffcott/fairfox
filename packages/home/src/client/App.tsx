@@ -12,6 +12,7 @@ import { ChatWidget } from '@fairfox/chat/widget';
 import { App as DocsApp } from '@fairfox/docs/client';
 import { App as FamilyPhoneApp } from '@fairfox/family-phone-admin/client';
 import { App as LibraryApp } from '@fairfox/library/client';
+import { ConfirmDialog, OverlayRoot } from '@fairfox/polly/ui';
 import { MeshGate } from '@fairfox/shared/mesh-gate';
 import { App as SpeakwellApp } from '@fairfox/speakwell/client';
 import { App as TheStruggleApp } from '@fairfox/the-struggle/client';
@@ -29,6 +30,8 @@ export function App(): preact.JSX.Element {
     <MeshGate>
       <RouteView />
       <ChatWidget />
+      <OverlayRoot />
+      <ConfirmDialog.Host />
     </MeshGate>
   );
 }

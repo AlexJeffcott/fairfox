@@ -7,6 +7,7 @@
 // hard-reload button, the revoke / add-me / leave / grant-toggle
 // flows on users and devices.
 
+import { ConfirmDialog } from '@fairfox/polly/ui';
 import {
   addEndorsementToDevice,
   removeEndorsementFromDevice,
@@ -133,15 +134,18 @@ export const homeActions: Record<string, (ctx: HandlerContext) => void> = {
     if (typeof window === 'undefined') {
       return;
     }
-    const ok = window.confirm(
-      'Reset this device?\n\n' +
-        'This clears every fairfox database on this browser (keyring, user identity, mesh documents) and reloads.\n' +
-        "You'll need to re-pair afterwards; other paired devices and the mesh data are unaffected."
-    );
-    if (!ok) {
-      return;
-    }
     void (async () => {
+      const ok = await ConfirmDialog.confirm({
+        title: 'Reset this device?',
+        body:
+          'This clears every fairfox database on this browser (keyring, user identity, mesh documents) and reloads. ' +
+          "You'll need to re-pair afterwards; other paired devices and the mesh data are unaffected.",
+        danger: true,
+        confirmLabel: 'Reset and reload',
+      });
+      if (!ok) {
+        return;
+      }
       try {
         if ('serviceWorker' in navigator) {
           const registrations = await navigator.serviceWorker.getRegistrations();
