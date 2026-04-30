@@ -62,6 +62,10 @@
     "typecheck": "bun --filter='@fairfox/*' run typecheck",
     "test": "bun test",
     "test:browser": "bun node_modules/@fairfox/polly/dist/tools/test/src/browser/run.js tests/browser",
+    "tla:up": "docker compose -f specs/docker-compose.yml up -d --build",
+    "tla:down": "docker compose -f specs/docker-compose.yml down",
+    "tla:check": "docker compose -f specs/docker-compose.yml exec -T tla tlc -workers auto LeaseHandoff.tla",
+    "tla:shell": "docker compose -f specs/docker-compose.yml exec tla bash",
     "backup": "echo 'Legacy /todo and /struggle REST backups retired 2026-04-22. All state lives in the mesh ($meshState) and replicates to every paired device — use any paired device as the backup.'",
     "pair-cli": "FAIRFOX_URL=\"${FAIRFOX_URL:-http://localhost:3000}\" bun packages/cli/src/bin.ts"
   },

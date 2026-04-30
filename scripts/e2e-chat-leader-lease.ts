@@ -26,27 +26,28 @@ import {
 
 const ADMIN_HOME = '/tmp/fairfox-e2e-lease-admin';
 const RELAY2_HOME = '/tmp/fairfox-e2e-lease-relay2';
-const PHONE_HOME = '/tmp/fairfox-e2e-lease-phone';
+const SENDER_HOME = '/tmp/fairfox-e2e-lease-sender';
 
-for (const h of [ADMIN_HOME, RELAY2_HOME, PHONE_HOME]) {
+for (const h of [ADMIN_HOME, RELAY2_HOME, SENDER_HOME]) {
   rmSync(h, { recursive: true, force: true });
   mkdirSync(h, { recursive: true });
 }
 buildBundleIfMissing();
 
-// Three users: Admin (relay 1), Relay2 (also a relay user role),
-// Phone (sender). Two relay-capable users each run their own
-// chat serve.
-const phoneInvite = await bootstrapAndOpenInvite({
+// Three users: Admin (relay A), Relay2 (relay B), Sender (briefly
+// authors messages). Two relay-capable users each run their own
+// chat serve. The sender runs short-lived `chat send` and `chat
+// dump` invocations against the same mesh.
+const senderInvite = await bootstrapAndOpenInvite({
   adminHome: ADMIN_HOME,
   adminName: 'Admin',
-  invitees: [{ name: 'Relay2', role: 'admin' }, { name: 'Phone' }],
-  inviteToOpen: 'phone',
+  invitees: [{ name: 'Relay2', role: 'admin' }, { name: 'Sender' }],
+  inviteToOpen: 'sender',
 });
-await runCli(['pair', phoneInvite.shareUrl], PHONE_HOME);
+await runCli(['pair', senderInvite.shareUrl], SENDER_HOME);
 await new Promise((r) => setTimeout(r, 4000));
-await phoneInvite.close();
-trace('phone', 'paired');
+await senderInvite.close();
+trace('sender', 'paired');
 
 const relay2Invite = await openExistingInvite(ADMIN_HOME, 'relay2');
 await runCli(['pair', relay2Invite.shareUrl], RELAY2_HOME);
@@ -63,17 +64,21 @@ const relayB = spawnCli('relayB', ['chat', 'serve'], RELAY2_HOME, {
   FAIRFOX_CLAUDE_STUB: 'reply from B',
 });
 await waitForLine(relayB.stdout, /\[chat serve\] chat:main loaded/, 30_000, 'relayB ready');
-await new Promise((r) => setTimeout(r, 8000));
+// Wait for the two relays to discover each other so the lease
+// negotiation has both candidates online.
+await waitForLine(relayA.stdout, /peers=1/, 30_000, 'relayA sees a peer');
+await waitForLine(relayB.stdout, /peers=1/, 30_000, 'relayB sees a peer');
+await new Promise((r) => setTimeout(r, 5000));
 
 try {
   // First message — exactly one of the two relays should process it.
-  const send1 = await runCli(['chat', 'send', `lease test 1 ${Date.now()}`], PHONE_HOME);
+  const send1 = await runCli(['chat', 'send', `lease test 1 ${Date.now()}`], SENDER_HOME);
   const id1 = send1.stdout.match(/wrote message (\S+)/)?.[1] ?? '';
-  trace('phone', `sent ${id1}`);
+  trace('sender', `sent ${id1}`);
   // Wait long enough that BOTH relays would have had a chance to
   // process. If both did, we'll see two replies.
   await new Promise((r) => setTimeout(r, 15_000));
-  const dump1 = await runCli(['chat', 'dump'], PHONE_HOME);
+  const dump1 = await runCli(['chat', 'dump'], SENDER_HOME);
   const doc1: { messages?: { sender: string; parentId?: string; text?: string }[] } = JSON.parse(
     dump1.stdout.slice(dump1.stdout.indexOf('{'))
   );
@@ -96,11 +101,11 @@ try {
   // Lease TTL is 30 s. Give the survivor a window to reclaim.
   await new Promise((r) => setTimeout(r, 35_000));
 
-  const send2 = await runCli(['chat', 'send', `lease test 2 ${Date.now()}`], PHONE_HOME);
+  const send2 = await runCli(['chat', 'send', `lease test 2 ${Date.now()}`], SENDER_HOME);
   const id2 = send2.stdout.match(/wrote message (\S+)/)?.[1] ?? '';
-  trace('phone', `sent ${id2}`);
+  trace('sender', `sent ${id2}`);
   await new Promise((r) => setTimeout(r, 20_000));
-  const dump2 = await runCli(['chat', 'dump'], PHONE_HOME);
+  const dump2 = await runCli(['chat', 'dump'], SENDER_HOME);
   const doc2: { messages?: { sender: string; parentId?: string; text?: string }[] } = JSON.parse(
     dump2.stdout.slice(dump2.stdout.indexOf('{'))
   );

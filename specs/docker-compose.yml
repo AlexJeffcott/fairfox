@@ -1,0 +1,9 @@
+services:
+  tla:
+    build: .
+    container_name: fairfox-tla
+    volumes:
+      - ./tla:/specs
+    working_dir: /specs
+    stdin_open: true
+    tty: true
