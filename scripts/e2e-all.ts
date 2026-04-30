@@ -45,20 +45,24 @@ const TESTS: readonly Test[] = [
   { name: 'chat-pinned-model', file: 'e2e-chat-pinned-model.ts', timeoutMs: 180_000 },
   { name: 'mesh-three-peer', file: 'e2e-mesh-three-peer.ts', timeoutMs: 300_000 },
   { name: 'chat-full', file: 'e2e-chat-full.ts', timeoutMs: 300_000 },
-  // Currently deferred — each depends on cross-CLI-process state
-  // durability that polly's NodeFS storage adapter doesn't reliably
-  // provide today. Writes from one short-lived CLI process don't
-  // always land on disk in time for a follow-up CLI process to read
-  // them, even with `repo.flush()`, generous sleeps, and double-
-  // flush patterns. The tests are correct; the underlying storage
-  // behaviour needs a polly fix before they'll pass deterministically.
-  // Run individually when investigating that layer:
+  { name: 'user-revocation', file: 'e2e-user-revocation.ts', timeoutMs: 180_000 },
+  { name: 'chat-context-task', file: 'e2e-chat-context-task.ts', timeoutMs: 240_000 },
+  { name: 'chat-sweep', file: 'e2e-chat-sweep.ts', timeoutMs: 180_000 },
+  { name: 'mesh-large-doc', file: 'e2e-mesh-large-doc.ts', timeoutMs: 300_000 },
+  // Still deferred — `e2e-chat-leader-lease.ts` exposes a polly
+  // mesh-rediscovery issue: when one of two long-lived relays dies,
+  // a brief CLI peer that reconnects after the kill cannot
+  // establish a WebRTC channel with the surviving relay (relayB
+  // reports `peers=0` throughout). The lease state machine itself
+  // is correct (relayB takes `lease=self` after TTL); the test
+  // infrastructure can't deliver a follow-up message to the
+  // survivor through signalling. Needs a polly fix before this can
+  // pass deterministically.
   //
-  //   - e2e-user-revocation.ts        (mesh:users entry not durable)
-  //   - e2e-chat-context-task.ts      (todo:tasks entry not durable)
-  //   - e2e-chat-sweep.ts             (chat:main pending sync timing)
-  //   - e2e-chat-leader-lease.ts      (peers=0 between brief sends)
-  //   - e2e-mesh-large-doc.ts         (bulk writes not durable to disk)
+  // The lease state-machine properties this e2e was meant to verify
+  // (mutual exclusion, eventual handoff after holder death) are now
+  // covered by `specs/tla/LeaseHandoff.tla` — model-checked with
+  // TLC via `bun run tla:check`, independent of WebRTC plumbing.
 ];
 
 const filtered = ONLY ? TESTS.filter((t) => t.name.includes(ONLY)) : TESTS;

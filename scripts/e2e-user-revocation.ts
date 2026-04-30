@@ -14,9 +14,12 @@ import {
   bootstrapAndOpenInvite,
   buildBundleIfMissing,
   fail,
+  killAndWait,
   pass,
   runCli,
+  spawnCli,
   trace,
+  waitForLine,
 } from './e2e-cli-helpers.ts';
 
 const ADMIN_HOME = '/tmp/fairfox-e2e-revoke-admin';
@@ -57,33 +60,68 @@ trace('phone', `userId ${phoneUserId.slice(0, 16)}…`);
   }
 }
 
-// Admin revokes Phone.
+// Admin revokes Phone (briefly opens mesh, writes locally, exits).
 const revoke = await runCli(['users', 'revoke', phoneUserId], ADMIN_HOME);
 if (revoke.status !== 0) {
   fail(`users revoke failed: ${revoke.stderr.slice(0, 300)}`);
 }
-trace('admin', 'revocation written');
+trace('admin', 'revocation written to admin storage');
 
-// Wait for sync.
-await new Promise((r) => setTimeout(r, 6000));
-
-// Both peers should now see Phone marked revoked.
-const adminList = await runCli(['users'], ADMIN_HOME);
-const phoneList = await runCli(['users'], PHONE_HOME);
-const adminSeesRevoked =
-  /Phone.*\[revoked\]|\[revoked\].*Phone/.test(adminList.stdout) ||
-  adminList.stdout.includes('[revoked]');
-const phoneSeesRevoked =
-  /Phone.*\[revoked\]|\[revoked\].*Phone/.test(phoneList.stdout) ||
-  phoneList.stdout.includes('[revoked]');
-
-if (!adminSeesRevoked) {
-  fail(`admin's users list does not show Phone as revoked:\n${adminList.stdout}`);
-}
-if (!phoneSeesRevoked) {
-  fail(
-    `phone's users list does not show its own user as revoked (sync didn't propagate):\n${phoneList.stdout}`
+// Bring both peers online via `chat serve` so the revocation can
+// replicate from admin → phone over real WebRTC. Each home has its
+// own keyring and peerId, so they coexist on the signalling
+// server. After replication, kill phone-serve and read phone's
+// users list from local storage.
+const adminServer = spawnCli('admin-serve', ['chat', 'serve'], ADMIN_HOME, {
+  FAIRFOX_CLAUDE_STUB: 'placeholder',
+});
+const phoneServer = spawnCli('phone-serve', ['chat', 'serve'], PHONE_HOME, {
+  FAIRFOX_CLAUDE_STUB: 'placeholder',
+});
+try {
+  await waitForLine(
+    adminServer.stdout,
+    /\[chat serve\] chat:main loaded/,
+    30_000,
+    'admin server ready'
   );
+  await waitForLine(
+    phoneServer.stdout,
+    /\[chat serve\] chat:main loaded/,
+    30_000,
+    'phone server ready'
+  );
+  await waitForLine(adminServer.stdout, /peers=1/, 30_000, 'admin sees phone peer');
+  await waitForLine(phoneServer.stdout, /peers=1/, 30_000, 'phone sees admin peer');
+  // Sync window — handshake completes and mesh:users replicates.
+  await new Promise((r) => setTimeout(r, 8000));
+} catch (e) {
+  await killAndWait(adminServer).catch(() => undefined);
+  await killAndWait(phoneServer).catch(() => undefined);
+  throw e;
 }
 
-pass('user revocation written, signed, and synced to revoked user');
+// Stop the phone's serve so a fresh `users` invocation can use the
+// PHONE_HOME keyring without a peerId conflict. Storage on disk now
+// reflects the synced revocation.
+await killAndWait(phoneServer);
+
+try {
+  const adminList = await runCli(['users'], ADMIN_HOME);
+  const phoneList = await runCli(['users'], PHONE_HOME);
+  const adminSeesRevoked = adminList.stdout.includes('[revoked]');
+  const phoneSeesRevoked = phoneList.stdout.includes('[revoked]');
+
+  if (!adminSeesRevoked) {
+    fail(`admin's users list does not show Phone as revoked:\n${adminList.stdout}`);
+  }
+  if (!phoneSeesRevoked) {
+    fail(
+      `phone's users list does not show its own user as revoked (sync didn't propagate):\n${phoneList.stdout}`
+    );
+  }
+
+  pass('user revocation written, signed, and synced to revoked user');
+} finally {
+  await killAndWait(adminServer).catch(() => undefined);
+}

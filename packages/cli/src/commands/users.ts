@@ -16,13 +16,13 @@
 
 import { createInvite } from '@fairfox/shared/invite';
 import { permissionsForEntry } from '@fairfox/shared/policy';
-import { $meshState, generateSigningKeyPair } from '@fairfox/shared/polly';
+import { generateSigningKeyPair } from '@fairfox/shared/polly';
 import {
   createBootstrapUser,
   type Role,
   revokeUser,
   type UserEntry,
-  type UsersDoc,
+  usersState,
 } from '@fairfox/shared/users-state';
 import {
   closeMesh,
@@ -39,8 +39,6 @@ import {
   loadUserIdentityFile,
   USER_IDENTITY_PATH,
 } from '#src/user-identity-node.ts';
-
-const USERS_INITIAL: UsersDoc = { users: {} };
 
 async function loadOwnPeerId(): Promise<string> {
   const storage = keyringStorage();
@@ -70,7 +68,7 @@ export function usersList(): Promise<number> {
     const client = await openMeshClient({ peerId });
     try {
       const peered = await waitForPeer(client, 8000);
-      const users = $meshState<UsersDoc>('mesh:users', USERS_INITIAL);
+      const users = usersState;
       await users.loaded;
       if (peered) {
         await flushOutgoing(2000);
@@ -111,7 +109,7 @@ export function usersWhoami(): Promise<number> {
     const client = await openMeshClient({ peerId });
     try {
       await waitForPeer(client, 4000);
-      const users = $meshState<UsersDoc>('mesh:users', USERS_INITIAL);
+      const users = usersState;
       await users.loaded;
       const entry = users.value.users[identity.userId];
       process.stdout.write(`userId:     ${identity.userId}\n`);
@@ -157,7 +155,7 @@ export function usersBootstrap(name: string): Promise<number> {
     const client = await openMeshClient({ peerId });
     try {
       const peered = await waitForPeer(client, 8000);
-      const users = $meshState<UsersDoc>('mesh:users', USERS_INITIAL);
+      const users = usersState;
       await users.loaded;
       const existingCount = Object.keys(users.value.users).length;
       if (existingCount > 0) {
@@ -257,7 +255,7 @@ export function usersInvite(rest: readonly string[]): Promise<number> {
     const client = await openMeshClient({ peerId });
     try {
       const peered = await waitForPeer(client, 8000);
-      const users = $meshState<UsersDoc>('mesh:users', USERS_INITIAL);
+      const users = usersState;
       await users.loaded;
       const adminEntry = users.value.users[identity.userId];
       if (!adminEntry) {
@@ -329,7 +327,7 @@ export function usersRevoke(targetUserId: string): Promise<number> {
     const client = await openMeshClient({ peerId });
     try {
       const peered = await waitForPeer(client, 8000);
-      const users = $meshState<UsersDoc>('mesh:users', USERS_INITIAL);
+      const users = usersState;
       await users.loaded;
       const revokerEntry = users.value.users[identity.userId];
       if (!revokerEntry) {

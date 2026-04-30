@@ -39,8 +39,8 @@ import { signEndorsement } from '@fairfox/shared/user-identity';
 import {
   createBootstrapUser,
   type Role,
-  type UsersDoc,
   upsertUser,
+  usersState,
 } from '@fairfox/shared/users-state';
 import QRCode from 'qrcode';
 import {
@@ -59,8 +59,6 @@ import {
   openMeshClient,
   waitForPeer,
 } from '#src/mesh.ts';
-
-const USERS_INITIAL: UsersDoc = { users: {} };
 
 import {
   clearUserIdentityFile,
@@ -174,8 +172,15 @@ async function meshInit(rest: readonly string[]): Promise<number> {
   const peerId = derivePeerId(deviceKeyring.identity.publicKey);
   const client = await openMeshClient({ peerId });
   try {
-    const users = $meshState<UsersDoc>('mesh:users', USERS_INITIAL);
-    await Promise.all([users.loaded, devicesState.loaded, meshMetaState.loaded]);
+    // Wait on the SINGLETON `usersState.loaded` rather than a fresh
+    // `$meshState` wrapper. createBootstrapUser / upsertUser write
+    // through usersState — and polly's $meshState bridge has a
+    // per-wrapper lazy-init that drops writes silently while
+    // `currentHandle` is still null. Awaiting a different wrapper's
+    // loaded promise didn't gate that init, so the writes hit a
+    // not-yet-ready handle and never reached storage. The `users`
+    // local was load-bearing for nothing.
+    await Promise.all([usersState.loaded, devicesState.loaded, meshMetaState.loaded]);
 
     // Mesh name renders on the home view next to the fingerprint
     // so devices can eyeball-verify they're on the same mesh.

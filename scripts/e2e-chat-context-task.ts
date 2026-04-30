@@ -46,38 +46,42 @@ await new Promise((r) => setTimeout(r, 4000));
 await invite.close();
 trace('phone', 'paired');
 
-// Phone creates a todo task with a recognisable description.
-const TASK_DESC = `e2e-context-task-${Date.now()}`;
-const taskAdd = await runCli(['todo', 'task', 'add', TASK_DESC], PHONE_HOME);
-if (taskAdd.status !== 0) {
-  fail(`todo task add failed: ${taskAdd.stderr.slice(0, 200)}`);
-}
-const tidMatch = taskAdd.stdout.match(/added\s+task\s+(\S+)|tid[:= ]+(\S+)/i);
-const tid = tidMatch?.[1] ?? tidMatch?.[2] ?? '';
-trace('phone', `created task ${tid}: ${TASK_DESC}`);
-
-// If the CLI doesn't print the tid, parse the latest task list.
-let resolvedTid = tid;
-if (!resolvedTid) {
-  const list = await runCli(['todo', 'tasks'], PHONE_HOME);
-  const found = list.stdout.match(/(\S+)\s+.*?\b(?:e2e-context-task-\d+)\b/);
-  resolvedTid = found?.[1] ?? '';
-}
-if (!resolvedTid) {
-  fail(`couldn't determine task id after creation; stdout was:\n${taskAdd.stdout}`);
-}
-trace('phone', `using tid ${resolvedTid}`);
-
-// Wait for sync to laptop so the relay's resolveContext can find
-// the task in todo:tasks.
-await new Promise((r) => setTimeout(r, 5000));
-
+// Start the relay BEFORE phone writes the task so the brief
+// phone-side write CLI has an online peer to sync to. Without
+// this, the task lives only on phone's disk and the relay's
+// resolveContext returns "(no task X)".
 const relay = spawnCli('relay', ['chat', 'serve'], ADMIN_HOME, {
   FAIRFOX_CLAUDE_STUB: '__ECHO_PROMPT__',
 });
 try {
   await waitForLine(relay.stdout, /\[chat serve\] chat:main loaded/, 30_000, 'relay ready');
-  await new Promise((r) => setTimeout(r, 5000));
+
+  // Phone creates a todo task with a recognisable description.
+  // The relay is already online with todo:tasks loaded, so the
+  // brief phone CLI's sync handshake will share the new task.
+  const TASK_DESC = `e2e-context-task-${Date.now()}`;
+  const taskAdd = await runCli(['todo', 'task', 'add', TASK_DESC], PHONE_HOME);
+  if (taskAdd.status !== 0) {
+    fail(`todo task add failed: ${taskAdd.stderr.slice(0, 200)}`);
+  }
+  const tidMatch = taskAdd.stdout.match(/added\s+task\s+(\S+)|tid[:= ]+(\S+)/i);
+  const tid = tidMatch?.[1] ?? tidMatch?.[2] ?? '';
+  trace('phone', `created task ${tid}: ${TASK_DESC}`);
+
+  let resolvedTid = tid;
+  if (!resolvedTid) {
+    const list = await runCli(['todo', 'tasks'], PHONE_HOME);
+    const found = list.stdout.match(/(\S+)\s+.*?\b(?:e2e-context-task-\d+)\b/);
+    resolvedTid = found?.[1] ?? '';
+  }
+  if (!resolvedTid) {
+    fail(`couldn't determine task id after creation; stdout was:\n${taskAdd.stdout}`);
+  }
+  trace('phone', `using tid ${resolvedTid}`);
+
+  // Sync window — let the task replicate to the relay before
+  // phone sends the context-tagged chat message.
+  await new Promise((r) => setTimeout(r, 6000));
 
   // Phone sends a chat message with the task as context.
   const send = await runCli(['chat', 'send', 'tell me about this task'], PHONE_HOME, {

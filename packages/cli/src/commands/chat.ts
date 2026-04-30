@@ -36,7 +36,9 @@ import {
   LEADER_LEASE_DOC_ID,
   parseModelId,
 } from '@fairfox/shared/assistant-state';
+import { devicesState } from '@fairfox/shared/devices-state';
 import { $meshState } from '@fairfox/shared/polly';
+import { usersState } from '@fairfox/shared/users-state';
 import { localVersion } from '#src/commands/update.ts';
 import {
   closeMesh,
@@ -278,20 +280,64 @@ function truncate(s: string, n: number): string {
   return `${s.slice(0, n)}\n… (truncated)`;
 }
 
+// Cached $meshState wrappers for the context-resolution docs. The
+// relay's startup preloads each wrapper by awaiting `.loaded`
+// before any chat turn runs — that ensures the handle is
+// established and synced when `resolveContext` reads `.value`
+// synchronously inside `buildPrompt`.
+//
+// Without this, every `resolveContext` call constructed a fresh
+// wrapper whose `currentHandle` had not yet bridged the underlying
+// Automerge doc, so `.value` returned the initial empty payload —
+// the prompt would say `(no task X)` even when the task was
+// already in storage and replicated to the relay.
+let _todoProjects: ReturnType<typeof $meshState<{ projects: MinProject[] }>> | null = null;
+let _todoTasks: ReturnType<typeof $meshState<{ tasks: MinTask[] }>> | null = null;
+let _agendaMain: ReturnType<
+  typeof $meshState<{ items: MinAgendaItem[]; completions: MinAgendaCompletion[] }>
+> | null = null;
+let _docsMain: ReturnType<typeof $meshState<{ docs: MinDoc[] }>> | null = null;
+function todoProjects(): ReturnType<typeof $meshState<{ projects: MinProject[] }>> {
+  if (_todoProjects === null) {
+    _todoProjects = $meshState<{ projects: MinProject[] }>('todo:projects', { projects: [] });
+  }
+  return _todoProjects;
+}
+function todoTasks(): ReturnType<typeof $meshState<{ tasks: MinTask[] }>> {
+  if (_todoTasks === null) {
+    _todoTasks = $meshState<{ tasks: MinTask[] }>('todo:tasks', { tasks: [] });
+  }
+  return _todoTasks;
+}
+function agendaMain(): ReturnType<
+  typeof $meshState<{ items: MinAgendaItem[]; completions: MinAgendaCompletion[] }>
+> {
+  if (_agendaMain === null) {
+    _agendaMain = $meshState<{ items: MinAgendaItem[]; completions: MinAgendaCompletion[] }>(
+      'agenda:main',
+      { items: [], completions: [] }
+    );
+  }
+  return _agendaMain;
+}
+function docsMain(): ReturnType<typeof $meshState<{ docs: MinDoc[] }>> {
+  if (_docsMain === null) {
+    _docsMain = $meshState<{ docs: MinDoc[] }>('docs:main', { docs: [] });
+  }
+  return _docsMain;
+}
+
 function resolveContext(ref: ContextRef): string {
   try {
     if (ref.kind === 'project') {
-      const projects = $meshState<{ projects: MinProject[] }>('todo:projects', { projects: [] });
-      const p = projects.value.projects.find((x) => x.pid === ref.id);
+      const p = todoProjects().value.projects.find((x) => x.pid === ref.id);
       return p ? JSON.stringify(p, null, 2) : `(no project ${ref.id})`;
     }
     if (ref.kind === 'task') {
-      const tasks = $meshState<{ tasks: MinTask[] }>('todo:tasks', { tasks: [] });
-      const t = tasks.value.tasks.find((x) => x.tid === ref.id);
+      const t = todoTasks().value.tasks.find((x) => x.tid === ref.id);
       return t ? JSON.stringify(t, null, 2) : `(no task ${ref.id})`;
     }
     if (ref.kind === 'tasks-list') {
-      const tasks = $meshState<{ tasks: MinTask[] }>('todo:tasks', { tasks: [] });
       const raw = ref.details?.taskIds;
       const ids: string[] = Array.isArray(raw)
         ? raw.filter((x): x is string => typeof x === 'string')
@@ -299,38 +345,35 @@ function resolveContext(ref: ContextRef): string {
       if (ids.length === 0) {
         return `(tasks-list without ids; summary: ${ref.label})`;
       }
-      const matched = tasks.value.tasks.filter((t) => ids.includes(t.tid)).slice(0, 25);
+      const matched = todoTasks()
+        .value.tasks.filter((t) => ids.includes(t.tid))
+        .slice(0, 25);
       return JSON.stringify(matched, null, 2);
     }
     if (ref.kind === 'agenda') {
-      const agenda = $meshState<{ items: MinAgendaItem[] }>('agenda:main', { items: [] });
-      const a = agenda.value.items.find((x) => x.id === ref.id);
+      const a = agendaMain().value.items.find((x) => x.id === ref.id);
       return a ? JSON.stringify(a, null, 2) : `(no agenda item ${ref.id})`;
     }
     if (ref.kind === 'agenda-today') {
-      const agenda = $meshState<{
-        items: MinAgendaItem[];
-        completions: MinAgendaCompletion[];
-      }>('agenda:main', { items: [], completions: [] });
-      const activeItems = agenda.value.items.filter((i) => i.active);
+      const activeItems = agendaMain().value.items.filter((i) => i.active);
       return JSON.stringify(activeItems.slice(0, 50), null, 2);
     }
     if (ref.kind === 'doc') {
-      const docs = $meshState<{ docs: MinDoc[] }>('docs:main', { docs: [] });
-      const d = docs.value.docs.find((x) => x.id === ref.id || x.slug === ref.id);
+      const d = docsMain().value.docs.find((x) => x.id === ref.id || x.slug === ref.id);
       if (!d) {
         return `(no doc ${ref.id})`;
       }
       return JSON.stringify({ ...d, body: truncate(d.body, 4000) }, null, 2);
     }
     if (ref.kind === 'docs-list') {
-      const docs = $meshState<{ docs: MinDoc[] }>('docs:main', { docs: [] });
-      const compact = docs.value.docs.slice(0, 25).map((d) => ({
-        id: d.id,
-        slug: d.slug,
-        title: d.title,
-        project: d.project,
-      }));
+      const compact = docsMain()
+        .value.docs.slice(0, 25)
+        .map((d) => ({
+          id: d.id,
+          slug: d.slug,
+          title: d.title,
+          project: d.project,
+        }));
       return JSON.stringify(compact, null, 2);
     }
     if (ref.kind === 'library' || ref.kind === 'struggle' || ref.kind === 'hub') {
@@ -982,6 +1025,22 @@ export async function chatServe(): Promise<number> {
   }
 
   await waitForPeer(client, 8000);
+  // Eagerly load mesh + context docs so the relay's repo includes
+  // them in the sync share set with peers. Without this, a peer
+  // that comes online ONLY to talk to chat serve (no UI interaction
+  // yet) never receives revocation/membership updates, and the
+  // relay's `resolveContext` reads stale empty docs because the
+  // freshly-instantiated $meshState wrapper hasn't synced yet.
+  // Preloading puts these docs in the share set from t=0 and
+  // primes the resolveContext singletons so the synchronous reads
+  // inside buildPrompt see synced data.
+  await Promise.all([
+    usersState.loaded,
+    devicesState.loaded,
+    todoProjects().loaded,
+    todoTasks().loaded,
+    agendaMain().loaded,
+  ]);
   const chatSignal = await openChatDoc();
   process.stdout.write(
     `[chat serve] chat:main loaded — ${chatSignal.value.chats.length} chat(s), ${chatSignal.value.messages.length} message(s)\n`
