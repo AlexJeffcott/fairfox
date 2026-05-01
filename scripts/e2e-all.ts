@@ -64,13 +64,14 @@ const TESTS: readonly Test[] = [
   // covered by `specs/tla/LeaseHandoff.tla` — model-checked with
   // TLC via `bun run tla:check`, independent of WebRTC plumbing.
   //
-  // Also deferred — `e2e-revoke-then-write.ts`. It currently FAILS
-  // on a pristine polly because fairfox's `users revoke` writes the
-  // visible `[revoked]` row to mesh:users but never wires through
-  // to polly's `revokedPeers` enforcement layer (no
-  // `createRevocation` envelope is broadcast for the revoked user's
-  // devices). The test documents the gap mutation testing rounds 1-3
-  // surfaced. Add to e2e-all once the enforcement layer is wired.
+  // Also deferred — `e2e-revoke-then-write.ts`. The fairfox-side
+  // wire-up calls polly's `revokeDevice` for each peerId tied to
+  // the target user in `mesh:devices.ownerUserIds`, but those
+  // bindings get dropped on convergence because mesh:devices
+  // updates use top-level map-replacement that races between
+  // peers. Closing the loop needs per-key writes in
+  // `upsertDeviceEntry`; out of scope for the mutation-coverage
+  // closure. See the file header for the full diagnosis.
 ];
 
 const filtered = ONLY ? TESTS.filter((t) => t.name.includes(ONLY)) : TESTS;

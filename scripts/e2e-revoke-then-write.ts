@@ -18,22 +18,37 @@
  *     letting any peer issue revocations.
  *
  * Status: **currently FAILS on a pristine polly 0.36.0.** The
- * failure is the test's job — it documents that fairfox's
- * `users revoke` writes the visible `[revoked]` row to `mesh:users`
- * but never calls polly's `revokeDevice` (or `createRevocation` +
- * broadcast) for the user's devices. Polly's `revokedPeers` set on
- * the admin keyring stays empty, so admin's `MeshNetworkAdapter`
- * happily accepts the revoked member's subsequent writes.
+ * failure is the test's job — it documents the gap mutation
+ * testing surfaced. There are TWO blockers stacked here:
+ *
+ *   1. The fairfox-side wire-up exists in spirit only. `users.ts`
+ *      now calls `revokeDevice` for every peerId in
+ *      `mesh:devices` whose `ownerUserIds` includes the target —
+ *      see the loop at the bottom of `usersRevoke`.
+ *
+ *   2. The data that loop reads from is silently dropped by an
+ *      Automerge map-replacement race: `mesh:devices` updates go
+ *      through `applyTopLevel` (`node_modules/@fairfox/polly/
+ *      dist/src/mesh.js:1735`) which writes
+ *      `doc.devices = newMap` for the whole top-level
+ *      `devices` field. Concurrent writes from issuer (admin
+ *      writing the new device row in `acceptReturnToken`) and
+ *      scanner (member writing endorsement during
+ *      `addEndorsementToDevice`) both replace the whole map;
+ *      Automerge picks one winner by hash-of-actor-id and the
+ *      other side's row is dropped. Result: `mesh:devices`
+ *      converges WITHOUT `ownerUserIds` populated, so the
+ *      `users revoke` loop has nothing to look up.
+ *
+ *      The fix is to operate on `doc.devices[peerId]` per-key via
+ *      `handle.change` instead of replacing the whole map. That's
+ *      a change in `packages/shared/src/devices-state.ts:upsertDeviceEntry`
+ *      and propagates through every fairfox sub-app that writes
+ *      via `devicesState.value = …`. Out of scope for this
+ *      session; the test stays here as the spec for that work.
  *
  * The test is therefore deliberately excluded from
- * `scripts/e2e-all.ts` until the enforcement layer is wired. The
- * shape we want is: when admin issues `users revoke <userId>`,
- * the CLI should iterate every peerId in `mesh:devices` whose
- * `userId` matches the target, call polly's `revokeDevice`, and
- * the resulting signed revocation envelope should propagate
- * through the same channel as any other mesh op. See
- * `packages/shared/src/pairing.ts` for the existing `revokeDevice`
- * primitive.
+ * `scripts/e2e-all.ts` until both blockers are unstuck.
  *
  * Flow (intended once enforcement lands):
  *
