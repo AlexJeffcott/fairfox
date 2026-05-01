@@ -124,12 +124,20 @@ export async function killAndWait(h: SubprocessHandle): Promise<void> {
 /** Poll `chunks` (a streaming stdout/stderr buffer) for a regex
  * match. Resolves on first match, rejects on timeout. Used to gate
  * test progress on subprocess milestones (pair acks, heartbeats,
- * relay processing logs). */
+ * relay processing logs).
+ *
+ * Optional `context` callback runs on timeout and its return value is
+ * appended to the error. Pass `() => lastHeartbeatLine(relay.stdout)`
+ * to embed the relay's most recent heartbeat in the failure — the
+ * heartbeat carries `peers=N pending=N sync(rx=N tx=N) docs[…]` which
+ * is enough to localise nine kinds of "no replication" timeout that
+ * otherwise look identical to the test runner. */
 export async function waitForLine(
   chunks: string[],
   pattern: RegExp,
   timeoutMs: number,
-  label: string
+  label: string,
+  context?: () => string
 ): Promise<RegExpMatchArray> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -139,7 +147,30 @@ export async function waitForLine(
     }
     await new Promise((r) => setTimeout(r, 250));
   }
-  throw new Error(`${label}: pattern ${pattern} did not appear within ${timeoutMs}ms`);
+  const ctx = context ? context() : '';
+  const suffix = ctx ? `\n${ctx}` : '';
+  throw new Error(`${label}: pattern ${pattern} did not appear within ${timeoutMs}ms${suffix}`);
+}
+
+/** Walk `chunks` backward and return the most recent `chat serve`
+ * heartbeat line. Returns an empty string if none has appeared yet.
+ *
+ * The heartbeat format is: `[HH:MM:SS] peers=N chats=N messages=N
+ * pending=N lease=… sync(rx=N tx=N) docs[name=R/T …]`. When a relay
+ * test times out, the test caller gains "did the relay make any
+ * progress at all" + "is sync flowing" + "are the right docs in the
+ * share set" — the three things that distinguish "no peer joined"
+ * from "peers joined but decode failed" from "decoded but processing
+ * stuck". */
+export function lastHeartbeatLine(chunks: string[]): string {
+  const lines = chunks.join('').split('\n');
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i] ?? '';
+    if (/peers=\d+/.test(line) && /sync\(rx=/.test(line)) {
+      return `last relay heartbeat: ${line.trim()}`;
+    }
+  }
+  return 'last relay heartbeat: (none — relay never emitted a heartbeat)';
 }
 
 export function trace(label: string, msg: string): void {
