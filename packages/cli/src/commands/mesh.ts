@@ -16,6 +16,7 @@ import {
   addEndorsementToDevice,
   devicesState,
   touchSelfDeviceEntry,
+  upsertDeviceEntry,
 } from '@fairfox/shared/devices-state';
 import { createInvite } from '@fairfox/shared/invite';
 import {
@@ -389,7 +390,17 @@ async function meshInviteOpen(rest: readonly string[]): Promise<number> {
       if (!returnToken) {
         return;
       }
-      void acceptReturnToken(returnToken, keyring, storage).then(() => {
+      const agentHint = typeof frame.agent === 'string' ? frame.agent : undefined;
+      const nameHint = typeof frame.name === 'string' ? frame.name : undefined;
+      const userIdHint = typeof frame.userId === 'string' ? frame.userId : undefined;
+      void acceptReturnToken(returnToken, keyring, storage, {
+        ...(agentHint ? { agent: agentHint } : {}),
+        ...(nameHint ? { name: nameHint } : {}),
+        ...(userIdHint ? { userId: userIdHint } : {}),
+      }).then(() => {
+        // Send a pair-ack so the scanner knows the issuer applied the
+        // token and wrote its mesh:devices row.
+        client.signaling.sendCustom('pair-ack', { sessionId });
         process.stdout.write(`\n✓ "${stored.name}" paired. Close with ctrl-c, or stay open.\n`);
       });
     },
@@ -466,13 +477,50 @@ async function meshInviteOpen(rest: readonly string[]): Promise<number> {
   }
 }
 
+interface AcceptReturnHints {
+  readonly agent?: string;
+  readonly name?: string;
+  readonly userId?: string;
+}
+
 async function acceptReturnToken(
   returnToken: string,
   keyring: MeshKeyring,
-  storage: ReturnType<typeof keyringStorage>
+  storage: ReturnType<typeof keyringStorage>,
+  hints: AcceptReturnHints = {}
 ): Promise<void> {
-  applyPairingToken(decodePairingToken(returnToken), keyring);
+  const decoded = decodePairingToken(returnToken);
+  applyPairingToken(decoded, keyring);
   await storage.save(keyring);
+  // Mirror the browser's `writeScannerDeviceRow` — write the scanner's
+  // mesh:devices row directly from this side using the data carried in
+  // the pair-return frame, so the issuer's view of mesh:devices has
+  // the new peer immediately and doesn't have to wait for a WebRTC
+  // sync round-trip that may not complete before the issuer's tab
+  // closes. Without this, the row sits only in the scanner's local
+  // storage and admin-side flows that key off mesh:devices (e.g.
+  // `users revoke` mapping userId → peerIds) silently miss the new
+  // device.
+  await devicesState.loaded;
+  const agent: 'cli' | 'browser' | 'extension' =
+    hints.agent === 'cli' || hints.agent === 'extension' ? hints.agent : 'browser';
+  const patch: Parameters<typeof upsertDeviceEntry>[1] = {
+    agent,
+    publicKey: Array.from(decoded.issuerPublicKey),
+  };
+  if (hints.name) {
+    patch.name = hints.name;
+  }
+  if (hints.userId) {
+    // Unsigned ownerUserIds binding — enough for `users revoke` to
+    // map the userId back to peerIds. A SIGNED endorsement matters
+    // for the policy layer (`permissionsForEntry`), but it's
+    // already written by the scanner to its own row and races the
+    // issuer's write through the mesh:devices map-replace CRDT
+    // path. Closing that race needs per-key writes, separate work.
+    patch.ownerUserIds = [hints.userId];
+  }
+  upsertDeviceEntry(decoded.issuerPeerId, patch);
 }
 
 async function meshWhoami(): Promise<number> {
@@ -545,7 +593,14 @@ async function meshAddDevice(): Promise<number> {
       if (!returnToken) {
         return;
       }
-      void acceptReturnToken(returnToken, keyring, storage).then(() => {
+      const agentHint = typeof frame.agent === 'string' ? frame.agent : undefined;
+      const nameHint = typeof frame.name === 'string' ? frame.name : undefined;
+      const userIdHint = typeof frame.userId === 'string' ? frame.userId : undefined;
+      void acceptReturnToken(returnToken, keyring, storage, {
+        ...(agentHint ? { agent: agentHint } : {}),
+        ...(nameHint ? { name: nameHint } : {}),
+        ...(userIdHint ? { userId: userIdHint } : {}),
+      }).then(() => {
         const label = identity?.displayName ?? 'a new device';
         process.stdout.write(`\n✓ Paired ${label}. Close with ctrl-c, or stay open.\n`);
       });

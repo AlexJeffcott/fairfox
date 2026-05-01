@@ -203,12 +203,24 @@ export async function pair(tokenInputOrArgs: string | readonly string[]): Promis
   // browser pairing-actions.ts. Without this the CLI is paired but
   // has no user identity, and `chat send` / `users invite` /
   // anything that signs as a user fails.
+  let inviteIdentity:
+    | {
+        readonly userId: string;
+        readonly displayName: string;
+        readonly keypair: ReturnType<typeof signingKeyPairFromSecret>;
+      }
+    | undefined;
   if (inviteBlob) {
     const inviteResult = applyInviteBlob(inviteBlob);
     if (inviteResult.kind === 'error') {
       process.stderr.write(`fairfox pair: invite blob rejected — ${inviteResult.message}\n`);
       return 1;
     }
+    inviteIdentity = {
+      userId: inviteResult.payload.userId,
+      displayName: inviteResult.payload.displayName,
+      keypair: signingKeyPairFromSecret(new Uint8Array(inviteResult.payload.secretKey)),
+    };
     process.stdout.write(`fairfox pair: adopted invitee identity "${inviteResult.displayName}"\n`);
   }
 
@@ -257,17 +269,27 @@ export async function pair(tokenInputOrArgs: string | readonly string[]): Promis
       },
     });
     try {
+      // If we adopted an invitee identity, ship the userId through the
+      // pair-return frame so the issuer can record the
+      // peerId↔userId binding directly on its mesh:devices write. We
+      // can't write a SIGNED endorsement here and have it survive the
+      // mesh:devices CRDT merge (mesh:devices is a top-level map
+      // replace via `applyTopLevel`, so concurrent writes from issuer
+      // and scanner compete and last-write-wins) — that needs a
+      // separate per-key fix to the devices-state write path. For now
+      // the unsigned ownerUserIds binding is enough for `users revoke`
+      // to look up which peerIds belong to a user.
       if (sessionId) {
-        // Hand the issuer everything it needs to write our
-        // mesh:devices row directly, so the UI shows us immediately
-        // without depending on a post-reload WebRTC sync that
-        // polly's current adapter can't promise in a tight window.
-        const sent = client.signaling.sendCustom('pair-return', {
+        const framePayload: Record<string, unknown> = {
           sessionId,
           token: ownEncoded,
           agent: 'cli',
           name: hostname(),
-        });
+        };
+        if (inviteIdentity) {
+          framePayload.userId = inviteIdentity.userId;
+        }
+        const sent = client.signaling.sendCustom('pair-return', framePayload);
         if (!sent) {
           process.stderr.write(
             'fairfox pair: could not reach the signalling relay — the issuer will have to paste your token manually (printed below).\n'
