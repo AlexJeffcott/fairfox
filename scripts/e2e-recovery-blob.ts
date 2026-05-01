@@ -8,6 +8,7 @@
  * second device joined via recovery should NOT be a different
  * peer of a different user, but a second device of the SAME user.
  */
+// @covers: mesh:users, mesh:devices, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
 import { buildBundleIfMissing, fail, pass, runCli, trace } from './e2e-cli-helpers.ts';

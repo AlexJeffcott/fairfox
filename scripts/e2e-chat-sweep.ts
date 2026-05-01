@@ -9,6 +9,7 @@
  * e2e-chat-full.ts: together they prove the sweep window is
  * "older than STALE_TURN_MS, never younger".
  */
+// @covers: chat:main, chat:health, daemon:leader, todo:tasks, todo:projects, agenda:main, mesh:users, mesh:devices, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
 import {

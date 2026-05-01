@@ -30,6 +30,7 @@
  * Exits 0 only when every scenario above passes; non-zero with a
  * focused diagnostic on the first failure.
  */
+// @covers: chat:main, chat:health, daemon:leader, mesh:users, mesh:devices, mesh:meta
 
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';

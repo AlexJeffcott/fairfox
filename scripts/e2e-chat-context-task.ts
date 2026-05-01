@@ -12,6 +12,7 @@
  * from a doc id that has drifted from the todo sub-app's actual
  * doc id, returning `(no task X)` for valid tids.
  */
+// @covers: chat:main, chat:health, daemon:leader, todo:tasks, todo:projects, agenda:main, mesh:users, mesh:devices, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
 import {

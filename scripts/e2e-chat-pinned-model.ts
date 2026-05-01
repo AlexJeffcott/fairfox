@@ -7,6 +7,7 @@
  * `pinnedModel` via UI), so this test pins the value via env-var
  * test hook on chat send.
  */
+// @covers: chat:main, chat:health, daemon:leader, mesh:users, mesh:devices, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
 import {

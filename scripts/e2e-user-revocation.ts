@@ -8,6 +8,7 @@
  * the visible part of the flow — revocation is signed, written,
  * and replicates to the revoked user.
  */
+// @covers: chat:main, chat:health, daemon:leader, mesh:users, mesh:devices, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
 import {

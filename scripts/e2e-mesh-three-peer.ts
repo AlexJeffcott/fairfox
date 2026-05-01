@@ -6,6 +6,7 @@
  * mode where mesh:devices has 3 peers but ops only flow between
  * pairs that handshake first.
  */
+// @covers: chat:main, chat:health, daemon:leader, mesh:users, mesh:devices, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
 import {

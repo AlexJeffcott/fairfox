@@ -8,6 +8,7 @@
  * "concurrent assignment to messages list silently drops one"
  * regression that bit chat:main during the rename refactor.
  */
+// @covers: agenda:main, mesh:devices, mesh:users, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
 import {

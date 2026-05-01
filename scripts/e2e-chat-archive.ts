@@ -9,6 +9,7 @@
  * — the CLI doesn't have a separate "Add me to shared device"
  * surface; recovery blob is the only mechanism.
  */
+// @covers: chat:main, chat:health, daemon:leader, mesh:users, mesh:devices, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
 import {

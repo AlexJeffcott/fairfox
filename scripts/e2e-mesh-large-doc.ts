@@ -12,6 +12,7 @@
  * Uses the chat send hook to backdate every probe so the relay
  * sweep doesn't fire against an unprocessed batch.
  */
+// @covers: chat:main, chat:health, daemon:leader, todo:tasks, todo:projects, agenda:main, mesh:users, mesh:devices, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
 import {
