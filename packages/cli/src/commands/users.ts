@@ -14,7 +14,9 @@
 // Invite / revoke require a local identity with the appropriate
 // role. List + whoami work without one.
 
+import { devicesState } from '@fairfox/shared/devices-state';
 import { createInvite } from '@fairfox/shared/invite';
+import { revokeDevice } from '@fairfox/shared/pairing';
 import { permissionsForEntry } from '@fairfox/shared/policy';
 import { generateSigningKeyPair } from '@fairfox/shared/polly';
 import {
@@ -349,6 +351,38 @@ export function usersRevoke(targetUserId: string): Promise<number> {
         revokerUserId: identity.userId,
         revokerUserKey: identity.keypair,
       });
+      // Visibility (above) writes the `[revoked]` row into mesh:users
+      // so every peer's UI reflects the revocation. Enforcement (below)
+      // populates polly's `revokedPeers` set on this device's keyring
+      // so `MeshNetworkAdapter.tryUnwrap` drops every subsequent
+      // message signed by the target user's devices. Without this
+      // step, the row was rendered but the receive gate stayed open —
+      // mutation testing rounds 1, 2 and 3 surfaced the gap and
+      // `scripts/e2e-revoke-then-write.ts` is the regression guard.
+      //
+      // Look up every peerId whose endorsements include the target
+      // user. Devices with multiple owner users are NOT revoked here
+      // — kicking a peerId would also block the device's other
+      // legitimate users; that case wants a separate device-level
+      // revocation flow we don't have yet.
+      await devicesState.loaded;
+      const storage = keyringStorage();
+      const keyring = await storage.load();
+      if (keyring) {
+        for (const [devicePeerId, entry] of Object.entries(devicesState.value.devices)) {
+          if (devicePeerId === peerId) {
+            continue;
+          }
+          const owners = entry.ownerUserIds ?? [];
+          if (!owners.includes(targetUserId)) {
+            continue;
+          }
+          if (owners.length > 1) {
+            continue;
+          }
+          await revokeDevice(keyring, devicePeerId, peerId);
+        }
+      }
       if (peered) {
         await flushOutgoing(2000);
       }
