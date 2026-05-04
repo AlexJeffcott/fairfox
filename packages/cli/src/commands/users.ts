@@ -16,9 +16,8 @@
 
 import { devicesState } from '@fairfox/shared/devices-state';
 import { createInvite } from '@fairfox/shared/invite';
-import { revokeDevice } from '@fairfox/shared/pairing';
 import { permissionsForEntry } from '@fairfox/shared/policy';
-import { generateSigningKeyPair } from '@fairfox/shared/polly';
+import { generateSigningKeyPair, revokePeerLocally } from '@fairfox/shared/polly';
 import {
   createBootstrapUser,
   type Role,
@@ -378,6 +377,7 @@ export function usersRevoke(targetUserId: string): Promise<number> {
       const storage = keyringStorage();
       const keyring = await storage.load();
       if (keyring) {
+        let revokedAny = false;
         for (const [devicePeerId, entry] of Object.entries(devicesState.value.devices)) {
           if (devicePeerId === peerId) {
             continue;
@@ -389,7 +389,15 @@ export function usersRevoke(targetUserId: string): Promise<number> {
           if (owners.length > 1) {
             continue;
           }
-          await revokeDevice(keyring, devicePeerId, peerId);
+          // Use polly's local-only revocation primitive plus the
+          // CLI's file-backed keyring storage. The pairing module's
+          // higher-level revokeDevice helper calls saveKeyring,
+          // which only knows IndexedDB and throws in Node.
+          revokePeerLocally(devicePeerId, keyring);
+          revokedAny = true;
+        }
+        if (revokedAny) {
+          await storage.save(keyring);
         }
       }
       if (peered) {
