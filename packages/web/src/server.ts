@@ -174,7 +174,7 @@ function handlePairReturn(
   ws: ServerWebSocket<WsData>,
   sessionId: string,
   token: string,
-  extras: { agent?: string; name?: string }
+  extras: { agent?: string; name?: string; userId?: string }
 ): void {
   sweepExpiredPairSessions(Date.now());
   const session = pairSessions.get(sessionId);
@@ -196,6 +196,9 @@ function handlePairReturn(
   }
   if (typeof extras.name === 'string') {
     forwarded.name = extras.name;
+  }
+  if (typeof extras.userId === 'string') {
+    forwarded.userId = extras.userId;
   }
   try {
     session.issuerSocket.send(JSON.stringify(forwarded));
@@ -254,6 +257,7 @@ function handleSignalingMessage(ws: ServerWebSocket<WsData>, msg: string): void 
       handlePairReturn(ws, parsed.sessionId, parsed.token, {
         agent: typeof parsed.agent === 'string' ? parsed.agent : undefined,
         name: typeof parsed.name === 'string' ? parsed.name : undefined,
+        userId: typeof parsed.userId === 'string' ? parsed.userId : undefined,
       });
       return;
     }
