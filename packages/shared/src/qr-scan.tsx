@@ -189,10 +189,34 @@ async function startCamera(mode: CameraScanMode): Promise<void> {
     if (!video) {
       return;
     }
-    video.srcObject = stream;
-    video.setAttribute('playsinline', 'true');
+    // iOS PWA only renders the stream if playsinline/muted/autoplay
+    // are set before srcObject. The JSX sets all three; we still set
+    // them imperatively here in case the element was reused.
     video.muted = true;
-    await video.play();
+    video.setAttribute('playsinline', 'true');
+    video.setAttribute('autoplay', 'true');
+    video.srcObject = stream;
+    if (video.readyState < video.HAVE_METADATA) {
+      await new Promise<void>((resolve) => {
+        const onReady = () => {
+          video.removeEventListener('loadedmetadata', onReady);
+          resolve();
+        };
+        video.addEventListener('loadedmetadata', onReady);
+      });
+    }
+    if (session !== activeCameraSession) {
+      return;
+    }
+    // On iOS PWA, play() can reject ("AbortError: interrupted by load")
+    // even when autoplay then takes over and frames start flowing. Don't
+    // fail the whole flow on a play() rejection — let tickCamera decide
+    // whether the video is actually delivering frames.
+    try {
+      await video.play();
+    } catch {
+      // intentional: see comment above
+    }
     tickCamera(mode, session);
   } catch (err) {
     cameraScanError.value = err instanceof Error ? err.message : 'Could not open the camera.';
@@ -281,7 +305,13 @@ export function QrScanDialog(): preact.JSX.Element | null {
         code is in frame.
       </p>
       <div style={VIDEO_WRAP_STYLE}>
-        <video ref={setCameraVideo} style={VIDEO_STYLE} playsInline={true} muted={true} />
+        <video
+          ref={setCameraVideo}
+          style={VIDEO_STYLE}
+          playsInline={true}
+          muted={true}
+          autoPlay={true}
+        />
         <div style={FRAME_STYLE} />
       </div>
       {cameraScanError.value && <p style={ERROR_STYLE}>{cameraScanError.value}</p>}
