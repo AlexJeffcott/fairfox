@@ -19,13 +19,18 @@ import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
 import { detectCapabilities } from '#src/capabilities.ts';
 
-// Internal type for the CrdtPrimitive returned by $meshState. We only
-// use the surface actually consumed (`value` read/write, `loaded`), so
-// a structural type is enough; duplicating polly's full CrdtPrimitive
-// here would couple this module to polly internals.
+// Internal type for the CrdtPrimitive returned by $meshState. We use
+// `value` (read/write), `loaded`, and `handle` — the last one is
+// needed for per-key writes that don't go through polly's
+// applyTopLevel (which clobbers the whole `devices` map on each
+// `value =` assignment, racing concurrent issuer/scanner writes).
+interface DocHandleLike {
+  change(updater: (doc: DevicesDoc) => void): void;
+}
 interface DevicesPrimitive {
   value: DevicesDoc;
   readonly loaded: Promise<void>;
+  readonly handle: DocHandleLike | undefined;
 }
 
 export type DeviceAgent = 'browser' | 'cli' | 'extension';
@@ -128,6 +133,10 @@ export const devicesState: DevicesPrimitive = {
   get loaded(): Promise<void> {
     return primitive().loaded;
   },
+  get handle(): DocHandleLike | undefined {
+    const p = primitive();
+    return (p as unknown as { handle?: DocHandleLike }).handle;
+  },
 };
 
 /** Read-only helper for the common case of "does this peer have an
@@ -141,7 +150,26 @@ export function deviceEntryFor(peerId: string): DeviceEntry | undefined {
  * whichever fields they want to change; untouched fields keep their
  * previous value. Always preserves `createdAt` when the entry already
  * exists — the first announcement timestamp is load-bearing for any
- * future "recently paired" affordance. */
+ * future "recently paired" affordance.
+ *
+ * Writes go directly through `handle.change` against the per-peer
+ * key (`doc.devices[peerId] = next`) rather than through the
+ * `devicesState.value = …` path. The latter routes via polly's
+ * `applyTopLevel`, which assigns the entire `devices` field at once
+ * — concurrent writes from issuer (admin writing the new device
+ * row in `acceptReturnToken`) and scanner (the new device's own
+ * `addEndorsementToDevice` during pair completion) both replace
+ * the whole map and Automerge picks one winner by hash-of-actor-id,
+ * dropping the loser's row.
+ *
+ * Per-key writes let Automerge merge concurrent updates to
+ * different peer rows cleanly. Same-peer concurrent updates still
+ * resolve last-write-wins on the entry as a whole, which is fine
+ * for the practical cases (rename, lastSeenAt bump): nobody loses
+ * a foreign device row to a local rename. The `e2e-revoke-then-write`
+ * test was the spec for this fix; it documents the gap as the
+ * "second blocker" stacked behind the receive-side enforcement
+ * (which is in polly already). */
 export function upsertDeviceEntry(
   peerId: string,
   patch: Partial<Omit<DeviceEntry, 'peerId' | 'createdAt'>> & {
@@ -191,6 +219,64 @@ export function upsertDeviceEntry(
   if (revokedByUserId !== undefined) {
     next.revokedByUserId = revokedByUserId;
   }
+
+  const handle = devicesState.handle;
+  if (handle) {
+    handle.change((doc) => {
+      if (!doc.devices) {
+        doc.devices = {};
+      }
+      const current = doc.devices[peerId];
+      if (!current) {
+        // First write — initialise the whole entry.
+        doc.devices[peerId] = next;
+        return;
+      }
+      // Existing entry: write only the fields the caller actually
+      // patched, leaving every other field at its Automerge-tracked
+      // value. Same-peer concurrent updates that touch DIFFERENT
+      // fields merge cleanly (e.g. issuer writes name + agent while
+      // scanner writes endorsements + ownerUserIds during pair
+      // completion); same-field concurrent updates resolve LWW per
+      // field, which is fine for rename and lastSeenAt-bump cases.
+      // Always bump lastSeenAt — every write is a "I saw it" signal.
+      current.lastSeenAt = next.lastSeenAt;
+      if (patch.name !== undefined) {
+        current.name = next.name;
+      }
+      if (patch.agent !== undefined) {
+        current.agent = next.agent;
+      }
+      if (patch.publicKey !== undefined) {
+        current.publicKey = next.publicKey;
+      }
+      if (patch.ownerUserIds !== undefined) {
+        current.ownerUserIds = next.ownerUserIds;
+      }
+      if (patch.endorsements !== undefined) {
+        current.endorsements = next.endorsements;
+      }
+      if (patch.capabilities !== undefined) {
+        current.capabilities = next.capabilities;
+      }
+      if (patch.revokedAt !== undefined) {
+        current.revokedAt = next.revokedAt;
+      }
+      if (patch.revocationSignature !== undefined) {
+        current.revocationSignature = next.revocationSignature;
+      }
+      if (patch.revokedByUserId !== undefined) {
+        current.revokedByUserId = next.revokedByUserId;
+      }
+    });
+    return;
+  }
+  // Pre-loaded fallback: the wrapper hasn't bridged its handle yet
+  // (rare; happens at boot when the very first write arrives before
+  // the loaded promise resolves). Fall through to the value-setter
+  // so the write isn't lost — it'll get clobbered if a concurrent
+  // peer write arrives in the same window, but that's strictly no
+  // worse than the prior behaviour.
   devicesState.value = {
     ...devicesState.value,
     devices: { ...devicesState.value.devices, [peerId]: next },
