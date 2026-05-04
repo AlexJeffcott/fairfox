@@ -169,8 +169,18 @@ export async function pair(tokenInputOrArgs: string | readonly string[]): Promis
   const rest = typeof tokenInputOrArgs === 'string' ? [tokenInputOrArgs] : tokenInputOrArgs;
   const { token: tokenInput, sessionId: sessionIdArg } = parseArgs(rest);
   if (!tokenInput) {
-    process.stderr.write('fairfox pair: expected a pairing token or URL as the first argument.\n');
+    process.stderr.write('fairfox pair: expected a pairing token, share URL, or recovery blob.\n');
     return 1;
+  }
+
+  // Recovery blobs are the user-facing "I lost my device, here's my
+  // identity" payload — `fairfox-user-v1:<hex>:<name>`, possibly
+  // URL-encoded. Sniff and route to the recovery import path so a
+  // single verb covers every onboarding entry point.
+  const trimmed = tokenInput.trim();
+  if (trimmed.startsWith('fairfox-user-v1:') || trimmed.startsWith('fairfox-user-v1%3A')) {
+    const { usersImport } = await import('#src/commands/users.ts');
+    return usersImport(trimmed);
   }
 
   // Share URLs from `mesh invite open` carry pair=, s=, and invite=

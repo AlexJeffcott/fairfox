@@ -194,16 +194,13 @@ export async function bootstrapAndOpenInvite(opts: {
   inviteToOpen: string;
 }): Promise<OpenedInvite> {
   const userArgs = opts.invitees.flatMap((u) => ['--user', `${u.name}:${u.role ?? 'member'}`]);
-  const init = await runCli(
-    ['mesh', 'init', '--admin', opts.adminName, ...userArgs],
-    opts.adminHome
-  );
+  const init = await runCli(['init', '--admin', opts.adminName, ...userArgs], opts.adminHome);
   if (init.status !== 0) {
     throw new Error(`mesh init failed: ${init.stderr.slice(0, 200)}`);
   }
   const handle = spawnCli(
     `invite-${opts.inviteToOpen}`,
-    ['mesh', 'invite', 'open', opts.inviteToOpen],
+    ['add', 'user', opts.inviteToOpen],
     opts.adminHome
   );
   const m = await waitForLine(
@@ -244,7 +241,7 @@ export async function openExistingInvite(
   inviteName: string,
   options: { reopen?: boolean } = {}
 ): Promise<OpenedInvite> {
-  const args = ['mesh', 'invite', 'open', inviteName];
+  const args = ['add', 'user', inviteName];
   if (options.reopen) {
     args.push('--reopen');
   }

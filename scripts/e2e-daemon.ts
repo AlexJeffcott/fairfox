@@ -125,7 +125,7 @@ async function main(): Promise<void> {
   chmodSync(FAKE_BIN, 0o755);
 
   header('mesh init --admin TestAlice');
-  const init = runCliSync(['mesh', 'init', '--admin', 'TestAlice']);
+  const init = runCliSync(['init', '--admin', 'TestAlice']);
   if (init.status !== 0) {
     console.error(init.stdout);
     console.error(init.stderr);

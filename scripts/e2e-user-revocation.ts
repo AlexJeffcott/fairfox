@@ -44,7 +44,7 @@ await invite.close();
 trace('phone', 'paired');
 
 // Capture phone's userId.
-const whoamiPhone = await runCli(['users', 'whoami'], PHONE_HOME);
+const whoamiPhone = await runCli(['whoami'], PHONE_HOME);
 const phoneUserId = whoamiPhone.stdout.match(/userId:\s+([0-9a-f]{64})/)?.[1] ?? '';
 if (!phoneUserId) {
   fail(`couldn't read phone userId:\n${whoamiPhone.stdout}`);
@@ -62,7 +62,7 @@ trace('phone', `userId ${phoneUserId.slice(0, 16)}…`);
 }
 
 // Admin revokes Phone (briefly opens mesh, writes locally, exits).
-const revoke = await runCli(['users', 'revoke', phoneUserId], ADMIN_HOME);
+const revoke = await runCli(['revoke', phoneUserId], ADMIN_HOME);
 if (revoke.status !== 0) {
   fail(`users revoke failed: ${revoke.stderr.slice(0, 300)}`);
 }

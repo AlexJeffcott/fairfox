@@ -10,148 +10,243 @@
 //     has to be the very first import so its side effect runs
 //     before the transitive import of polly → automerge-wasm.
 
+// reflect-metadata MUST be loaded before any module that imports
+// `@anthropic-ai/claude-agent-sdk` (used in commands/chat.ts and
+// pulled into the bundle by static analysis). The SDK uses tsyringe,
+// which calls Reflect.getMetadata at module-init — without the
+// polyfill present at evaluation time the bundle errors with
+// "tsyringe requires a reflect polyfill" before any of our code runs.
+// Bun's bundler doesn't guarantee a stable order between
+// reflect-metadata's IIFE and tsyringe's class evaluations unless
+// reflect-metadata is the first thing the entry point imports; small
+// edits to bin.ts that reshuffle other imports were observed to flip
+// the ordering and break startup.
+import 'reflect-metadata';
 import '#src/preload.ts';
 
 // fairfox — CLI peer for the fairfox mesh.
 //
-// Participates in the same mesh the browser sub-apps do, reads and
-// writes $meshState documents, and persists a keyring under
-// ~/.fairfox/keyring.json. Pairing is the same asymmetric ceremony the
-// browser flow uses: the CLI accepts a `#pair=...` share URL or a raw
-// base64 token, applies it to its keyring, and prints its own share
-// URL so the browser side can scan it back.
-//
-// Usage:
-//   fairfox pair <token-or-url>   Apply a pairing token; print our share URL.
-//   fairfox agenda list           List chores and events in the agenda doc.
-//   fairfox agenda add <name>     Add a chore (daily recurrence) to the agenda doc.
-//
-// Every command that touches the mesh opens a brief connection, waits
-// for the Automerge sync handshake against whichever peers are online,
-// mutates or reads, flushes, and exits. Long-running peer mode is a
-// follow-up (see ISSUE).
+// Verb-first command surface. Goals map to single verbs; sub-verbs
+// only appear where the distinction matters (`add device` vs
+// `add user` carry different semantics — recovery-blob included
+// vs not). Every command accepts `--help` / `-h` and `--verbose` /
+// `-v`; `--verbose` is stripped early and turned into a global flag
+// the rest of the codebase reads via `isVerbose()` / `vlog()`.
 
-import { parseArgs } from 'node:util';
 import { agendaAdd, agendaList } from '#src/commands/agenda.ts';
 import { chatDump, chatSend, chatServe } from '#src/commands/chat.ts';
 import { daemon } from '#src/commands/daemon.ts';
 import { deploy } from '#src/commands/deploy.ts';
 import { doctor } from '#src/commands/doctor.ts';
-import { mesh } from '#src/commands/mesh.ts';
+import {
+  meshAddDevice,
+  meshAddUser,
+  meshFingerprintCmd,
+  meshInit,
+  meshInviteList,
+  meshWhoami,
+} from '#src/commands/mesh.ts';
 import { pair } from '#src/commands/pair.ts';
-import { peers } from '#src/commands/peers.ts';
+import { peersForget, peersList, peersRenameSelf } from '#src/commands/peers.ts';
 import { todo } from '#src/commands/todo.ts';
 import { maybeNoticeUpdate, update } from '#src/commands/update.ts';
-import { users } from '#src/commands/users.ts';
+import { usersList, usersRevoke } from '#src/commands/users.ts';
+import { commandHelp, topLevelHelp, wantsHelp } from '#src/help.ts';
+import { setVerbose } from '#src/verbose.ts';
 
-function printUsage(): void {
-  process.stderr.write(
-    [
-      'fairfox — CLI peer for the fairfox mesh',
-      '',
-      'Usage:',
-      '  fairfox mesh init             Create a new mesh (admin + invites).',
-      '  fairfox mesh invite list      Show pending and consumed invites.',
-      '  fairfox mesh invite open <n>  Live QR for an invite — held open.',
-      '  fairfox mesh add-device       Live QR to add another device for YOU.',
-      '  fairfox pair <token-or-url>   Apply a pairing token; print our share URL.',
-      '  fairfox agenda list           List chores and events in the agenda doc.',
-      '  fairfox agenda add <name>     Add a chore (daily recurrence).',
-      '  fairfox peers                 List every paired device.',
-      '  fairfox peers rename <name>   Rename this device in the mesh.',
-      '  fairfox peers forget <pid>    Stop syncing with a peer (local).',
-      '  fairfox users                 List every user in the mesh (admins first).',
-      '  fairfox users whoami          Print the local user identity.',
-      '  fairfox users bootstrap <n>   Create the first admin on a fresh mesh.',
-      '  fairfox users import <blob>   Load a user recovery blob.',
-      '  fairfox users invite <name>   Invite a user (--role admin|member|guest|llm).',
-      '  fairfox users revoke <uid>    Write a signed user revocation.',
-      '  fairfox todo tasks            List open tasks (add --done for all).',
-      '  fairfox todo task add <desc>  Add a task; --project P --priority high|med|low.',
-      '  fairfox todo task done <tid>  Mark a task done.',
-      '  fairfox todo projects         List projects (add --status ...).',
-      '  fairfox todo capture add <s>  Record a quick capture.',
-      '  fairfox todo help             Full list of todo subcommands.',
-      '  fairfox deploy [push]         `railway up --detach` from the fairfox repo.',
-      '  fairfox deploy status         List recent Railway deployments.',
-      '  fairfox deploy logs           Tail Railway logs for the current service.',
-      '  fairfox update                Fetch the latest CLI bundle if it has drifted.',
-      '  fairfox doctor                Diagnose chat: process, mesh, relay health, pendings.',
-      '  fairfox chat serve            Reply to pending chat messages via `claude -p`.',
-      '  fairfox daemon install        Install launchd/systemd unit; keep the mesh open.',
-      '  fairfox daemon start          Start the installed unit (use --foreground to run).',
-      '  fairfox daemon stop           Stop the installed unit.',
-      '  fairfox daemon status         Unit + pid + log paths.',
-      '',
-      'The keyring is stored at ~/.fairfox/keyring.json and is created on',
-      'first run. The signalling URL defaults to the fairfox production',
-      'origin; override with FAIRFOX_URL.',
-      '',
-    ].join('\n')
-  );
+/** Strip --verbose / -v from argv up-front and set the global flag.
+ * Strips in place so individual command parsers don't need to know
+ * about the flag — they only see their own positional args + flags
+ * after this returns. */
+function consumeVerboseFlag(argv: string[]): string[] {
+  const out: string[] = [];
+  let verbose = false;
+  for (const a of argv) {
+    if (a === '--verbose' || a === '-v') {
+      verbose = true;
+      continue;
+    }
+    out.push(a);
+  }
+  setVerbose(verbose);
+  return out;
+}
+
+/** Helper: if the user passed --help on a multi-word command, render
+ * the matching block; otherwise return null and let the dispatcher
+ * call the real handler. */
+function helpFor(name: string, args: readonly string[]): number | null {
+  if (!wantsHelp(args)) {
+    return null;
+  }
+  const text = commandHelp(name);
+  if (text) {
+    process.stdout.write(text);
+    return 0;
+  }
+  return null;
 }
 
 function main(): Promise<number> {
-  const [, , subcommand, ...rest] = process.argv;
-  if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
-    printUsage();
+  const argv = consumeVerboseFlag(process.argv.slice(2));
+  const [subcommand, ...rest] = argv;
+
+  if (!subcommand || subcommand === 'help' || wantsHelp([subcommand])) {
+    process.stdout.write(topLevelHelp());
     return Promise.resolve(subcommand ? 0 : 1);
   }
 
-  if (subcommand === 'pair') {
-    return pair(rest);
+  // ── mesh lifecycle ────────────────────────────────────────────────
+  if (subcommand === 'init') {
+    const help = helpFor('init', rest);
+    if (help !== null) {
+      return Promise.resolve(help);
+    }
+    return meshInit(rest);
   }
 
-  if (subcommand === 'agenda') {
-    const verb = rest[0];
-    if (verb === 'list') {
-      return agendaList();
-    }
-    if (verb === 'add') {
-      const text = rest.slice(1).join(' ').trim();
-      if (!text) {
-        process.stderr.write('fairfox agenda add: expected a chore name.\n');
-        return Promise.resolve(1);
+  if (subcommand === 'add') {
+    const [kind, ...kindArgs] = rest;
+    if (kind === 'device') {
+      const help = helpFor('add device', kindArgs);
+      if (help !== null) {
+        return Promise.resolve(help);
       }
-      return agendaAdd(text);
+      return meshAddDevice();
     }
-    process.stderr.write(`fairfox agenda: unknown verb "${verb ?? ''}". Try "list" or "add".\n`);
+    if (kind === 'user') {
+      const help = helpFor('add user', kindArgs);
+      if (help !== null) {
+        return Promise.resolve(help);
+      }
+      return meshAddUser(kindArgs);
+    }
+    process.stderr.write(
+      'fairfox add: expected `device` or `user`. Try `fairfox add device --help`.\n'
+    );
     return Promise.resolve(1);
   }
 
-  if (subcommand === 'deploy') {
-    return deploy(rest);
+  if (subcommand === 'pair') {
+    const help = helpFor('pair', rest);
+    if (help !== null) {
+      return Promise.resolve(help);
+    }
+    return pair(rest);
   }
 
-  if (subcommand === 'todo') {
-    return todo(rest);
+  // ── identity / membership ────────────────────────────────────────
+  if (subcommand === 'whoami') {
+    const help = helpFor('whoami', rest);
+    if (help !== null) {
+      return Promise.resolve(help);
+    }
+    return meshWhoami();
   }
 
+  if (subcommand === 'rename') {
+    const help = helpFor('rename', rest);
+    if (help !== null) {
+      return Promise.resolve(help);
+    }
+    const name = rest.join(' ').trim();
+    if (!name) {
+      process.stderr.write('fairfox rename: expected a name.\n');
+      return Promise.resolve(1);
+    }
+    return peersRenameSelf(name);
+  }
+
+  if (subcommand === 'revoke') {
+    const help = helpFor('revoke', rest);
+    if (help !== null) {
+      return Promise.resolve(help);
+    }
+    const target = rest[0];
+    if (!target) {
+      process.stderr.write('fairfox revoke: expected a userId.\n');
+      return Promise.resolve(1);
+    }
+    return usersRevoke(target);
+  }
+
+  if (subcommand === 'forget') {
+    const help = helpFor('forget', rest);
+    if (help !== null) {
+      return Promise.resolve(help);
+    }
+    const target = rest[0];
+    if (!target) {
+      process.stderr.write('fairfox forget: expected a peerId.\n');
+      return Promise.resolve(1);
+    }
+    return peersForget(target);
+  }
+
+  // ── listing ──────────────────────────────────────────────────────
   if (subcommand === 'peers') {
-    return peers(rest);
+    const help = helpFor('peers', rest);
+    if (help !== null) {
+      return Promise.resolve(help);
+    }
+    return peersList();
   }
 
   if (subcommand === 'users') {
-    return users(rest);
+    const help = helpFor('users', rest);
+    if (help !== null) {
+      return Promise.resolve(help);
+    }
+    return usersList();
   }
 
-  if (subcommand === 'mesh') {
-    return mesh(rest);
+  if (subcommand === 'invites') {
+    const help = helpFor('invites', rest);
+    if (help !== null) {
+      return Promise.resolve(help);
+    }
+    return meshInviteList();
   }
 
-  if (subcommand === 'daemon') {
-    return daemon(rest);
+  if (subcommand === 'fingerprint') {
+    const help = helpFor('fingerprint', rest);
+    if (help !== null) {
+      return Promise.resolve(help);
+    }
+    return meshFingerprintCmd();
   }
 
-  if (subcommand === 'update') {
-    return update();
-  }
-
+  // ── diagnostics + lifecycle ─────────────────────────────────────
   if (subcommand === 'doctor') {
+    const help = helpFor('doctor', rest);
+    if (help !== null) {
+      return Promise.resolve(help);
+    }
     return doctor();
   }
 
+  if (subcommand === 'update') {
+    const help = helpFor('update', rest);
+    if (help !== null) {
+      return Promise.resolve(help);
+    }
+    return update();
+  }
+
+  if (subcommand === 'deploy') {
+    const help = helpFor('deploy', rest);
+    if (help !== null) {
+      return Promise.resolve(help);
+    }
+    return deploy(rest);
+  }
+
+  // ── sub-app verbs (already verb-shaped — keep) ───────────────────
   if (subcommand === 'chat') {
+    if (wantsHelp(rest)) {
+      process.stdout.write(commandHelp('chat') ?? '');
+      return Promise.resolve(0);
+    }
     const verb = rest[0];
     if (verb === 'serve') {
       return chatServe();
@@ -167,18 +262,51 @@ function main(): Promise<number> {
     if (verb === 'dump') {
       return chatDump();
     }
-    process.stderr.write('fairfox chat: unknown verb. Try "serve", "send", or "dump".\n');
+    process.stderr.write('fairfox chat: unknown verb. Try `fairfox chat --help`.\n');
     return Promise.resolve(1);
   }
 
-  process.stderr.write(`fairfox: unknown subcommand "${subcommand}".\n\n`);
-  printUsage();
+  if (subcommand === 'daemon') {
+    if (wantsHelp(rest)) {
+      process.stdout.write(commandHelp('daemon') ?? '');
+      return Promise.resolve(0);
+    }
+    return daemon(rest);
+  }
+
+  if (subcommand === 'agenda') {
+    if (wantsHelp(rest)) {
+      process.stdout.write(commandHelp('agenda') ?? '');
+      return Promise.resolve(0);
+    }
+    const verb = rest[0];
+    if (verb === 'list') {
+      return agendaList();
+    }
+    if (verb === 'add') {
+      const text = rest.slice(1).join(' ').trim();
+      if (!text) {
+        process.stderr.write('fairfox agenda add: expected a chore name.\n');
+        return Promise.resolve(1);
+      }
+      return agendaAdd(text);
+    }
+    process.stderr.write('fairfox agenda: unknown verb. Try `fairfox agenda --help`.\n');
+    return Promise.resolve(1);
+  }
+
+  if (subcommand === 'todo') {
+    if (wantsHelp(rest)) {
+      process.stdout.write(commandHelp('todo') ?? '');
+      return Promise.resolve(0);
+    }
+    return todo(rest);
+  }
+
+  process.stderr.write(`fairfox: unknown command "${subcommand}".\n\n`);
+  process.stdout.write(topLevelHelp());
   return Promise.resolve(1);
 }
-
-// parseArgs is imported so future subcommands can adopt it; the v1
-// subcommands do positional parsing only.
-void parseArgs;
 
 process.on('uncaughtException', (err) => {
   process.stderr.write(`fairfox: uncaught — ${err instanceof Error ? err.stack : String(err)}\n`);
@@ -192,9 +320,6 @@ process.on('unhandledRejection', (reason) => {
 
 async function runWithUpdateNotice(): Promise<number> {
   const code = await main();
-  // Skip the update banner on the update command itself — running
-  // `fairfox update` already prints a before/after line and the stamp
-  // refresh there supersedes the notice.
   if (process.argv[2] !== 'update') {
     await maybeNoticeUpdate();
   }

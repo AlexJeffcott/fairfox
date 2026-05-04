@@ -89,8 +89,15 @@ function isValidRole(s: string): s is Role {
 
 function parseInitArgs(rest: readonly string[]): InitArgs {
   const args: InitArgs = { admin: undefined, name: undefined, users: [], force: false };
+  // Positional mesh-name: the first non-flag token is the mesh name.
+  // The legacy --name flag is still honoured for callers that haven't
+  // migrated yet, but the positional shape (`fairfox init <name>`) is
+  // the documented one.
   for (let i = 0; i < rest.length; i += 1) {
     const arg = rest[i];
+    if (arg === undefined) {
+      continue;
+    }
     if (arg === '--force') {
       args.force = true;
     } else if (arg === '--admin') {
@@ -110,6 +117,8 @@ function parseInitArgs(rest: readonly string[]): InitArgs {
         continue;
       }
       args.users.push({ name, role });
+    } else if (!arg.startsWith('-') && args.name === undefined) {
+      args.name = arg;
     }
   }
   return args;
@@ -123,7 +132,7 @@ function wipeLocalState(): void {
   clearInvitesFile();
 }
 
-async function meshInit(rest: readonly string[]): Promise<number> {
+export async function meshInit(rest: readonly string[]): Promise<number> {
   const args = parseInitArgs(rest);
   if (!args.admin || !args.admin.trim()) {
     process.stderr.write(
@@ -294,7 +303,7 @@ async function meshInit(rest: readonly string[]): Promise<number> {
 
 // --- invite list / open ------------------------------------------
 
-async function meshInviteList(): Promise<number> {
+export async function meshInviteList(): Promise<number> {
   const file = loadInvitesFile();
   if (file.invites.length === 0) {
     process.stdout.write('(no pending invites)\n');
@@ -360,7 +369,7 @@ function parseInviteOpenArgs(rest: readonly string[]): InviteOpenArgs {
   return out;
 }
 
-async function meshInviteOpen(rest: readonly string[]): Promise<number> {
+export async function meshInviteOpen(rest: readonly string[]): Promise<number> {
   const args = parseInviteOpenArgs(rest);
   if (!args.name) {
     process.stderr.write('fairfox mesh invite open: expected a name.\n');
@@ -523,7 +532,7 @@ async function acceptReturnToken(
   upsertDeviceEntry(decoded.issuerPeerId, patch);
 }
 
-async function meshWhoami(): Promise<number> {
+export async function meshWhoami(): Promise<number> {
   const storage = keyringStorage();
   const keyring = await storage.load();
   if (!keyring) {
@@ -564,7 +573,109 @@ async function meshWhoami(): Promise<number> {
   }
 }
 
-async function meshAddDevice(): Promise<number> {
+/** `fairfox add user <name> [--role X] [--queue-only]` —
+ * Idempotent queue-and-open. Looks up an existing invite by name; if
+ * none exists, mints a fresh one with the given role (defaults to
+ * member), writes the UserEntry into mesh:users so the row is
+ * everywhere, and stashes the blob in invites.json. Then opens the
+ * live QR via meshInviteOpen unless --queue-only is set. Re-running
+ * with the same name reopens the existing invite without minting a
+ * new blob — the QR's pair-token + session id rotate per open, but
+ * the underlying invite blob is stable. */
+export async function meshAddUser(rest: readonly string[]): Promise<number> {
+  let name = '';
+  let role: Role = 'member';
+  let queueOnly = false;
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i];
+    if (arg === undefined) {
+      continue;
+    }
+    if (arg === '--role') {
+      const v = rest[i + 1];
+      i += 1;
+      if (!v || !isValidRole(v)) {
+        process.stderr.write('fairfox add user: --role must be admin, member, guest, or llm.\n');
+        return 1;
+      }
+      role = v;
+    } else if (arg === '--queue-only') {
+      queueOnly = true;
+    } else if (!arg.startsWith('-') && !name) {
+      name = arg;
+    }
+  }
+  if (!name) {
+    process.stderr.write(
+      'fairfox add user: usage: fairfox add user <name> [--role admin|member|guest|llm] [--queue-only]\n'
+    );
+    return 1;
+  }
+
+  // Already queued? Reopen rather than mint a duplicate.
+  const existing = findInvite(name);
+  if (existing) {
+    process.stdout.write(`existing invite for "${name}" found (${existing.role}); reopening.\n`);
+  } else {
+    const adminIdentity = loadUserIdentityFile();
+    if (!adminIdentity) {
+      process.stderr.write(
+        'fairfox add user: no local user identity — `fairfox init` or `fairfox pair <recovery-blob>` first.\n'
+      );
+      return 1;
+    }
+    const peerId = await loadPeerId();
+    const client = await openMeshClient({ peerId });
+    try {
+      await waitForPeer(client, 8000);
+      await usersState.loaded;
+      const adminEntry = usersState.value.users[adminIdentity.userId];
+      if (!adminEntry || !adminEntry.roles.includes('admin')) {
+        process.stderr.write('fairfox add user: this user is not an admin in mesh:users.\n');
+        return 1;
+      }
+      const { blob, payload } = createInvite({
+        displayName: name,
+        roles: [role],
+        adminUserKey: adminIdentity.keypair,
+        adminUserId: adminIdentity.userId,
+      });
+      upsertUser({
+        entry: {
+          userId: payload.userId,
+          displayName: payload.displayName,
+          roles: payload.roles,
+          grants: payload.grants,
+          createdByUserId: payload.createdByUserId,
+          createdAt: payload.createdAt,
+          signature: payload.signature,
+        },
+      });
+      addInvite({
+        name,
+        userId: payload.userId,
+        role,
+        createdAt: payload.createdAt,
+        blob,
+      });
+      await flushOutgoing(2000);
+    } finally {
+      try {
+        await closeMesh(client);
+      } catch {
+        // intentional
+      }
+    }
+    process.stdout.write(`queued invite for "${name}" as ${role}.\n`);
+  }
+
+  if (queueOnly) {
+    return 0;
+  }
+  return meshInviteOpen([name]);
+}
+
+export async function meshAddDevice(): Promise<number> {
   const peerId = await loadPeerId();
   const storage = keyringStorage();
   const keyring = await storage.load();
@@ -710,7 +821,7 @@ function randomBase64(bytes: number): string {
  * struggle:story so the user sees that the process is doing
  * something. The mesh client is closed cleanly on ctrl-c; any
  * pending outgoing Automerge messages flush on close. */
-async function meshServe(): Promise<number> {
+export async function meshServe(): Promise<number> {
   const storage = keyringStorage();
   const keyring = await storage.load();
   if (!keyring) {
@@ -759,7 +870,27 @@ async function meshServe(): Promise<number> {
   return 0;
 }
 
-// --- dispatch ----------------------------------------------------
+/** `fairfox fingerprint` — print only the 8-hex mesh fingerprint.
+ * Same value the hub renders in its Help-tab Diagnostics panel. Used
+ * for the cross-device "are we on the same mesh?" check; output is
+ * a single line so it's grep-friendly in scripts. */
+export async function meshFingerprintCmd(): Promise<number> {
+  const storage = keyringStorage();
+  const keyring = await storage.load();
+  if (!keyring) {
+    process.stderr.write('fairfox fingerprint: no keyring — `fairfox init` first.\n');
+    return 1;
+  }
+  const documentKey = keyring.documentKeys.get(DEFAULT_MESH_KEY_ID);
+  if (!documentKey) {
+    process.stderr.write('fairfox fingerprint: keyring has no mesh document key.\n');
+    return 1;
+  }
+  process.stdout.write(`${await meshFingerprint(documentKey)}\n`);
+  return 0;
+}
+
+// --- legacy dispatch (kept for older imports; bin.ts no longer calls)
 
 export function meshUsage(stream: NodeJS.WriteStream = process.stderr): void {
   stream.write(

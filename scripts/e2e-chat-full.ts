@@ -283,15 +283,12 @@ let failureReason = '';
 try {
   // 1. Pair laptop + phone.
   trace('laptop', 'mesh init --admin Laptop --user Phone:member');
-  const init = await runCli(
-    ['mesh', 'init', '--admin', 'Laptop', '--user', 'Phone:member'],
-    LAPTOP_HOME
-  );
+  const init = await runCli(['init', '--admin', 'Laptop', '--user', 'Phone:member'], LAPTOP_HOME);
   if (init.status !== 0) {
     throw new Error(`mesh init failed: ${init.stderr.slice(0, 200)}`);
   }
 
-  inviteOpen = spawnCli('invite-open', ['mesh', 'invite', 'open', 'phone'], LAPTOP_HOME);
+  inviteOpen = spawnCli('invite-open', ['add', 'user', 'phone'], LAPTOP_HOME);
   const shareMatch = await waitForLine(
     inviteOpen.stdout,
     /(https?:\/\/\S+#pair=\S+invite=\S+)/,

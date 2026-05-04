@@ -204,7 +204,7 @@ export function HelpView(): preact.JSX.Element {
       <Section heading="Start a new mesh">
         <Code>
           {[
-            'fairfox mesh init \\',
+            'fairfox init "Holm household" \\',
             '  --admin "Alex" \\',
             '  --user "Elisa:member" \\',
             '  --user "Leo:member"',
@@ -212,26 +212,27 @@ export function HelpView(): preact.JSX.Element {
         </Code>
         <p>
           Creates the mesh, prints your recovery blob (save it — password manager), names the mesh
-          with a line of poetry unless you pass <code>--name "…"</code>, and prepares one QR per
-          invited user. Roles: <code>admin</code>, <code>member</code>, <code>guest</code>,{' '}
-          <code>llm</code>.
+          from the first positional argument, and queues one invite blob per <code>--user</code>.
+          Roles: <code>admin</code>, <code>member</code>, <code>guest</code>, <code>llm</code>.
         </p>
       </Section>
 
       <Section heading="Add another device for yourself">
-        <Code>{'fairfox mesh add-device'}</Code>
+        <Code>{'fairfox add device'}</Code>
         <p>
           Terminal QR + share URL. Scan on your phone — the URL carries a pair token and your
-          recovery blob, so the phone pairs and adopts your identity in one tap. URL carries your
-          secret key — share only with yourself.
+          recovery blob, so the phone pairs and adopts your identity in one tap. The URL carries
+          your secret key — share only with yourself.
         </p>
       </Section>
 
       <Section heading="Onboard someone else">
-        <Code>{'fairfox mesh invite open elisa'}</Code>
+        <Code>{'fairfox add user elisa --role member'}</Code>
         <p>
-          Holds a live QR open until ctrl-c. Elisa scans, her browser pairs + adopts her identity.{' '}
-          <code>fairfox mesh invite list</code> shows pending / consumed invites.
+          One verb. Mints a fresh invite blob (or reopens an existing one with the same name),
+          writes the invitee's UserEntry into <code>mesh:users</code>, and holds a live QR open
+          until they scan or you ctrl-c. <code>fairfox invites</code> shows pending and consumed
+          invites; pass <code>--queue-only</code> if you want to mint without opening the socket.
         </p>
         <p>
           The invitee has three ways to feed the QR into their already-installed PWA, all behind{' '}
@@ -243,11 +244,20 @@ export function HelpView(): preact.JSX.Element {
         </p>
       </Section>
 
-      <Section heading="Verify two devices are on the same mesh">
-        <Code>{'fairfox mesh whoami'}</Code>
+      <Section heading="Receive a pair token, share URL, or recovery blob">
+        <Code>{'fairfox pair <token-or-url-or-blob>'}</Code>
         <p>
-          Prints the mesh name, fingerprint, and this device's peer id. Compare the fingerprint to
-          the one in this page's header — same 8 hex chars means same mesh.
+          The receiving side of every onboarding flow — sniffs the input and routes to the right
+          handler. Use this on a fresh CLI install with a share URL someone else generated, or with
+          a recovery blob to reclaim your identity.
+        </p>
+      </Section>
+
+      <Section heading="Verify two devices are on the same mesh">
+        <Code>{'fairfox fingerprint'}</Code>
+        <p>
+          Prints the 8-hex mesh fingerprint — same value the Diagnostics panel above shows. Two
+          devices on the same mesh print the same line; a different mesh prints a different one.
         </p>
       </Section>
 
@@ -263,14 +273,19 @@ export function HelpView(): preact.JSX.Element {
             'fairfox agenda list',
             'fairfox agenda add "Take out the bins"',
             '',
-            '# Users',
-            'fairfox users                # everyone',
-            'fairfox users whoami         # this device + effective perms',
-            'fairfox users invite Leo --role member',
+            '# Identity',
+            'fairfox whoami                       # this device + effective perms',
+            'fairfox users                        # everyone in the mesh',
+            'fairfox add user Leo --role member   # invite a new user',
             '',
-            '# Peers',
-            'fairfox peers                # every paired device',
-            'fairfox peers rename "Alex laptop"',
+            '# Peers + devices',
+            'fairfox peers                        # every paired device',
+            'fairfox rename "Alex laptop"         # rename this device',
+            'fairfox forget <peerId>              # stop syncing with a peer (local)',
+            '',
+            '# Universal flags on every command',
+            'fairfox <command> --help             # detailed help',
+            'fairfox <command> --verbose          # debug output to stderr',
             '',
             '# Deploy (from the repo root)',
             'fairfox deploy',

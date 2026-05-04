@@ -52,5 +52,5 @@ add this to your ~/.zshrc and restart the shell:
   autoload -U compinit && compinit
 
 Smoke test:
-  fairfox mesh whoami
+  fairfox whoami
 HINT

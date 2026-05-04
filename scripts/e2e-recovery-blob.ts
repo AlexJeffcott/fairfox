@@ -23,7 +23,7 @@ for (const h of [DEVICE_A_HOME, DEVICE_B_HOME]) {
 buildBundleIfMissing();
 
 // Device A bootstraps and emits a recovery blob.
-const init = await runCli(['mesh', 'init', '--admin', 'Owner'], DEVICE_A_HOME);
+const init = await runCli(['init', '--admin', 'Owner'], DEVICE_A_HOME);
 if (init.status !== 0) {
   fail(`mesh init failed: ${init.stderr.slice(0, 200)}`);
 }
@@ -35,7 +35,7 @@ const blob = blobMatch[1] ?? '';
 trace('A', `recovery blob captured (${blob.length} chars)`);
 
 // Capture the userId so we can assert both devices see it.
-const whoamiA = await runCli(['users', 'whoami'], DEVICE_A_HOME);
+const whoamiA = await runCli(['whoami'], DEVICE_A_HOME);
 const userIdA = whoamiA.stdout.match(/userId:\s+([0-9a-f]{64})/)?.[1] ?? '';
 if (!userIdA) {
   fail(`couldn't read userId from device A whoami:\n${whoamiA.stdout}`);
@@ -47,7 +47,7 @@ trace('A', `userId ${userIdA.slice(0, 16)}…`);
 // device B would fail with "no keyring" until B is paired into a
 // mesh. So parse the userId out of the import command's stdout
 // instead, which prints `imported "<name>" (<userId>)`.
-const importB = await runCli(['users', 'import', blob], DEVICE_B_HOME);
+const importB = await runCli(['pair', blob], DEVICE_B_HOME);
 if (importB.status !== 0) {
   fail(`device B users import failed: ${importB.stderr.slice(0, 200)}`);
 }

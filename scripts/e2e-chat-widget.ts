@@ -204,10 +204,7 @@ try {
   const cliEnv = { FAIRFOX_URL: targetOrigin };
 
   trace('cli', 'mesh init --admin Laptop --user Phone:member');
-  const init = await runCli(
-    ['mesh', 'init', '--admin', 'Laptop', '--user', 'Phone:member'],
-    cliEnv
-  );
+  const init = await runCli(['init', '--admin', 'Laptop', '--user', 'Phone:member'], cliEnv);
   if (init.status !== 0) {
     throw new Error(
       `mesh init exited ${init.status}\nstdout:\n${init.stdout}\nstderr:\n${init.stderr}`
@@ -215,7 +212,7 @@ try {
   }
 
   trace('cli', 'mesh invite open phone');
-  inviteOpen = spawnCli(['mesh', 'invite', 'open', 'phone'], cliEnv);
+  inviteOpen = spawnCli(['add', 'user', 'phone'], cliEnv);
   const shareMatch = await waitForLine(
     inviteOpen.stdout,
     /(https?:\/\/\S+#pair=\S+invite=\S+)/,

@@ -21,6 +21,7 @@
     "@automerge/automerge-repo-storage-nodefs": "catalog:",
     "@fairfox/shared": "workspace:*",
     "qrcode": "catalog:",
+    "reflect-metadata": "0.2.2",
     "tweetnacl": "catalog:",
     "werift": "catalog:",
     "ws": "catalog:"

@@ -12,12 +12,12 @@ one pairing, one source of truth.
 
 ## Starting a new mesh
 
-`fairfox mesh init` is **the** canonical way to create a new mesh.
-It's a deliberate, named action — there is no way to accidentally
-start one by opening the wrong tab first.
+`fairfox init <mesh-name>` is **the** canonical way to create a
+new mesh. It's a deliberate, named action — there is no way to
+accidentally start one by opening the wrong tab first.
 
 ```bash
-fairfox mesh init \
+fairfox init "Holm household" \
   --admin "Alex" \
   --user "Elisa:member" \
   --user "Leo:guest" \
@@ -39,14 +39,14 @@ What this does:
    the admin's key) and stashes it in `~/.fairfox/invites.json`.
 5. Prints the admin's recovery blob (save it — losing every
    device that holds the admin user key means losing the admin)
-   and the list of pending invites with `mesh invite open`
-   commands ready to copy-paste.
+   and the list of pending invites with `add user` commands ready
+   to copy-paste.
 
 The admin's signed `UserEntry` and the invitees' pre-signed rows
 land in `mesh:users` at init time. The admin's own CLI also
 endorses itself on its `mesh:devices` row so `canDo('user.*')`
 returns admin permissions immediately (useful if you skip
-straight to `fairfox users invite` without opening a browser).
+straight to `fairfox add user <name>` without opening a browser).
 
 (Earlier releases deferred these writes to the first browser
 open because polly's `$meshState` hit a preact-signals "Cycle
@@ -71,17 +71,17 @@ to re-emit a fresh QR for the same person.*
 
 ```bash
 # List pending and consumed invites
-fairfox mesh invite list
+fairfox invites
 
-# Live QR for an invite — holds the socket open until ctrl-c
-fairfox mesh invite open elisa
+# Live QR for an invite — mints if missing, otherwise reopens.
+# Holds the socket open until ctrl-c.
+fairfox add user elisa --role member
 
-# Re-emit for a user who's already paired one device (adds another
-# device under the same identity)
-fairfox mesh invite open elisa --reopen
+# Mint and queue without holding the socket open.
+fairfox add user elisa --role member --queue-only
 ```
 
-`invite open` renders an ASCII QR in the terminal plus the full
+`add user` renders an ASCII QR in the terminal plus the full
 share URL (`https://…/#pair=<tok>&s=<sid>&invite=<blob>`). The
 invitee scans or clicks, their browser runs `consumePairingHash`,
 imports the user key, endorses their device, and sends the
@@ -93,13 +93,13 @@ fall back to the browser's manual-paste flow.
 
 ## Adding another device for yourself
 
-The `--user` flags on `mesh init` and `fairfox users invite` are
-for bringing *other people* into the mesh. Adding your phone, a
-second laptop, or any new device for your own user identity is a
-different verb:
+The `--user` flags on `init` and `fairfox add user` are for
+bringing *other people* into the mesh. Adding your phone, a second
+laptop, or any new device for your own user identity is a different
+verb:
 
 ```bash
-fairfox mesh add-device
+fairfox add device
 ```
 
 This emits a terminal QR + share URL that carries
@@ -122,32 +122,40 @@ reuses the same recovery blob.
 ## After init: day-to-day commands
 
 ```bash
-fairfox users                       # list every user in the mesh
-fairfox users whoami                # this CLI's identity + perms
-fairfox users invite <name> [--role admin|member|guest|llm]
-fairfox users revoke <userId>
-fairfox users export                # print the local recovery blob
+# Identity / membership
+fairfox whoami                       # this CLI's identity + perms
+fairfox users                        # list every user in the mesh
+fairfox add user <name> [--role …]   # invite (mints + opens QR)
+fairfox revoke <userId>              # admin-signed user revocation
+fairfox pair <token-or-url-or-blob>  # receive any onboarding payload
 
-fairfox peers                       # list every paired device
-fairfox peers rename <name>
-fairfox peers forget <peerId>
+# Devices
+fairfox peers                        # every paired device
+fairfox rename <name>                # rename this device
+fairfox forget <peerId>              # local: stop syncing with a peer
+fairfox fingerprint                  # 8-hex mesh fingerprint
 
-fairfox todo tasks                  # and the full todo surface
+# Sub-apps and lifecycle
+fairfox todo tasks                   # and the full todo surface
 fairfox agenda list
-fairfox deploy                      # railway up --detach
+fairfox doctor                       # storage-only diagnosis
+fairfox deploy                       # railway up --detach
+fairfox update                       # fetch the latest CLI bundle
 
-fairfox help                        # full command list
+fairfox --help                       # full command list
+fairfox <command> --help             # per-command help
+fairfox <command> --verbose          # debug output to stderr
 ```
 
 ## Files the CLI writes
 
 - `~/.fairfox/keyring.json` — device keypair + known peers + doc
-  keys. Created on first pairing or `mesh init`.
+  keys. Created on first pairing or `init`.
 - `~/.fairfox/user-identity.json` — user keypair (mode 0600).
-  Created on `mesh init` or `users import <blob>`.
+  Created on `init` or `pair <recovery-blob>`.
 - `~/.fairfox/invites.json` — pending invite blobs (mode 0600).
-  Created on `mesh init` / `users invite`; entries removed only
-  by explicit cleanup or `mesh init --force`.
+  Created on `init` / `add user`; entries removed only by explicit
+  cleanup or `init <name> --force`.
 
 ## Environment
 

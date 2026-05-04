@@ -99,7 +99,7 @@ await new Promise((r) => setTimeout(r, 4000));
 await invite.close();
 trace('member', 'paired');
 
-const whoamiMember = await runCli(['users', 'whoami'], MEMBER_HOME);
+const whoamiMember = await runCli(['whoami'], MEMBER_HOME);
 const memberUserId = whoamiMember.stdout.match(/userId:\s+([0-9a-f]{64})/)?.[1] ?? '';
 if (!memberUserId) {
   fail(`couldn't read member userId:\n${whoamiMember.stdout}`);
@@ -167,7 +167,7 @@ try {
   // Stop admin-serve so the brief `users revoke` doesn't conflict on
   // the admin keyring's peerId.
   await killAndWait(adminServer);
-  const revoke = await runCli(['users', 'revoke', memberUserId], ADMIN_HOME);
+  const revoke = await runCli(['revoke', memberUserId], ADMIN_HOME);
   if (revoke.status !== 0) {
     fail(`admin revoke failed: ${revoke.stderr.slice(0, 300)}`);
   }
