@@ -393,6 +393,7 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       return;
     }
     void (async () => {
+      console.log('[chat.repair-storage] dialog opening');
       const ok = await ConfirmDialog.confirm({
         title: 'Repair chat on this device?',
         body:
@@ -402,14 +403,18 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
         danger: true,
         confirmLabel: 'Repair and reload',
       });
+      console.log('[chat.repair-storage] dialog resolved:', ok);
       if (!ok) {
         return;
       }
       try {
+        console.log('[chat.repair-storage] starting IDB wipe');
         await repairChatMainStorage();
+        console.log('[chat.repair-storage] IDB wipe done');
       } catch (err) {
         console.error('[chat.repair-storage] failed:', err);
       }
+      console.log('[chat.repair-storage] reloading');
       window.location.reload();
     })();
   },

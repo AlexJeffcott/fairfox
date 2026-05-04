@@ -154,6 +154,12 @@ async function launchProfile(label: string): Promise<{ browser: Browser; page: P
   const page = await browser.newPage();
   await page.setViewport({ width: 480, height: 900 });
   page.on('pageerror', (err) => trace(`${label}-pageerror`, err.message));
+  page.on('console', (msg) => {
+    const text = msg.text();
+    if (text.includes('repair') || text.includes('chat.')) {
+      trace(`${label}-console`, `${msg.type()}: ${text}`);
+    }
+  });
   return { browser, page };
 }
 
@@ -387,18 +393,31 @@ try {
   }
 
   // ── Step 3: click Repair, confirm in dialog, wait for reload.
+  // Puppeteer's waitForNavigation doesn't reliably catch a
+  // programmatic window.location.reload() — the navigation event
+  // it listens for can be missed when the same-origin restart
+  // happens between event-loop turns. Stamp a unique marker on
+  // window before the click; poll until it's gone (which is only
+  // true once the page has actually reloaded), then wait for a
+  // known DOM marker that proves the SPA mounted. More reliable
+  // than guessing which navigation event lands.
   trace('phone', 'click Repair');
-  // The reload happens after the action settles. waitForNavigation
-  // races with the click sequence; arm it before the confirm so the
-  // post-confirm reload is what resolves it.
+  const stamp = `__repair_stamp_${Date.now()}_${Math.random()}`;
+  await phone.page.evaluate((s: string) => {
+    Object.defineProperty(window, '__repairStamp', { value: s, configurable: true });
+  }, stamp);
   await phone.page.click('button[data-action="chat.repair-storage"]');
   await phone.page.waitForSelector('[data-polly-confirm-ok]', { timeout: SHORT_TIMEOUT_MS });
-  const reload = phone.page.waitForNavigation({
-    waitUntil: 'domcontentloaded',
+  await phone.page.click('[data-polly-confirm-ok]');
+  await phone.page.waitForFunction(
+    (s: string) =>
+      (window as unknown as { __repairStamp?: string }).__repairStamp !== s,
+    { timeout: SHORT_TIMEOUT_MS, polling: 250 },
+    stamp
+  );
+  await phone.page.waitForSelector('[data-action="chat.toggle-widget"]', {
     timeout: SHORT_TIMEOUT_MS,
   });
-  await phone.page.click('[data-polly-confirm-ok]');
-  await reload;
   trace('phone', 'reloaded after repair ✓');
 
   // ── Step 4 & 5: census IDB after — chat:main wiped, others survive.
