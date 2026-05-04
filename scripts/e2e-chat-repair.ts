@@ -408,7 +408,15 @@ try {
   }, stamp);
   await phone.page.click('button[data-action="chat.repair-storage"]');
   await phone.page.waitForSelector('[data-polly-confirm-ok]', { timeout: SHORT_TIMEOUT_MS });
-  await phone.page.click('[data-polly-confirm-ok]');
+  // page.click can drop a click on an overlapping element when the
+  // modal mounts focus traps and friends. Evaluate-and-click on the
+  // exact element handle is more deterministic.
+  await phone.page.evaluate(() => {
+    const btn = document.querySelector('[data-polly-confirm-ok]');
+    if (btn instanceof HTMLElement) {
+      btn.click();
+    }
+  });
   await phone.page.waitForFunction(
     (s: string) =>
       (window as unknown as { __repairStamp?: string }).__repairStamp !== s,
