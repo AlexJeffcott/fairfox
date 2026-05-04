@@ -165,6 +165,21 @@ function deriveMeshDocumentId(key: string): string {
  * the canonical state and nothing the user typed is lost from the
  * mesh — only this device's local copy. */
 async function repairChatMainStorage(): Promise<void> {
+  // Polly's mesh client holds the same IDB open through its
+  // IndexedDBStorageAdapter and may be running an active sync
+  // transaction. Tear that down first so our writable transaction
+  // doesn't queue forever behind whatever polly is mid-doing —
+  // observed in the e2e harness as a 15s navigation timeout where
+  // the dialog confirmed but the reload never fired because the
+  // delete was pending. Disconnect releases the adapter; the page
+  // is about to reload anyway, so the dropped sync state is
+  // immediately reconstructed from disk on the next boot.
+  try {
+    const { mesh } = await import('@fairfox/shared/ensure-mesh');
+    mesh?.disconnect();
+  } catch {
+    // No mesh global (test-only contexts) — proceed with the delete.
+  }
   const documentId = deriveMeshDocumentId(CHAT_MAIN_KEY);
   const db = await new Promise<IDBDatabase>((resolve, reject) => {
     const req = indexedDB.open(MESH_REPO_DB_NAME);

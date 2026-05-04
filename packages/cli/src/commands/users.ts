@@ -133,7 +133,16 @@ export function usersWhoami(): Promise<number> {
       }
       return 0;
     } finally {
-      await closeMesh(client);
+      // Mirror the swallow in meshWhoami: closeMesh pokes every
+      // DocHandle and throws on ones still mid-load (the brief
+      // openMeshClient + waitForPeer window can leave one in
+      // 'loading' state when reading a fresh mesh). Swallow rather
+      // than propagate — the read above already succeeded.
+      try {
+        await closeMesh(client);
+      } catch {
+        // intentional
+      }
     }
   })();
 }

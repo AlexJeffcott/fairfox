@@ -44,13 +44,12 @@ import {
   meshFingerprintCmd,
   meshInit,
   meshInviteList,
-  meshWhoami,
 } from '#src/commands/mesh.ts';
 import { pair } from '#src/commands/pair.ts';
 import { peersForget, peersList, peersRenameSelf } from '#src/commands/peers.ts';
 import { todo } from '#src/commands/todo.ts';
 import { maybeNoticeUpdate, update } from '#src/commands/update.ts';
-import { usersList, usersRevoke } from '#src/commands/users.ts';
+import { usersList, usersRevoke, usersWhoami } from '#src/commands/users.ts';
 import { commandHelp, topLevelHelp, wantsHelp } from '#src/help.ts';
 import { setVerbose } from '#src/verbose.ts';
 
@@ -141,7 +140,10 @@ function main(): Promise<number> {
     if (help !== null) {
       return Promise.resolve(help);
     }
-    return meshWhoami();
+    // Wired to the user-identity-rich path (userId / roles / grants /
+    // effective perms). Mesh-level info — name, fingerprint, peerId —
+    // is its own verb (`fairfox fingerprint`) and the doctor output.
+    return usersWhoami();
   }
 
   if (subcommand === 'rename') {
