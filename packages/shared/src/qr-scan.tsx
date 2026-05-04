@@ -153,6 +153,53 @@ let cameraCanvasEl: HTMLCanvasElement | null = null;
 let activeStream: MediaStream | null = null;
 let activeRafId: number | null = null;
 let activeCameraSession = 0;
+let pendingStreamPromise: Promise<MediaStream> | null = null;
+
+/** Open the camera dialog and synchronously kick off getUserMedia.
+ * iOS PWA only honours camera permission requests that originate
+ * inside a live user-gesture task. The dialog mount, the signal
+ * effect, and the queueMicrotask hop in installQrCameraLifecycle all
+ * run after the gesture has expired, so the request must be made
+ * here — directly from the action handler the click dispatched. The
+ * resulting promise is stored for startCamera to await once the
+ * <video> element has mounted. */
+export function openCameraScan(mode: CameraScanMode): void {
+  cameraScanError.value = null;
+  // Cancel any prior pending stream — pressing the button twice in
+  // quick succession would otherwise leave a stranded track.
+  cancelPendingStream();
+  if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+    cameraScanError.value = 'This browser cannot open the camera.';
+    return;
+  }
+  pendingStreamPromise = navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: 'environment' } },
+    audio: false,
+  });
+  // Swallow the rejection here so an early failure (permission
+  // denied before the dialog even mounts) doesn't surface as an
+  // unhandled rejection. startCamera reads the same promise and
+  // raises a user-visible error.
+  pendingStreamPromise.catch(() => {
+    // see comment above
+  });
+  cameraScanMode.value = mode;
+}
+
+function cancelPendingStream(): void {
+  if (!pendingStreamPromise) {
+    return;
+  }
+  const p = pendingStreamPromise;
+  pendingStreamPromise = null;
+  p.then((stream) => {
+    stream.getTracks().forEach((t) => {
+      t.stop();
+    });
+  }).catch(() => {
+    // already-rejected promise — nothing to clean up
+  });
+}
 
 function stopCamera(): void {
   activeCameraSession += 1;
@@ -169,15 +216,24 @@ function stopCamera(): void {
   if (cameraVideoEl) {
     cameraVideoEl.srcObject = null;
   }
+  cancelPendingStream();
 }
 
 async function startCamera(mode: CameraScanMode): Promise<void> {
   const session = ++activeCameraSession;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
+  // Prefer the promise the action handler already started (so iOS
+  // PWA gets the user-gesture activation). Fall back to a fresh
+  // getUserMedia for entry points that don't go through
+  // openCameraScan.
+  const streamPromise =
+    pendingStreamPromise ??
+    navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: 'environment' } },
       audio: false,
     });
+  pendingStreamPromise = null;
+  try {
+    const stream = await streamPromise;
     if (session !== activeCameraSession) {
       stream.getTracks().forEach((t) => {
         t.stop();
@@ -219,8 +275,31 @@ async function startCamera(mode: CameraScanMode): Promise<void> {
     }
     tickCamera(mode, session);
   } catch (err) {
-    cameraScanError.value = err instanceof Error ? err.message : 'Could not open the camera.';
+    cameraScanError.value = describeCameraError(err);
   }
+}
+
+function describeCameraError(err: unknown): string {
+  if (!(err instanceof Error)) {
+    return 'Could not open the camera.';
+  }
+  // iOS Safari and most other browsers raise NotAllowedError both
+  // when the user denies the prompt and when permission is blocked
+  // at the OS level. On an iOS PWA the latter is the more common
+  // case (Settings → app → Camera was turned off, or the request
+  // hit the OS outside a user gesture and was auto-blocked), and
+  // the user has no way to reach the prompt again from inside the
+  // PWA — they have to flip the switch in Settings.
+  if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
+    return 'Camera blocked. On iPhone open Settings → fairfox → Camera and turn it on, then come back here.';
+  }
+  if (err.name === 'NotFoundError' || err.name === 'OverconstrainedError') {
+    return 'No camera found on this device.';
+  }
+  if (err.name === 'NotReadableError') {
+    return 'The camera is in use by another app. Close it and try again.';
+  }
+  return err.message || 'Could not open the camera.';
 }
 
 function tickCamera(mode: CameraScanMode, session: number): void {

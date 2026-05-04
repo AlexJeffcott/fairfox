@@ -50,6 +50,7 @@ import {
   persistSoloDeviceMode,
   scanInput,
 } from '#src/pairing-state.ts';
+import { openCameraScan } from '#src/qr-scan.tsx';
 import {
   createUserIdentity,
   decodeRecoveryBlob,
@@ -727,7 +728,7 @@ export const pairingActions: Record<string, (ctx: PairingHandlerContext) => void
   },
 
   'pairing.open-camera': () => {
-    cameraScanMode.value = 'pair';
+    openCameraScan('pair');
   },
 
   'pairing.close-camera': () => {
@@ -735,7 +736,7 @@ export const pairingActions: Record<string, (ctx: PairingHandlerContext) => void
   },
 
   'users.open-recovery-camera': () => {
-    cameraScanMode.value = 'recovery';
+    openCameraScan('recovery');
   },
 
   'users.close-recovery-camera': () => {
