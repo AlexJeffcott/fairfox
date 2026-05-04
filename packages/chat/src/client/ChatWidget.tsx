@@ -540,12 +540,15 @@ function ChatHeader({ chat }: { chat: Chat | undefined }) {
   // archivedAt and hides the chat from the main thread; full
   // history is still reachable via /chat for now (rename if/when
   // a hard-delete affordance lands).
+  // The Repair button targets only chat:main in IndexedDB — the
+  // failure mode where polly's wrapper handle never bridges
+  // (pendings stick forever, reload doesn't help). Other docs and
+  // the keyring are untouched, so it's safe to surface as a small
+  // always-visible affordance rather than buried in a settings
+  // menu the user can't find when chat is the broken thing.
+  const cols = chat ? '1fr auto auto auto auto auto' : '1fr auto auto auto auto';
   return (
-    <Layout
-      columns={chat ? '1fr auto auto auto auto' : '1fr auto auto auto'}
-      gap="0.35rem"
-      alignItems="center"
-    >
+    <Layout columns={cols} gap="0.35rem" alignItems="center">
       <strong style={{ fontSize: '0.95rem' }}>{title}</strong>
       <RelayBadge />
       {chat ? (
@@ -564,6 +567,13 @@ function ChatHeader({ chat }: { chat: Chat | undefined }) {
         size="small"
         data-action="chat.new"
         title="Start a fresh chat — current one stays in history"
+      />
+      <Button
+        label="Repair"
+        tier="tertiary"
+        size="small"
+        data-action="chat.repair-storage"
+        title="Stuck pendings, no relay, can't send? Wipe just this device's chat:main copy and reload — keyring and other docs survive."
       />
       <Button label="Close" tier="tertiary" size="small" data-action="chat.close-widget" />
     </Layout>
