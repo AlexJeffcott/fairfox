@@ -5,6 +5,16 @@
 // browser audience.
 
 import { Layout } from '@fairfox/polly/ui';
+import { devicesState } from '@fairfox/shared/devices-state';
+import {
+  lastSignalingErrorMessage,
+  signalingConnected,
+} from '@fairfox/shared/mesh-connection-state';
+import { meshFingerprintText, meshMetaState } from '@fairfox/shared/mesh-meta-state';
+import { peersPresent } from '@fairfox/shared/peers-presence';
+import { userIdentity } from '@fairfox/shared/user-identity-state';
+import { usersState } from '@fairfox/shared/users-state';
+import { selfPeerId } from '#src/client/self-peer.ts';
 
 function Section({
   heading,
@@ -39,9 +49,103 @@ function Code({ children }: { children: string }): preact.JSX.Element {
   );
 }
 
+function readBundleHash(): string {
+  if (typeof document === 'undefined') {
+    return '(no document)';
+  }
+  const meta = document.querySelector('meta[name="fairfox-build-hash"]');
+  return meta?.getAttribute('content') ?? '(no meta tag)';
+}
+
+function countOnlinePeers(): number {
+  const set = peersPresent.value;
+  const self = selfPeerId.value;
+  let count = 0;
+  for (const id of set) {
+    if (id !== self) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function buildDiagnosticsText(): string {
+  const meshName = meshMetaState.value.name || '(unnamed)';
+  const fp = meshFingerprintText.value || '(loading)';
+  const peerId = selfPeerId.value ?? '(loading)';
+  const identity = userIdentity.value;
+  const userId = identity ? identity.userId : '(no user identity)';
+  const displayName = identity?.displayName ?? '(no display name)';
+  const buildHash = readBundleHash();
+  const sigConnected = signalingConnected.value ? 'connected' : 'disconnected';
+  const sigError = lastSignalingErrorMessage.value;
+  const peersOnline = countOnlinePeers();
+  const totalDevices = Object.keys(devicesState.value.devices).length;
+  const totalUsers = Object.keys(usersState.value.users).length;
+  const userAgent = typeof navigator === 'undefined' ? '(no navigator)' : navigator.userAgent;
+  const origin = typeof window === 'undefined' ? '(no window)' : window.location.origin;
+
+  // Plain key: value pairs so the textarea contents read like a
+  // chat/email-friendly diagnostic dump. Mirrors the layout of
+  // `fairfox doctor` so an issue report can paste this verbatim and
+  // the on-call eye recognises every field.
+  const lines: readonly string[] = [
+    `mesh:           ${meshName} (${fp})`,
+    `user:           ${displayName} (${userId})`,
+    `device peerId:  ${peerId}`,
+    `paired devices: ${totalDevices}`,
+    `users:          ${totalUsers}`,
+    `peers online:   ${peersOnline}`,
+    `signalling:     ${sigConnected}${sigError ? ` (last error: ${sigError})` : ''}`,
+    `build hash:     ${buildHash}`,
+    `origin:         ${origin}`,
+    `user-agent:     ${userAgent}`,
+  ];
+  return lines.join('\n');
+}
+
+/** A read-only textarea showing every non-secret state useful for
+ * "is this device on the right mesh / build / signalling pool?".
+ * Tapping the textarea fires `help.select-all-textarea` which marks
+ * the whole content selected so the OS copy gesture lands the lot
+ * — important on a mobile PWA where multi-select is fiddly. */
+function Diagnostics(): preact.JSX.Element {
+  const text = buildDiagnosticsText();
+  const lineCount = text.split('\n').length;
+  return (
+    <Layout rows="auto auto" gap="var(--polly-space-sm)">
+      <h2 style={{ margin: 0, fontSize: 'var(--polly-text-lg)' }}>Diagnostics</h2>
+      <p style={{ color: 'var(--polly-text-muted)', margin: 0 }}>
+        Tap the box to select everything for copy. Compare with another paired device's Help tab to
+        confirm you're on the same mesh.
+      </p>
+      <textarea
+        readOnly={true}
+        rows={lineCount}
+        value={text}
+        data-action="help.select-all-textarea"
+        style={{
+          width: '100%',
+          fontFamily: 'var(--polly-font-mono)',
+          fontSize: 'var(--polly-text-sm)',
+          padding: 'var(--polly-space-sm) var(--polly-space-md)',
+          background: 'var(--polly-surface-sunken)',
+          borderRadius: 'var(--polly-radius-md)',
+          border: '1px solid var(--polly-border)',
+          color: 'var(--polly-text)',
+          resize: 'none',
+          whiteSpace: 'pre',
+          overflow: 'auto',
+        }}
+      />
+    </Layout>
+  );
+}
+
 export function HelpView(): preact.JSX.Element {
   return (
     <Layout rows="auto" gap="var(--polly-space-xl)">
+      <Diagnostics />
       <p style={{ margin: 0 }}>
         fairfox is a small household mesh. Every paired device shares the same CRDT state — todos,
         agenda, users, peers — over WebRTC. The server is only here for discovery and a one-shot

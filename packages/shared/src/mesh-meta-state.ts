@@ -11,6 +11,7 @@
 
 import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
+import { signal } from '@preact/signals';
 
 interface MeshMetaPrimitive {
   value: MeshMetaDoc;
@@ -106,4 +107,38 @@ export async function meshFingerprint(documentKey: Uint8Array): Promise<string> 
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+/** Reactive view of the mesh fingerprint. Empty string until the
+ * keyring loads on first access. Both the hub header and the help
+ * tab's diagnostics panel read from this; centralising the load
+ * here keeps the keyring import out of view modules and avoids
+ * each consumer re-deriving the fingerprint on its own. */
+export const meshFingerprintText = signal<string>('');
+
+let fingerprintLoading: Promise<void> | null = null;
+
+export function ensureMeshFingerprintLoaded(): Promise<void> {
+  if (meshFingerprintText.value !== '') {
+    return Promise.resolve();
+  }
+  if (fingerprintLoading !== null) {
+    return fingerprintLoading;
+  }
+  fingerprintLoading = (async (): Promise<void> => {
+    try {
+      const { loadOrCreateKeyring } = await import('#src/keyring.ts');
+      const { DEFAULT_MESH_KEY_ID } = await import('@fairfox/polly/mesh');
+      const keyring = await loadOrCreateKeyring();
+      const docKey = keyring.documentKeys.get(DEFAULT_MESH_KEY_ID);
+      if (docKey) {
+        meshFingerprintText.value = await meshFingerprint(docKey);
+      }
+    } catch {
+      // Keep empty; consumers hide the field when blank.
+    } finally {
+      fingerprintLoading = null;
+    }
+  })();
+  return fingerprintLoading;
 }

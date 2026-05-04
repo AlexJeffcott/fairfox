@@ -26,7 +26,8 @@ import {
   type LeaderLease,
 } from '@fairfox/shared/assistant-state';
 import type { DevicesDoc } from '@fairfox/shared/devices-state';
-import { $meshState, configureMeshState, Repo } from '@fairfox/shared/polly';
+import { meshFingerprint } from '@fairfox/shared/mesh-meta-state';
+import { $meshState, configureMeshState, DEFAULT_MESH_KEY_ID, Repo } from '@fairfox/shared/polly';
 import { localVersion } from '#src/commands/update.ts';
 import {
   defaultSignalingUrl,
@@ -212,7 +213,16 @@ export async function doctor(): Promise<number> {
 
   const peerId = derivePeerId(keyring.identity.publicKey);
   const identity = loadUserIdentityFile();
+  // Mesh fingerprint — same derivation the hub renders next to
+  // "A small monorepo of things." (mesh-meta-state.ts:meshFingerprint).
+  // Two devices on the same mesh produce the same value; printing it
+  // here lets a user split "phone re-paired into a different mesh"
+  // from "same mesh but the relay isn't running" without having to
+  // dump the keyring or eyeball doc IDs.
+  const meshKey = keyring.documentKeys.get(DEFAULT_MESH_KEY_ID);
+  const meshFp = meshKey ? await meshFingerprint(meshKey) : '(no mesh document key)';
   lines.push(header('mesh identity'));
+  lines.push(`mesh fp:   ${meshFp}`);
   lines.push(`peerId:    ${peerId}`);
   lines.push(`userId:    ${identity ? identity.userId : '(no user identity)'}`);
   lines.push(`displayName: ${identity?.displayName ?? '(none)'}`);

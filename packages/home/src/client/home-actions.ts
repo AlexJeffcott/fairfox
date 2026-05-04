@@ -76,6 +76,15 @@ export const homeActions: Record<string, (ctx: HandlerContext) => void> = {
       setActiveView(ctx.data.id);
     }
   },
+  // Tap-to-select-all on the Help tab's Diagnostics textarea — makes
+  // the standard OS copy gesture pick up every line on a phone, where
+  // multi-select is fiddly. Uses the action registry rather than an
+  // inline onClick so the no-inline-handlers rule stays satisfied.
+  'help.select-all-textarea': (ctx) => {
+    if (ctx.element instanceof HTMLTextAreaElement) {
+      ctx.element.select();
+    }
+  },
   'peers.rename-self': (ctx) => {
     const name = ctx.data.value?.trim();
     if (!name) {
