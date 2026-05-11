@@ -1,0 +1,55 @@
+app = "fairfox-turn"
+primary_region = "ams"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  TURN_REALM = "fairfox"
+  # Constrain coturn's per-allocation relay port window to the same
+  # range we forward via Fly's services config below. Household-scale
+  # use never needs more than a few simultaneous allocations; 1024
+  # is generous headroom.
+  TURN_RELAY_MIN_PORT = "49152"
+  TURN_RELAY_MAX_PORT = "50175"
+  # Fly's dedicated app IPs from `fly ips list`. Coturn advertises
+  # these as its relay endpoints; peers connect to them. Each
+  # Machine's FLY_PUBLIC_IP is a per-Machine IPv6, not the
+  # app-level address — pinning here keeps both Machines (or a
+  # later scale-up) consistent.
+  EXTERNAL_IP_V4 = "213.188.221.129"
+  EXTERNAL_IP_V6 = "2a09:8280:1::114:2669:0"
+
+# Coturn binds 3478 for both transports. UDP is the fast path WebRTC
+# prefers; TCP is the fallback for networks that block UDP (some
+# corporate firewalls, hotel wifi).
+[[services]]
+  internal_port = 3478
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 3478
+
+[[services]]
+  internal_port = 3478
+  protocol = "udp"
+
+  [[services.ports]]
+    port = 3478
+
+# Dynamic relay port range. Each TURN ALLOCATE returns a unique
+# relay endpoint inside this window; Fly's edge needs to forward the
+# whole range to the Machine. Without these forwards, allocations
+# succeed at the protocol level but peers can't actually reach the
+# returned relay endpoint.
+[[services]]
+  internal_port = 49152
+  protocol = "udp"
+
+  [[services.ports]]
+    start_port = 49152
+    end_port = 50175
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

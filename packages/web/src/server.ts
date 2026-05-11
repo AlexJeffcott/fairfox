@@ -9,6 +9,7 @@
 // Elysia) have been retired — their data migrated into todo-v2's
 // mesh documents.
 
+import { createHmac } from 'node:crypto';
 import { loadEnv } from '@fairfox/shared/env';
 import { SIGNALING_PATH } from '@fairfox/shared/signaling';
 import type { WsData } from '@fairfox/shared/subapp';
@@ -576,6 +577,43 @@ const server = Bun.serve<WsData>({
 
     if (p === '/health') {
       return Response.json({ ok: true });
+    }
+
+    // ICE server credentials.
+    //
+    // WebRTC peers fetch this once at connect time to learn which
+    // STUN/TURN servers to offer in their ICE candidate list. The
+    // STUN entry is always returned (cheap, host/srflx coverage);
+    // the TURN entry is only included when the relay has been
+    // deployed alongside a coturn `fairfox-turn` service and given
+    // the shared secret. Without a TURN entry, peers behind symmetric
+    // NAT (CGNAT, corporate firewalls) and browser↔CLI pairs on the
+    // same LAN (where Chrome's mDNS obfuscation hides host
+    // candidates from werift) cannot establish a data channel.
+    //
+    // Credentials use coturn's `use-auth-secret` REST mode — username
+    // is `<expiresAtUnix>:<tag>`, credential is base64(HMAC-SHA1(secret,
+    // username)). TTL is bounded so a leaked pair has minutes of
+    // useful life, not days. Short-lived refetch is the resolver's
+    // responsibility on the client side.
+    if (p === '/turn-credentials') {
+      const iceServers: Array<{ urls: string | string[]; username?: string; credential?: string }> =
+        [{ urls: 'stun:stun.cloudflare.com:3478' }];
+      if (env.FAIRFOX_TURN_URL && env.FAIRFOX_TURN_SHARED_SECRET) {
+        const expiresAt = Math.floor(Date.now() / 1000) + env.FAIRFOX_TURN_TTL_SECONDS;
+        const tag = crypto.randomUUID().slice(0, 8);
+        const username = `${expiresAt}:fairfox-${tag}`;
+        const credential = createHmac('sha1', env.FAIRFOX_TURN_SHARED_SECRET)
+          .update(username)
+          .digest('base64');
+        iceServers.push({ urls: env.FAIRFOX_TURN_URL, username, credential });
+      }
+      const headers: Record<string, string> = { 'Cache-Control': 'no-store' };
+      if (!env.FAIRFOX_TURN_URL) {
+        headers.Warning =
+          '299 - "FAIRFOX_TURN_URL not set: peers behind CGNAT or browser<->CLI on the same LAN may not pair"';
+      }
+      return Response.json({ iceServers, ttlSeconds: env.FAIRFOX_TURN_TTL_SECONDS }, { headers });
     }
 
     // Any route recognised by the mesh SPA returns the same HTML

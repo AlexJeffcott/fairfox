@@ -418,8 +418,7 @@ try {
     }
   });
   await phone.page.waitForFunction(
-    (s: string) =>
-      (window as unknown as { __repairStamp?: string }).__repairStamp !== s,
+    (s: string) => (window as unknown as { __repairStamp?: string }).__repairStamp !== s,
     { timeout: SHORT_TIMEOUT_MS, polling: 250 },
     stamp
   );
