@@ -28,6 +28,13 @@ export function defaultSignalingUrl(): string {
   return `${proto}://${host}/polly/signaling`;
 }
 
+/** HTTP(S) origin that hosts the relay's REST routes (e.g.
+ * `/turn-credentials`). Derived from the same env knob as the
+ * signalling URL so a single override moves both. */
+export function defaultRelayOrigin(): string {
+  return process.env.FAIRFOX_URL ?? 'https://fairfox-production-8273.up.railway.app';
+}
+
 export function keyringStorage(): KeyringStorage {
   return fileKeyringStorage(KEYRING_PATH);
 }
@@ -73,8 +80,26 @@ export async function openMeshClient(options: ConnectOptions): Promise<MeshClien
     // so the cast bridges the structural gap. The rtc field only uses
     // the instance-level API (createOffer/createAnswer/data channels)
     // which werift does satisfy.
-    // biome-ignore lint/suspicious/noExplicitAny: werift shim to DOM type
-    rtc: { RTCPeerConnection: RTCPeerConnection as unknown as any },
+    rtc: {
+      // biome-ignore lint/suspicious/noExplicitAny: werift shim to DOM type
+      RTCPeerConnection: RTCPeerConnection as unknown as any,
+      // Same TURN flow as the browser side. Without this, werift only
+      // sees Chrome's mDNS-obfuscated `.local` candidates from the
+      // browser side and can't resolve them — ICE fails silently and
+      // browser↔CLI pairs never establish a data channel.
+      iceCredentialResolver: async () => {
+        const url = `${defaultRelayOrigin().replace(/\/$/, '')}/turn-credentials`;
+        const res = await fetch(url, { method: 'GET' });
+        if (!res.ok) {
+          throw new Error(`turn-credentials: HTTP ${res.status}`);
+        }
+        const body = await res.json();
+        if (!body || typeof body !== 'object' || !Array.isArray(body.iceServers)) {
+          throw new Error('turn-credentials: unexpected response shape');
+        }
+        return body.iceServers as unknown as RTCIceServer[];
+      },
+    },
   });
   // The `mesh:devices` write happens against the same Repo the client
   // just configured; $meshState is safe to call after createMeshClient

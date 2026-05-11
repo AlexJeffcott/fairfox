@@ -60,6 +60,28 @@ export async function createMeshConnection(
     },
     keyring: options.keyring,
     repoStorage: new IndexedDBStorageAdapter('fairfox-mesh'),
+    rtc: {
+      // Fetch ICE servers from the relay so peers behind CGNAT,
+      // corporate firewalls, or browser↔CLI pairs (where Chrome's
+      // mDNS obfuscation hides host candidates from werift) get a
+      // working TURN candidate. Without this, ICE fails silently
+      // and `client.repo.peers` stays empty for hours. Resolver
+      // is invoked once per session by polly; credentials are
+      // short-lived (~10 min) but we don't ICE-restart on expiry
+      // — a fresh `disconnect`/reconnect cycle re-resolves.
+      iceCredentialResolver: async () => {
+        const url = `${signalingUrlToHttpOrigin(options.signalingUrl)}/turn-credentials`;
+        const res = await fetch(url, { method: 'GET' });
+        if (!res.ok) {
+          throw new Error(`turn-credentials: HTTP ${res.status}`);
+        }
+        const body = await res.json();
+        if (!body || typeof body !== 'object' || !Array.isArray(body.iceServers)) {
+          throw new Error('turn-credentials: unexpected response shape');
+        }
+        return body.iceServers as unknown as RTCIceServer[];
+      },
+    },
   });
   // Polly's createMeshClient typed surface only exposes onError /
   // onCustomFrame for the signaling client. onOpen/onClose are
@@ -87,4 +109,14 @@ export async function createMeshConnection(
       void client.close();
     },
   };
+}
+
+/** Map a `ws://host/path` or `wss://host/path` URL to the `http(s)://host`
+ * origin string the relay's REST routes live on. The signalling URL is
+ * the canonical entry point we already have at this layer; deriving the
+ * credentials URL from it avoids a second config knob. */
+function signalingUrlToHttpOrigin(signalingUrl: string): string {
+  const u = new URL(signalingUrl);
+  const proto = u.protocol === 'wss:' ? 'https:' : 'http:';
+  return `${proto}//${u.host}`;
 }
