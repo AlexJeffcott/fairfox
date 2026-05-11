@@ -10,10 +10,10 @@ COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # 3478 is the canonical TURN/STUN port for both UDP (preferred) and TCP
-# (fallback for networks that block UDP). 49152–50175 is the dynamic
+# (fallback for networks that block UDP). 49152–49167 is the dynamic
 # relay-port window coturn allocates per-session for actual data
 # traffic; constrained to that range by `--min-port`/`--max-port` in
-# entrypoint.sh so Fly's services config can mirror it.
-EXPOSE 3478/udp 3478/tcp 49152-50175/udp
+# entrypoint.sh so the host's port-forward config can mirror it.
+EXPOSE 3478/udp 3478/tcp 49152-49167/udp
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

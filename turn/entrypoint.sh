@@ -34,11 +34,16 @@ REALM="${TURN_REALM:-fairfox}"
 
 # Relay-port range that the platform's services config forwards.
 # Constraining coturn to the same range keeps relay traffic on ports
-# we know are reachable from the public internet. 1024 simultaneous
-# allocations is far more than a household mesh ever needs; widen if
-# a deployment hits "out of relay ports" warnings.
+# we know are reachable from the public internet.
+#
+# 16 ports is well above household concurrency. The narrower window is
+# also a deliberate test: Fly's `[[services]]` range syntax with
+# `start_port`/`end_port` deploys cleanly but appears not to actually
+# forward UDP across the whole range, so the deployed fly.toml now
+# enumerates each port explicitly. Widen by enumerating more ports
+# there if a deployment ever hits "out of relay ports" warnings.
 RELAY_MIN="${TURN_RELAY_MIN_PORT:-49152}"
-RELAY_MAX="${TURN_RELAY_MAX_PORT:-50175}"
+RELAY_MAX="${TURN_RELAY_MAX_PORT:-49167}"
 
 if [ -z "$EXTERNAL_IP_V4" ] && [ -z "$EXTERNAL_IP_V6" ]; then
   echo "[turn] WARNING: neither EXTERNAL_IP_V4 nor EXTERNAL_IP_V6 set" >&2

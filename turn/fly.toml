@@ -7,11 +7,18 @@ primary_region = "ams"
 [env]
   TURN_REALM = "fairfox"
   # Constrain coturn's per-allocation relay port window to the same
-  # range we forward via Fly's services config below. Household-scale
-  # use never needs more than a few simultaneous allocations; 1024
-  # is generous headroom.
+  # range we forward via Fly's services config below. Each port
+  # corresponds to one concurrent TURN allocation; household-scale
+  # use rarely exceeds two or three at once, so 16 is generous.
+  #
+  # Why so narrow? Fly's `[[services]]` range syntax
+  # (`start_port`/`end_port`) deploys cleanly and shows in
+  # `fly machine status` but does not actually forward UDP across the
+  # whole window — packets to dynamically-allocated relay ports never
+  # reach the Machine. Enumerating each port as its own `[[services]]`
+  # block does work. Widen by adding more blocks if needed.
   TURN_RELAY_MIN_PORT = "49152"
-  TURN_RELAY_MAX_PORT = "50175"
+  TURN_RELAY_MAX_PORT = "49167"
   # Fly's dedicated app IPs from `fly ips list`. Coturn advertises
   # these as its relay endpoints; peers connect to them. Each
   # Machine's FLY_PUBLIC_IP is a per-Machine IPv6, not the
@@ -37,18 +44,105 @@ primary_region = "ams"
   [[services.ports]]
     port = 3478
 
-# Dynamic relay port range. Each TURN ALLOCATE returns a unique
-# relay endpoint inside this window; Fly's edge needs to forward the
-# whole range to the Machine. Without these forwards, allocations
-# succeed at the protocol level but peers can't actually reach the
-# returned relay endpoint.
+# Dynamic relay port forwards, enumerated. Each TURN ALLOCATE returns
+# a relay endpoint on one of these ports; the external port must equal
+# the internal port (coturn binds the same number on both sides), so
+# each port needs its own `[[services]]` block.
 [[services]]
   internal_port = 49152
   protocol = "udp"
-
   [[services.ports]]
-    start_port = 49152
-    end_port = 50175
+    port = 49152
+
+[[services]]
+  internal_port = 49153
+  protocol = "udp"
+  [[services.ports]]
+    port = 49153
+
+[[services]]
+  internal_port = 49154
+  protocol = "udp"
+  [[services.ports]]
+    port = 49154
+
+[[services]]
+  internal_port = 49155
+  protocol = "udp"
+  [[services.ports]]
+    port = 49155
+
+[[services]]
+  internal_port = 49156
+  protocol = "udp"
+  [[services.ports]]
+    port = 49156
+
+[[services]]
+  internal_port = 49157
+  protocol = "udp"
+  [[services.ports]]
+    port = 49157
+
+[[services]]
+  internal_port = 49158
+  protocol = "udp"
+  [[services.ports]]
+    port = 49158
+
+[[services]]
+  internal_port = 49159
+  protocol = "udp"
+  [[services.ports]]
+    port = 49159
+
+[[services]]
+  internal_port = 49160
+  protocol = "udp"
+  [[services.ports]]
+    port = 49160
+
+[[services]]
+  internal_port = 49161
+  protocol = "udp"
+  [[services.ports]]
+    port = 49161
+
+[[services]]
+  internal_port = 49162
+  protocol = "udp"
+  [[services.ports]]
+    port = 49162
+
+[[services]]
+  internal_port = 49163
+  protocol = "udp"
+  [[services.ports]]
+    port = 49163
+
+[[services]]
+  internal_port = 49164
+  protocol = "udp"
+  [[services.ports]]
+    port = 49164
+
+[[services]]
+  internal_port = 49165
+  protocol = "udp"
+  [[services.ports]]
+    port = 49165
+
+[[services]]
+  internal_port = 49166
+  protocol = "udp"
+  [[services.ports]]
+    port = 49166
+
+[[services]]
+  internal_port = 49167
+  protocol = "udp"
+  [[services.ports]]
+    port = 49167
 
 [[vm]]
   size = "shared-cpu-1x"
