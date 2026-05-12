@@ -34,6 +34,7 @@ import {
   encodePairingToken,
   generateDocumentKey,
   generateSigningKeyPair,
+  type MeshClient,
   type MeshKeyring,
 } from '@fairfox/shared/polly';
 import { signEndorsement } from '@fairfox/shared/user-identity';
@@ -402,7 +403,7 @@ export async function meshInviteOpen(rest: readonly string[]): Promise<number> {
       const agentHint = typeof frame.agent === 'string' ? frame.agent : undefined;
       const nameHint = typeof frame.name === 'string' ? frame.name : undefined;
       const userIdHint = typeof frame.userId === 'string' ? frame.userId : undefined;
-      void acceptReturnToken(returnToken, keyring, storage, {
+      void acceptReturnToken(returnToken, keyring, storage, client, {
         ...(agentHint ? { agent: agentHint } : {}),
         ...(nameHint ? { name: nameHint } : {}),
         ...(userIdHint ? { userId: userIdHint } : {}),
@@ -496,11 +497,18 @@ async function acceptReturnToken(
   returnToken: string,
   keyring: MeshKeyring,
   storage: ReturnType<typeof keyringStorage>,
+  client: MeshClient,
   hints: AcceptReturnHints = {}
 ): Promise<void> {
   const decoded = decodePairingToken(returnToken);
   applyPairingToken(decoded, keyring);
   await storage.save(keyring);
+  // The WebRTC adapter captured `knownPeerIds` from the keyring at
+  // `createMeshClient` time; the post-construction keyring mutation
+  // above doesn't reach it on its own. Propagate the new peer so an
+  // SDP offer fires the moment the scanner reconnects (or now, if
+  // it's already in the signalling roster).
+  client.webrtcAdapter.addKnownPeer(decoded.issuerPeerId);
   // Mirror the browser's `writeScannerDeviceRow` — write the scanner's
   // mesh:devices row directly from this side using the data carried in
   // the pair-return frame, so the issuer's view of mesh:devices has
@@ -707,7 +715,7 @@ export async function meshAddDevice(): Promise<number> {
       const agentHint = typeof frame.agent === 'string' ? frame.agent : undefined;
       const nameHint = typeof frame.name === 'string' ? frame.name : undefined;
       const userIdHint = typeof frame.userId === 'string' ? frame.userId : undefined;
-      void acceptReturnToken(returnToken, keyring, storage, {
+      void acceptReturnToken(returnToken, keyring, storage, client, {
         ...(agentHint ? { agent: agentHint } : {}),
         ...(nameHint ? { name: nameHint } : {}),
         ...(userIdHint ? { userId: userIdHint } : {}),
