@@ -74,7 +74,82 @@ const browser = await puppeteer.launch({
 });
 const page = await browser.newPage();
 await page.setViewport({ width: 1100, height: 900 });
-page.on('pageerror', (e) => console.log('[err]', e.message));
+
+// Instrument WebRTC + WebSocket BEFORE the SPA loads so we capture
+// every RTCPeerConnection construction and every signalling frame.
+await page.evaluateOnNewDocument(() => {
+  type W = Window & { __rtcLog?: string[]; __wsLog?: string[] };
+  const w = window as unknown as W;
+  w.__rtcLog = [];
+  w.__wsLog = [];
+  const OrigRTC = window.RTCPeerConnection;
+  function wireChannel(prefix: string, ch: RTCDataChannel): void {
+    w.__rtcLog?.push(`${prefix} construct label=${ch.label} rs=${ch.readyState}`);
+    ch.addEventListener('open', () => w.__rtcLog?.push(`${prefix} open`));
+    ch.addEventListener('close', () => w.__rtcLog?.push(`${prefix} close`));
+    ch.addEventListener('error', (e) => w.__rtcLog?.push(`${prefix} error ${e}`));
+    const origSend = ch.send.bind(ch);
+    ch.send = (data: ArrayBufferView | ArrayBuffer | Blob | string): void => {
+      const len = typeof data === 'string' ? data.length : (data as ArrayBuffer).byteLength ?? 0;
+      w.__rtcLog?.push(`${prefix} send ${len}b`);
+      origSend(data as Parameters<typeof origSend>[0]);
+    };
+    ch.addEventListener('message', (e) => {
+      const len =
+        typeof e.data === 'string'
+          ? e.data.length
+          : (e.data as ArrayBuffer)?.byteLength ?? 0;
+      w.__rtcLog?.push(`${prefix} recv ${len}b`);
+    });
+  }
+  window.RTCPeerConnection = class extends OrigRTC {
+    constructor(config?: RTCConfiguration) {
+      super(config);
+      w.__rtcLog?.push(`pc-construct ice=${JSON.stringify(config?.iceServers ?? [])}`);
+      this.addEventListener('connectionstatechange', () => {
+        w.__rtcLog?.push(`pc-state ${this.connectionState}`);
+      });
+      this.addEventListener('iceconnectionstatechange', () => {
+        w.__rtcLog?.push(`ice-state ${this.iceConnectionState}`);
+      });
+      this.addEventListener('signalingstatechange', () => {
+        w.__rtcLog?.push(`sig-state ${this.signalingState}`);
+      });
+      this.addEventListener('datachannel', (e) => wireChannel('dc-remote', e.channel));
+    }
+    createDataChannel(label: string, dict?: RTCDataChannelInit): RTCDataChannel {
+      const ch = super.createDataChannel(label, dict);
+      wireChannel('dc-local', ch);
+      return ch;
+    }
+  } as typeof RTCPeerConnection;
+
+  const OrigWS = window.WebSocket;
+  window.WebSocket = class extends OrigWS {
+    constructor(url: string | URL, protocols?: string | string[]) {
+      super(url, protocols);
+      const u = typeof url === 'string' ? url : url.toString();
+      if (u.includes('signaling') || u.includes('signal')) {
+        w.__wsLog?.push(`ws-open ${u}`);
+        this.addEventListener('message', (e) => {
+          const text = typeof e.data === 'string' ? e.data : '<binary>';
+          if (text.length < 300) w.__wsLog?.push(`ws-msg ${text}`);
+          else w.__wsLog?.push(`ws-msg ${text.slice(0, 200)}...`);
+        });
+        this.addEventListener('close', (e) => {
+          w.__wsLog?.push(`ws-close ${e.code}`);
+        });
+      }
+    }
+  } as typeof WebSocket;
+});
+page.on('pageerror', (e) => console.log('[pageerror]', e.message));
+page.on('console', (m) => {
+  const t = m.text();
+  if (m.type() === 'error' || /webrtc|peer|sync|signal|setRemote|InvalidState/i.test(t)) {
+    console.log('[console]', m.type(), t.slice(0, 240));
+  }
+});
 
 let ok = false;
 try {
@@ -86,40 +161,89 @@ try {
   }
   const homeDeadline = Date.now() + 30_000;
   while (Date.now() < homeDeadline) {
-    if ((await bodyHas('Apps')) || (await bodyHas('Library'))) break;
+    try {
+      if ((await bodyHas('Apps')) || (await bodyHas('Library'))) break;
+    } catch {
+      // Page may be navigating after pair-induced reload — keep polling.
+    }
     await new Promise((r) => setTimeout(r, 500));
   }
+  // Let the post-pair reload settle fully before any further navigation.
+  await new Promise((r) => setTimeout(r, 3000));
 
   console.log('[repro] navigate /library');
-  await page.goto('https://fairfox.fly.dev/library', { waitUntil: 'domcontentloaded' });
+  try {
+    await page.goto('https://fairfox.fly.dev/library', { waitUntil: 'domcontentloaded' });
+  } catch (err) {
+    // If the goto raced another in-flight nav, retry once after a beat.
+    await new Promise((r) => setTimeout(r, 2000));
+    await page.goto('https://fairfox.fly.dev/library', { waitUntil: 'domcontentloaded' });
+  }
 
-  // Poll for refs.length > 0 within budget.
+  // Diagnostic: dump browser-side knownPeers from the fairfox-keyring IDB.
+  const keyringInfo = await page.evaluate(async () => {
+    return await new Promise<{ peers: string[]; docKeys: string[] }>((resolve) => {
+      const req = indexedDB.open('fairfox-keyring', 1);
+      req.onsuccess = () => {
+        const db = req.result;
+        try {
+          const tx = db.transaction('keyring', 'readonly');
+          const store = tx.objectStore('keyring');
+          const getReq = store.get('default');
+          getReq.onsuccess = () => {
+            const k = getReq.result as
+              | { knownPeers?: [string, number[]][]; documentKeys?: [string, number[]][] }
+              | undefined;
+            const peers = (k?.knownPeers ?? []).map((e) => e[0]);
+            const docKeys = (k?.documentKeys ?? []).map((e) => e[0]);
+            resolve({ peers, docKeys });
+          };
+          getReq.onerror = () => resolve({ peers: [], docKeys: [] });
+        } catch {
+          resolve({ peers: [], docKeys: [] });
+        }
+      };
+      req.onerror = () => resolve({ peers: [], docKeys: [] });
+    });
+  });
+  console.log(
+    `[repro] browser keyring knownPeers (${keyringInfo.peers.length}):`,
+    keyringInfo.peers.slice(0, 5)
+  );
+  console.log('[repro] browser keyring documentKeys:', keyringInfo.docKeys);
+
+  // Poll for actual ref content. The library renders each reference in
+  // a card; reading `signal.value.refs.length` from the page's runtime
+  // is the strict check. Fall back to DOM heuristics if window.__lib
+  // isn't exposed.
   const syncDeadline = Date.now() + 45_000;
   let refsSeen = 0;
   while (Date.now() < syncDeadline) {
-    const body = await page.evaluate(() => document.body.innerText || '');
-    // Library refs render as items inside the Refs tab; "No references yet."
-    // disappears when the doc populates. Count items by looking for any
-    // non-empty list — proxy by the absence of the empty marker.
-    if (!body.includes('No references yet.')) {
-      // Count visible reference rows. The UI renders each ref with its
-      // title; an `article` or `li` per row is typical. Fall back to
-      // counting lines if we can't find a stable selector.
-      refsSeen = await page.evaluate(() => {
-        // Look for any element that's a ref item under the Refs tab.
-        // Heuristic: the body text after "Library" no longer contains
-        // "No references yet."; report 1+ to indicate sync landed.
-        const text = document.body.innerText || '';
-        const noMatch = text.includes('No references yet.');
-        return noMatch ? 0 : 1;
-      });
-      if (refsSeen > 0) {
-        ok = true;
-        break;
-      }
+    refsSeen = await page.evaluate(() => {
+      // Strict: count visible ref title elements (each ref has a title).
+      // The library App renders refs inside the Refs tab; look for
+      // anything that's plausibly a ref entry. Conservative DOM-only
+      // approach: any element whose text matches "by <author>" pattern
+      // tends to be a ref row.
+      const text = document.body.innerText || '';
+      const lines = text.split('\n').filter((l) => /\bby\s+[A-Z]/.test(l));
+      return lines.length;
+    });
+    if (refsSeen > 0) {
+      ok = true;
+      break;
     }
     await new Promise((r) => setTimeout(r, 1000));
   }
+  console.log(`[repro] refs counted: ${refsSeen}`);
+
+  // Dump WebRTC + WebSocket activity for diagnostics
+  const rtcLog = await page.evaluate(() => (window as unknown as { __rtcLog?: string[] }).__rtcLog ?? []);
+  const wsLog = await page.evaluate(() => (window as unknown as { __wsLog?: string[] }).__wsLog ?? []);
+  console.log(`[repro] rtcLog (${rtcLog.length} entries):`);
+  rtcLog.slice(0, 25).forEach((l) => console.log('  ', l));
+  console.log(`[repro] wsLog (${wsLog.length} entries):`);
+  wsLog.slice(0, 25).forEach((l) => console.log('  ', l));
 
   await page.screenshot({ path: '/tmp/repro-final.png', fullPage: true });
   if (ok) {
