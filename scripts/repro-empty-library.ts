@@ -212,30 +212,31 @@ try {
   );
   console.log('[repro] browser keyring documentKeys:', keyringInfo.docKeys);
 
-  // Poll for actual ref content. The library renders each reference in
-  // a card; reading `signal.value.refs.length` from the page's runtime
-  // is the strict check. Fall back to DOM heuristics if window.__lib
-  // isn't exposed.
-  const syncDeadline = Date.now() + 45_000;
-  let refsSeen = 0;
+  // Each ref renders with a Delete button. Track the MAX count seen
+  // across the polling window — Preact remounts the Refs tab while
+  // sync messages arrive, which can transiently flicker the count
+  // back to 0 even though doc state is solid. Report max + final.
+  const syncDeadline = Date.now() + 60_000;
+  let refsMax = 0;
+  let refsNow = 0;
+  let stableTicks = 0;
+  let lastNow = -1;
   while (Date.now() < syncDeadline) {
-    refsSeen = await page.evaluate(() => {
-      // Strict: count visible ref title elements (each ref has a title).
-      // The library App renders refs inside the Refs tab; look for
-      // anything that's plausibly a ref entry. Conservative DOM-only
-      // approach: any element whose text matches "by <author>" pattern
-      // tends to be a ref row.
-      const text = document.body.innerText || '';
-      const lines = text.split('\n').filter((l) => /\bby\s+[A-Z]/.test(l));
-      return lines.length;
-    });
-    if (refsSeen > 0) {
-      ok = true;
-      break;
+    refsNow = await page.evaluate(() =>
+      document.querySelectorAll('button[data-action="ref.delete"]').length
+    );
+    if (refsNow > refsMax) refsMax = refsNow;
+    if (refsMax > 0 && !ok) ok = true;
+    if (refsNow === lastNow && refsNow > 0) {
+      stableTicks++;
+      if (stableTicks >= 5) break;
+    } else {
+      stableTicks = 0;
     }
+    lastNow = refsNow;
     await new Promise((r) => setTimeout(r, 1000));
   }
-  console.log(`[repro] refs counted: ${refsSeen}`);
+  console.log(`[repro] refs rendered (final/max): ${refsNow}/${refsMax}`);
 
   // Dump WebRTC + WebSocket activity for diagnostics
   const rtcLog = await page.evaluate(() => (window as unknown as { __rtcLog?: string[] }).__rtcLog ?? []);
