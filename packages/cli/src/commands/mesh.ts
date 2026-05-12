@@ -403,7 +403,13 @@ export async function meshInviteOpen(rest: readonly string[]): Promise<number> {
       const agentHint = typeof frame.agent === 'string' ? frame.agent : undefined;
       const nameHint = typeof frame.name === 'string' ? frame.name : undefined;
       const userIdHint = typeof frame.userId === 'string' ? frame.userId : undefined;
-      void acceptReturnToken(returnToken, keyring, storage, client, {
+      // Mutate polly's keyring instance directly, not our local
+      // `storage.load()` copy — they are different objects, and the
+      // MeshNetworkAdapter sitting under this client reads through the
+      // polly-side one for `tryUnwrap` signature verification. Writing
+      // only to the local copy left the running adapter with a stale
+      // map and made it silently drop the scanner's first sync ops.
+      void acceptReturnToken(returnToken, client.keyring, storage, client, {
         ...(agentHint ? { agent: agentHint } : {}),
         ...(nameHint ? { name: nameHint } : {}),
         ...(userIdHint ? { userId: userIdHint } : {}),
@@ -715,7 +721,10 @@ export async function meshAddDevice(): Promise<number> {
       const agentHint = typeof frame.agent === 'string' ? frame.agent : undefined;
       const nameHint = typeof frame.name === 'string' ? frame.name : undefined;
       const userIdHint = typeof frame.userId === 'string' ? frame.userId : undefined;
-      void acceptReturnToken(returnToken, keyring, storage, client, {
+      // See comment in meshInviteOpen — pass the polly-side keyring
+      // (the same instance the MeshNetworkAdapter reads on every
+      // `tryUnwrap`), not our local `storage.load()` snapshot.
+      void acceptReturnToken(returnToken, client.keyring, storage, client, {
         ...(agentHint ? { agent: agentHint } : {}),
         ...(nameHint ? { name: nameHint } : {}),
         ...(userIdHint ? { userId: userIdHint } : {}),
