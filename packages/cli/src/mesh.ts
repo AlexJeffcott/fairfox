@@ -83,15 +83,6 @@ export async function openMeshClient(options: ConnectOptions): Promise<MeshClien
     rtc: {
       // biome-ignore lint/suspicious/noExplicitAny: werift shim to DOM type
       RTCPeerConnection: RTCPeerConnection as unknown as any,
-      // Mirror the browser side's relay-only policy: every peer pair
-      // we form must traverse TURN. Without enforcement, werift leaks
-      // host/srflx candidates into SDP and trickle, the remote peer
-      // pairs against peer-reflexive remotes derived from them, and
-      // the data channel opens against a path that doesn't actually
-      // carry bytes through the relay. polly 0.55.0 (polly#105)
-      // filters non-relay candidates from both directions when the
-      // policy is set here.
-      iceTransportPolicy: 'relay',
       // Same TURN flow as the browser side. Without this, werift only
       // sees Chrome's mDNS-obfuscated `.local` candidates from the
       // browser side and can't resolve them — ICE fails silently and

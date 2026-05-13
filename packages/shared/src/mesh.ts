@@ -61,16 +61,6 @@ export async function createMeshConnection(
     keyring: options.keyring,
     repoStorage: new IndexedDBStorageAdapter('fairfox-mesh'),
     rtc: {
-      // Relay-only ICE: force every peer connection through TURN
-      // rather than host/srflx candidates. Real Chrome's mDNS
-      // obfuscation hides host candidates from werift on the CLI
-      // side, and ICE picks non-relay peer-reflexive pairs whose
-      // bytes never traverse the relay even when the data channel
-      // opens — the receiver's docs never hydrate. polly 0.55.0
-      // (polly#105) added the knob plus enforcement that filters
-      // non-relay candidates out of SDP and trickle on both sides;
-      // setting "relay" here is the surface that activates it.
-      iceTransportPolicy: 'relay',
       // Fetch ICE servers from the relay so peers behind CGNAT,
       // corporate firewalls, or browser↔CLI pairs (where Chrome's
       // mDNS obfuscation hides host candidates from werift) get a
