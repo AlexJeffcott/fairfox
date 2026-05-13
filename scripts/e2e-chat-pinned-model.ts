@@ -18,7 +18,6 @@ import {
   pass,
   runCli,
   spawnCli,
-  trace,
   waitForLine,
 } from './e2e-cli-helpers.ts';
 

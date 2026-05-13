@@ -508,13 +508,25 @@ export async function consumePairingHash(): Promise<boolean> {
   pairingError.value = null;
   try {
     await applyScannedToken(parsed.token);
+    // Fire the pair-return as soon as the keyring has the issuer's
+    // pubkey, *before* the recovery/invite branch can hang on
+    // `$meshState.loaded` for `mesh:users`. The frame is independent
+    // signalling state — it tells the issuer "I have your token, here's
+    // mine" — and gating it behind the doc-hydration awaits caused
+    // real-Chrome scanners to never reach the send and leave the
+    // issuer's keyring without the scanner's pubkey, which then
+    // dropped every wrapped sync envelope on the way back. See
+    // fairfox#19. `void` so sendPairReturnForSession's own internal
+    // awaits don't extend the surrounding try-block either.
+    if (parsed.sessionId) {
+      void sendPairReturnForSession(parsed.sessionId);
+    }
     if (parsed.invite) {
       await acceptInviteBlob(parsed.invite);
     } else if (parsed.recovery) {
       await acceptRecoveryBlob(parsed.recovery);
     }
     if (parsed.sessionId) {
-      await sendPairReturnForSession(parsed.sessionId);
       // One-scan completion: when we send a pair-return through the
       // signalling relay, the issuer receives our token and drains
       // their own 'scan' step on receipt. Both halves are therefore
@@ -642,13 +654,17 @@ export async function submitScannedValue(raw: string): Promise<void> {
   const parsed = parseScanPaste(raw);
   try {
     await applyScannedToken(parsed.token);
+    // See consumePairingHash — pair-return fires before the
+    // potentially-hanging recovery/invite awaits, fairfox#19.
+    if (parsed.sessionId) {
+      void sendPairReturnForSession(parsed.sessionId);
+    }
     if (parsed.invite) {
       await acceptInviteBlob(parsed.invite);
     } else if (parsed.recovery) {
       await acceptRecoveryBlob(parsed.recovery);
     }
     if (parsed.sessionId) {
-      await sendPairReturnForSession(parsed.sessionId);
       drainStep('issue');
     }
     advanceAfter('scan');
