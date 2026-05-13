@@ -28,6 +28,7 @@ import {
   verifyInviteSignature,
 } from '#src/invite.ts';
 import { loadOrCreateKeyring } from '#src/keyring.ts';
+import { awaitLoadedBudget } from '#src/loaded-budget.ts';
 import { completePairing, initiatePairing } from '#src/pairing.ts';
 import {
   cameraScanMode,
@@ -580,8 +581,16 @@ async function acceptRecoveryBlob(blob: string): Promise<void> {
   //     authoritative.
   // CRDT merge handles the duplicate cleanly — the eventual sync
   // from the CLI lands last-write-wins on identical content.
-  await usersState.loaded;
-  if (!usersState.value.users[identity.userId]) {
+  //
+  // Bounded await: on a fresh-IDB browser with no peer yet streaming
+  // mesh:users, `handle.whenReady()` inside polly's $meshState wrapper
+  // never resolves and `consumePairingHash` hangs forever — the wizard
+  // stays on 'scan' and `advanceAfter` never fires. Bound the wait
+  // so the post-pair reload happens; the post-reload `selfHealIdentity`
+  // in mesh-gate writes the bootstrap entry once sync arrives.
+  // See fairfox#20.
+  const hydrated = await awaitLoadedBudget(usersState.loaded, 3000);
+  if (hydrated && !usersState.value.users[identity.userId]) {
     upsertUser({
       entry: createBootstrapUser({
         displayName: identity.displayName,
@@ -880,8 +889,16 @@ async function selfEndorseDevice(identity: Parameters<typeof signEndorsement>[0]
   // Fence on devicesState hydration for the same reason usersState
   // needs it: a fresh-install race between the in-memory primitive
   // init and polly's storage load otherwise drops the write.
+  // Bounded await for the same reason as acceptRecoveryBlob — without
+  // a budget, real-Chrome fresh-IDB scanners hang here forever and
+  // the wizard never advances. Skip the writes if hydration didn't
+  // land; post-reload `selfHealIdentity` re-attempts once sync is
+  // flowing. See fairfox#20.
   const { devicesState: devState } = await import('#src/devices-state.ts');
-  await devState.loaded;
+  const hydrated = await awaitLoadedBudget(devState.loaded, 3000);
+  if (!hydrated) {
+    return;
+  }
   touchSelfDeviceEntry(peerId, { agent: 'browser' });
   const endorsement = signEndorsement(identity, peerId);
   addEndorsementToDevice(peerId, endorsement);
