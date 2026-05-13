@@ -6,6 +6,7 @@
 
 import { Layout } from '@fairfox/polly/ui';
 import { devicesState } from '@fairfox/shared/devices-state';
+import { mesh } from '@fairfox/shared/ensure-mesh';
 import {
   lastSignalingErrorMessage,
   signalingConnected,
@@ -14,6 +15,7 @@ import { meshFingerprintText, meshMetaState } from '@fairfox/shared/mesh-meta-st
 import { peersPresent } from '@fairfox/shared/peers-presence';
 import { userIdentity } from '@fairfox/shared/user-identity-state';
 import { usersState } from '@fairfox/shared/users-state';
+import { signal } from '@preact/signals';
 import { selfPeerId } from '#src/client/self-peer.ts';
 
 function Section({
@@ -142,10 +144,148 @@ function Diagnostics(): preact.JSX.Element {
   );
 }
 
+// Polls polly's getPeerStateSnapshot every couple of seconds while the
+// page is open. The snapshot is what fairfox uses to debug the
+// "daemon dials, peers go up, but documents never hydrate" failure
+// mode polly#105 left partially-open. Without this, every diagnostic
+// has to come from a CDP-driven JS evaluation; with it, the failing
+// device's own Help tab carries the wire-level evidence the next
+// debugging session would otherwise have to re-discover.
+const peerSnapshot = signal<string>('(loading…)');
+
+function startSyncDiagnosticsPolling(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const m = mesh;
+  if (!m) {
+    return;
+  }
+  const tick = async (): Promise<void> => {
+    try {
+      await m.refreshTransportStats();
+      const snap = m.getPeerStateSnapshot();
+      peerSnapshot.value = formatSyncDiagnostics(snap);
+    } catch (err) {
+      peerSnapshot.value = `(error: ${err instanceof Error ? err.message : String(err)})`;
+    }
+  };
+  void tick();
+  window.setInterval(() => {
+    void tick();
+  }, 2000);
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: polly's snapshot type isn't re-exported through the shared wrapper; keep it loose at the diagnostic boundary
+function formatSyncDiagnostics(snap: any): string {
+  const lines: string[] = [];
+  lines.push(`local peerId:    ${shortId(snap?.localPeerId)}`);
+  lines.push(`known in keyring: ${snap?.knownPeerIds?.length ?? '?'}`);
+  lines.push(`present in signalling: ${snap?.presentPeerIds?.length ?? '?'}`);
+  lines.push('');
+  const peers = Array.isArray(snap?.peers) ? snap.peers : [];
+  if (peers.length === 0) {
+    lines.push('(no peers reported)');
+    return lines.join('\n');
+  }
+  for (const p of peers) {
+    lines.push(`peer ${shortId(p.peerId)}`);
+    lines.push(`  keyring=${p.knownInKeyring} signalling=${p.presentInSignalling}`);
+    if (p.slot) {
+      lines.push(
+        `  slot: ice=${p.slot.iceConnectionState} conn=${p.slot.connectionState} dc=${p.slot.dataChannelState}`
+      );
+      lines.push(
+        `        pendingSends=${p.slot.pendingSendCount} pendingRemoteIce=${p.slot.pendingRemoteIceCount}`
+      );
+      if (p.slot.inFlightSync) {
+        const i = p.slot.inFlightSync;
+        const sinceMs = i.lastChunkAt ? Math.round(performance.now() - i.lastChunkAt) : null;
+        lines.push(
+          `  sync: chunks=${i.chunksReceived} bytes=${i.bytesReceived} backlog=${i.applyBacklog} lastChunk=${
+            sinceMs === null ? 'never' : `${sinceMs}ms ago`
+          }`
+        );
+      } else {
+        lines.push('  sync: (no in-flight)');
+      }
+      if (p.slot.transport) {
+        const t = p.slot.transport;
+        const pair = t.selectedCandidatePair;
+        if (pair) {
+          lines.push(
+            `  pair: ${pair.local?.type ?? '?'}→${pair.remote?.type ?? '?'} nominated=${pair.nominated} state=${pair.state} bsSent=${pair.bytesSent ?? '?'} brRecv=${pair.bytesReceived ?? '?'}`
+          );
+        } else {
+          lines.push('  pair: (none selected)');
+        }
+        if (t.retransmittedPacketsSent !== undefined) {
+          lines.push(
+            `  retransmits: pkts=${t.retransmittedPacketsSent} bytes=${t.retransmittedBytesSent}`
+          );
+        }
+        if (t.lastDataChannelError) {
+          lines.push(`  lastDcError: ${t.lastDataChannelError}`);
+        }
+      } else {
+        lines.push('  transport: (not refreshed yet)');
+      }
+    } else {
+      lines.push('  (no slot — peer-joined but no RTC connection)');
+    }
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+function shortId(id: unknown): string {
+  if (typeof id !== 'string' || id.length === 0) {
+    return '(none)';
+  }
+  return id.slice(0, 12);
+}
+
+startSyncDiagnosticsPolling();
+
+function SyncDiagnostics(): preact.JSX.Element {
+  const text = peerSnapshot.value;
+  const lineCount = Math.max(3, text.split('\n').length);
+  return (
+    <Layout rows="auto auto auto" gap="var(--polly-space-sm)">
+      <h2 style={{ margin: 0, fontSize: 'var(--polly-text-lg)' }}>Sync diagnostics</h2>
+      <p style={{ color: 'var(--polly-text-muted)', margin: 0 }}>
+        Per-peer ICE / data-channel / sync state, polled every 2s from polly's getPeerStateSnapshot
+        + refreshAllTransportStats. Use this to see whether bytes are actually traversing the relay
+        and whether the apply backlog is draining.
+      </p>
+      <textarea
+        readOnly={true}
+        rows={lineCount}
+        value={text}
+        data-action="help.select-all-textarea"
+        style={{
+          width: '100%',
+          fontFamily: 'var(--polly-font-mono)',
+          fontSize: 'var(--polly-text-sm)',
+          padding: 'var(--polly-space-sm) var(--polly-space-md)',
+          background: 'var(--polly-surface-sunken)',
+          borderRadius: 'var(--polly-radius-md)',
+          border: '1px solid var(--polly-border)',
+          color: 'var(--polly-text)',
+          resize: 'none',
+          whiteSpace: 'pre',
+          overflow: 'auto',
+        }}
+      />
+    </Layout>
+  );
+}
+
 export function HelpView(): preact.JSX.Element {
   return (
     <Layout rows="auto" gap="var(--polly-space-xl)">
       <Diagnostics />
+      <SyncDiagnostics />
       <p style={{ margin: 0 }}>
         fairfox is a small household mesh. Every paired device shares the same CRDT state — todos,
         agenda, users, peers — over WebRTC. The server is only here for discovery and a one-shot

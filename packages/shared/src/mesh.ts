@@ -15,6 +15,16 @@ import { markPeersPresent, resetPeersPresent } from '#src/peers-presence.ts';
 export interface MeshConnection {
   readonly repo: MeshClient['repo'];
   readonly signaling: MeshClient['signaling'];
+  /** polly 0.55.0 diagnostic — snapshot of per-peer keyring presence,
+   * signalling presence, RTC slot state, in-flight sync progress and
+   * (when refreshed) selected ICE candidate pair. The Help tab calls
+   * this on a poll to render Sync diagnostics; fairfox sub-app code
+   * does not otherwise depend on it. */
+  getPeerStateSnapshot: MeshClient['getPeerStateSnapshot'];
+  /** polly 0.55.0 diagnostic — async, populates `slot.transport` on
+   * every active peer via `RTCPeerConnection.getStats()`. Must be
+   * awaited before `getPeerStateSnapshot()` returns transport data. */
+  refreshTransportStats: MeshClient['refreshTransportStats'];
   disconnect(): void;
 }
 
@@ -102,6 +112,8 @@ export async function createMeshConnection(
   return {
     repo: client.repo,
     signaling: client.signaling,
+    getPeerStateSnapshot: () => client.getPeerStateSnapshot(),
+    refreshTransportStats: () => client.refreshTransportStats(),
     disconnect: () => {
       clearInterval(poll);
       resetPeersPresent();
