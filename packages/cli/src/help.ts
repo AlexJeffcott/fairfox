@@ -236,6 +236,28 @@ Usage:
   fairfox doctor`,
   },
   {
+    name: 'export',
+    summary: 'Dump every mesh document this device has hydrated to a JSON file.',
+    body: `Dump every mesh document this device has hydrated to a JSON file.
+
+Reads storage-only from ~/.fairfox/mesh/ — does not join signalling,
+so safe to run alongside \`fairfox daemon start\`. Each \`$meshState\`
+key is hydrated against a 5s budget, then its decrypted value is
+serialised into a single JSON file alongside the local user identity
+and mesh fingerprint. Docs that fail to hydrate within the budget are
+recorded as { hydrated: false, value: null } so the caller can see
+which documents are missing rather than getting a silent zero.
+
+The output is plain text and contains every todo, library entry, and
+agenda item the mesh holds locally. Written with mode 0600. Treat it
+like a password manager export.
+
+Usage:
+  fairfox export                       # writes ./fairfox-export-<stamp>.json
+  fairfox export /tmp/backup.json      # explicit path
+  fairfox export /tmp/backups/         # picks a filename inside that directory`,
+  },
+  {
     name: 'update',
     summary: 'Fetch the latest CLI bundle from GitHub Releases.',
     body: `Fetch the latest CLI bundle from GitHub Releases.

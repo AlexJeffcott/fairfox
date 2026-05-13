@@ -38,6 +38,7 @@ import { chatDump, chatSend, chatServe } from '#src/commands/chat.ts';
 import { daemon } from '#src/commands/daemon.ts';
 import { deploy } from '#src/commands/deploy.ts';
 import { doctor } from '#src/commands/doctor.ts';
+import { exportCmd } from '#src/commands/export.ts';
 import {
   meshAddDevice,
   meshAddUser,
@@ -225,6 +226,14 @@ function main(): Promise<number> {
       return Promise.resolve(help);
     }
     return doctor();
+  }
+
+  if (subcommand === 'export') {
+    const help = helpFor('export', rest);
+    if (help !== null) {
+      return Promise.resolve(help);
+    }
+    return exportCmd(rest);
   }
 
   if (subcommand === 'update') {
