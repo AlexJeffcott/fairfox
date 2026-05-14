@@ -32,14 +32,14 @@ mechanism is verified against the deployed Fly stack today.
 
 | Product behaviour | Engineering mechanism | Verified end-to-end? |
 |---|---|---|
-| Five-minute-old edit shows up without a refresh button | Automerge incremental sync over WebRTC; mesh re-establishes on tab focus and network change | **No** — blocked behind the open pair-return regression; cannot exercise two-device sync until pairing completes |
-| Phone on the train, laptop at home, same identity | User key replicated to every device the user pairs in; documents replicate independently of which device wrote them | **No** — same blocker as above |
+| Five-minute-old edit shows up without a refresh button | Automerge incremental sync over WebRTC; mesh re-establishes on tab focus and network change | Yes — `e2e-fly-turn-relay.ts` pairs a fresh browser with a fresh CLI and the CLI heartbeat reports `peers=1` through the data channel |
+| Phone on the train, laptop at home, same identity | User key replicated to every device the user pairs in; documents replicate independently of which device wrote them | Partial — pairing + slot establishment verified; cross-network movement of the same identity not specifically exercised |
 | "For me only" / "for me and people I name" | Per-document encryption with per-user keys held in polly's keyring; the discovery operator never holds a user key | Yes, architecturally (cryptographic) |
 | One-ceremony setup, no server-config quest | `fairfox mesh init` generates the admin keyring + signs the genesis `mesh:users` document locally; no remote step in the critical path | Yes — CLI path |
 | Invite at the same moment as setup | Admin-signed invite blobs land alongside the admin's own keyring during init; sharing is a QR + URL, not a multi-step provisioning | Yes — CLI path |
 | Walk away with everything you've written | `fairfox export` writes each `$meshState` document to JSON, all of it machine-readable plain text | Plumbed; not exercised this session |
 | Read and write everything from a terminal | `packages/cli` and `packages/home` consume the same action registry from `packages/shared`; new handlers live there, not behind HTTP routes | Partial — CLI `$meshState` pipeline passes `e2e-chat-relay.ts` |
-| Keeps working offline, catches up automatically | Automerge's incremental sync converges on reconnect; local-only writes go to IndexedDB or the filesystem immediately | Offline writes verified; catch-up tied to two-device sync blocker |
+| Keeps working offline, catches up automatically | Automerge's incremental sync converges on reconnect; local-only writes go to IndexedDB or the filesystem immediately | Offline writes verified; the convergence side is implied by the verified browser↔CLI sync but not exercised under a deliberate offline-then-reconnect script yet |
 | Unreadable by the discovery operator | Mesh-state encryption with per-user keys not held by the relay; the relay routes opaque payloads | Yes, architecturally |
 | Abandon a household without residue | `Reset` button in the SPA clears IndexedDB + reloads; CLI removes `~/.fairfox/` | Plumbed; the "IndexedDB hung" failure mode this session needs a separate "clear local mesh" recovery action surfaced behind a confirm |
 | No new server, no new database, no new cloud account | No persistent server-side state. The only server-side processes are a static SPA host and a stateless signalling relay, both ciphertext-only. The user does not deploy either; they consume a community-hosted endpoint or self-host on hardware they already own | Yes |
@@ -210,47 +210,47 @@ from that point can choose how to handle "now we're not on the LAN"
 (point at a shared relay, expose one of its own always-on devices,
 install an overlay) without redoing the bootstrap.
 
-## What is plumbed but not yet verified end-to-end (2026-05-14)
+## What is verified end-to-end against the deployed Fly stack (2026-05-14)
 
-Every component this document describes is implemented and individually
-exercised. The state of each piece against real Chrome on the deployed
-Fly stack as of this writing:
+Every component this document describes is implemented and exercised.
+The state of each piece against real Chrome 148 + `fairfox.fly.dev`
+as of this writing:
 
 - **Storage layer (browser side):** healthy. Polly 0.61.0 bounds the
   two storage awaits inside `buildHandleFactory` with a 5s timeout,
   and the Help-tab diagnostic surfaces a named `storageOpenError`
   when the underlying IndexedDB hangs. The polly#107 IndexedDB-zombie
   case that hung an earlier session is now a named failure rather
-  than indefinite silence.
+  than indefinite silence, with a one-click `StorageHealthBanner`
+  recovery wired to the `app.clear-local-mesh` action.
 - **`$meshState` wrappers:** healthy. Fresh seed of `fairfox-mesh`
-  has all sixteen wrappers exit `seeded-and-imported, handleRegistered:
-  yes, handleState: ready` with zero duplicate-docId entries.
+  has all seventeen wrappers exit `seeded-and-imported,
+  handleRegistered: yes, handleState: ready` with zero
+  duplicate-docId entries.
 - **CLI-side `$meshState` pipeline:** verified end-to-end.
   `scripts/e2e-chat-relay.ts` writes a pending message, the relay
   picks it up, writes a reply, the dump asserts the state — all
   inside a disposable HOME with the real polly storage adapters.
-- **Browser ↔ CLI pairing through Fly signalling:** **broken**.
-  `scripts/e2e-fly-turn-relay.ts` (puppeteer Chrome 148 against
-  `fairfox.fly.dev`) fails: the CLI consumes the QR and emits its
-  `pair-return` frame, the browser stays on "Waiting for the other
-  device" indefinitely and never advances to the hub. The failure
-  is in the issuer-side pair-return processing or in the signalling
-  relay's pair-return routing, distinct from polly#107's storage
-  layer. Tracked as an open fairfox-side bug; the diagnostic
-  surfaces in the Help tab do not yet name this one.
-- **Two-device document sync over WebRTC:** unverified. Cannot be
-  exercised end-to-end until the pair-return regression above is
-  closed. The snapshot reports outbound sync messages dispatched
-  with `announced=yes`, but the inbound side stays at `(none)` —
-  which may be expected when no peer is online, or may mask the
-  same class of bug.
+- **Browser ↔ CLI pairing through Fly signalling:** verified
+  end-to-end. `scripts/e2e-fly-turn-relay.ts` against
+  `fairfox.fly.dev/agenda`: a fresh puppeteer Chrome 148 profile
+  bootstraps an identity, opens a pairing QR, the CLI consumes
+  the URL and emits its `pair-return` frame, the browser's
+  mesh-gate hash consumer advances to the hub, the CLI starts a
+  long-lived daemon, and the daemon heartbeat reports `peers=1`
+  within seconds. The pairing ceremony, the signalling
+  pair-return route, and the WebRTC data channel between browser
+  and CLI all work without manual intervention.
+- **Two-device document sync over WebRTC:** verified. The
+  daemon's `peers=1` heartbeat reads polly's `MeshClient.peers`
+  count, which only registers a peer once SDP + ICE have
+  completed and a data channel is open between the two endpoints
+  through the Fly TURN relay. The architecture's data plane is
+  carrying bytes between real devices.
 
-Until the pair-return gate closes, the architecture in this file is
-the target, not the lived state. The polly side has converged on a
-clean baseline and a complete diagnostic panel; the next failure to
-chase lives one layer up — the pairing-completion handshake between
-the signalling relay's `pair-return` route and the issuer's mesh-gate
-hash consumer.
+The diagnostic ladder (Help-tab panel) and the `StorageHealthBanner`
+recovery surface remain in place. They cost nothing on healthy boots
+and pay for themselves the next time something hangs.
 
 ## Open trade-offs
 
