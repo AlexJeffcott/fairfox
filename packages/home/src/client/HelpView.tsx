@@ -4,6 +4,8 @@
 // content as README.md's quick-start section, rendered for a
 // browser audience.
 
+import { OBSERVED_MESH_STATE_MODULE_ID_FROM_AGENDA } from '@fairfox/agenda/state';
+import { MESH_STATE_MODULE_ID } from '@fairfox/polly/mesh';
 import { Layout } from '@fairfox/polly/ui';
 import { devicesState } from '@fairfox/shared/devices-state';
 import { mesh } from '@fairfox/shared/ensure-mesh';
@@ -14,9 +16,18 @@ import {
 import { meshFingerprintText, meshMetaState } from '@fairfox/shared/mesh-meta-state';
 import { peersPresent } from '@fairfox/shared/peers-presence';
 import { userIdentity } from '@fairfox/shared/user-identity-state';
-import { usersState } from '@fairfox/shared/users-state';
+import {
+  OBSERVED_MESH_STATE_MODULE_ID_FROM_USERS_STATE,
+  usersState,
+} from '@fairfox/shared/users-state';
 import { signal } from '@preact/signals';
 import { selfPeerId } from '#src/client/self-peer.ts';
+
+// HelpView's own view of the polly mesh-state module id. Compared
+// against the snapshot's `meshStateModule.moduleId` plus the
+// OBSERVED_* re-exports from each candidate consumer subtree to
+// rule polly#107 H5 in or out in one rendered read.
+const OBSERVED_MESH_STATE_MODULE_ID_FROM_HELPVIEW = MESH_STATE_MODULE_ID;
 
 function Section({
   heading,
@@ -233,9 +244,54 @@ function formatSyncDiagnostics(
     `adapters:          ${identity.adapterClasses.length} [${identity.adapterClasses.join(', ')}]`
   );
   lines.push(`sharePolicy:       ${identity.sharePolicy}`);
-  lines.push(`local handles:     ${identity.localHandleIds.length}`);
-  for (const id of identity.localHandleIds) {
+  // Prefer polly 0.58.0's snapshot-emitted handle data over our manual
+  // repo.handles probe; the values agree but the snapshot side is
+  // authored by polly and will track upstream changes.
+  const snapHandleCount = snap?.repoHandleCount;
+  const snapHandleIds = Array.isArray(snap?.repoHandleIds) ? snap.repoHandleIds : [];
+  const handleCount =
+    typeof snapHandleCount === 'number' ? snapHandleCount : identity.localHandleIds.length;
+  const handleIds = snapHandleIds.length > 0 ? snapHandleIds : identity.localHandleIds;
+  lines.push(
+    `repo handles:      ${handleCount} (source: ${typeof snapHandleCount === 'number' ? 'snapshot' : 'probe'})`
+  );
+  for (const id of handleIds) {
     lines.push(`  - ${id}`);
+  }
+  lines.push('');
+
+  // polly#107 H5 verification (v0.58.0). The mesh-client side stamps
+  // its observed module id at createMeshClient time; every consumer
+  // subtree we re-export OBSERVED_MESH_STATE_MODULE_ID_* from gives
+  // us its own static-import view. Any divergence proves the SPA
+  // bundle resolved @fairfox/polly/mesh to more than one instance.
+  const moduleDiag = snap?.meshStateModule;
+  const clientSideId = typeof moduleDiag?.moduleId === 'string' ? moduleDiag.moduleId : '(none)';
+  const helpViewId = OBSERVED_MESH_STATE_MODULE_ID_FROM_HELPVIEW;
+  const usersStateId = OBSERVED_MESH_STATE_MODULE_ID_FROM_USERS_STATE;
+  const agendaId = OBSERVED_MESH_STATE_MODULE_ID_FROM_AGENDA;
+  const allMatch =
+    clientSideId === helpViewId && clientSideId === usersStateId && clientSideId === agendaId;
+  lines.push('=== mesh-state module identity (polly#107 H5) ===');
+  lines.push(`mesh client side:    ${clientSideId}`);
+  lines.push(
+    `HelpView side:       ${helpViewId} ${helpViewId === clientSideId ? '(=)' : '(DIFFERENT)'}`
+  );
+  lines.push(
+    `users-state side:    ${usersStateId} ${usersStateId === clientSideId ? '(=)' : '(DIFFERENT)'}`
+  );
+  lines.push(
+    `agenda-state side:   ${agendaId} ${agendaId === clientSideId ? '(=)' : '(DIFFERENT)'}`
+  );
+  lines.push(
+    `verdict:             ${allMatch ? 'all reach one module ← H5 ruled out' : 'DUPLICATION ← H5 confirmed'}`
+  );
+  if (moduleDiag) {
+    lines.push(`configured:          ${moduleDiag.configured === true ? 'yes' : 'NO'}`);
+    lines.push(`wasResolved:         ${moduleDiag.wasResolved === true ? 'yes' : 'NO'}`);
+    lines.push(`lastConfigRepoPid:   ${moduleDiag.lastConfiguredRepoPeerId ?? '(none)'}`);
+  } else {
+    lines.push('(meshStateModule absent from snapshot — polly version older than 0.58.0?)');
   }
   lines.push('');
   lines.push('=== peers ===');

@@ -16,9 +16,21 @@
 // every transport. Every read site must convert back with
 // `new Uint8Array(arr)` before calling polly's `verify`.
 
-import { $meshState, type SigningKeyPair, sign, verify } from '@fairfox/polly/mesh';
+import {
+  $meshState,
+  MESH_STATE_MODULE_ID,
+  type SigningKeyPair,
+  sign,
+  verify,
+} from '@fairfox/polly/mesh';
 import '@fairfox/shared/ensure-mesh';
 import { logLenientViolation, strictMode } from '#src/strict-mode.ts';
+
+// polly#107 H5 fingerprint: this module's view of the polly
+// mesh-state module id. If bundler-split duplicates polly under
+// different consumer subtrees, this value diverges from
+// `meshClient.getPeerStateSnapshot().meshStateModule.moduleId`.
+export const OBSERVED_MESH_STATE_MODULE_ID_FROM_USERS_STATE = MESH_STATE_MODULE_ID;
 
 interface UsersPrimitive {
   value: UsersDoc;

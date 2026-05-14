@@ -3,8 +3,13 @@
 // across every paired device. See ADR 0002 and ADR 0004.
 
 import '@fairfox/shared/ensure-mesh';
-import { $meshState } from '@fairfox/polly/mesh';
+import { $meshState, MESH_STATE_MODULE_ID } from '@fairfox/polly/mesh';
 import { signal } from '@preact/signals';
+
+// polly#107 H5 fingerprint: this sub-app's view of the polly
+// mesh-state module id. If bundler-split duplicates polly under
+// the agenda subtree, this diverges from the mesh-client side.
+export const OBSERVED_MESH_STATE_MODULE_ID_FROM_AGENDA = MESH_STATE_MODULE_ID;
 
 export type AgendaView = 'today' | 'items' | 'fairness';
 
