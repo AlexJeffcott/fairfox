@@ -22,7 +22,7 @@ export const KEYRING_PATH = fairfoxPath('keyring.json');
 export const REPO_STORAGE_PATH = fairfoxPath('mesh');
 
 export function defaultSignalingUrl(): string {
-  const base = process.env.FAIRFOX_URL ?? 'https://fairfox-production-8273.up.railway.app';
+  const base = process.env.FAIRFOX_URL ?? 'https://fairfox.fly.dev';
   const proto = base.startsWith('https') ? 'wss' : 'ws';
   const host = base.replace(/^https?:\/\//, '').replace(/\/$/, '');
   return `${proto}://${host}/polly/signaling`;
@@ -32,7 +32,7 @@ export function defaultSignalingUrl(): string {
  * `/turn-credentials`). Derived from the same env knob as the
  * signalling URL so a single override moves both. */
 export function defaultRelayOrigin(): string {
-  return process.env.FAIRFOX_URL ?? 'https://fairfox-production-8273.up.railway.app';
+  return process.env.FAIRFOX_URL ?? 'https://fairfox.fly.dev';
 }
 
 export function keyringStorage(): KeyringStorage {

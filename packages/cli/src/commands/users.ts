@@ -308,7 +308,7 @@ export function usersInvite(rest: readonly string[]): Promise<number> {
       if (peered) {
         await flushOutgoing(2000);
       }
-      const base = process.env.FAIRFOX_URL ?? 'https://fairfox-production-8273.up.railway.app';
+      const base = process.env.FAIRFOX_URL ?? 'https://fairfox.fly.dev';
       const shareUrl = `${base.replace(/\/$/, '')}/#invite=${encodeURIComponent(blob)}`;
       process.stdout.write(`invited "${parsed.name}" as ${parsed.role} (${payload.userId})\n`);
       process.stdout.write(`\nSend them this link:\n\n${shareUrl}\n\n`);

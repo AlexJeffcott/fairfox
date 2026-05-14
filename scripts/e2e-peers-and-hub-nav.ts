@@ -34,7 +34,7 @@ import {
   waitForText,
 } from './e2e-config.ts';
 
-const TARGET = process.env.TARGET_URL ?? 'https://fairfox-production-8273.up.railway.app/';
+const TARGET = process.env.TARGET_URL ?? 'https://fairfox.fly.dev/';
 const HEADLESS = process.env.HEADLESS !== 'false';
 const ARTIFACTS = resolve(import.meta.dir, 'artifacts');
 const PROFILES = resolve(import.meta.dir, 'artifacts', 'profiles-peers-hub');

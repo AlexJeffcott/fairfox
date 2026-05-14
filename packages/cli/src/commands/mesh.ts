@@ -461,7 +461,7 @@ export async function meshInviteOpen(rest: readonly string[]): Promise<number> {
       );
     }
 
-    const base = process.env.FAIRFOX_URL ?? 'https://fairfox-production-8273.up.railway.app';
+    const base = process.env.FAIRFOX_URL ?? 'https://fairfox.fly.dev';
     const fragment = `pair=${encodeURIComponent(pairToken)}&s=${encodeURIComponent(sessionId)}&invite=${encodeURIComponent(stored.blob)}`;
     const shareUrl = `${base.replace(/\/$/, '')}/#${fragment}`;
 
@@ -761,7 +761,7 @@ export async function meshAddDevice(): Promise<number> {
     // on the Who-Are-You wizard afterwards to import their own
     // identity or create a new one.
     const recovery = identity ? exportRecoveryBlob(identity) : null;
-    const base = process.env.FAIRFOX_URL ?? 'https://fairfox-production-8273.up.railway.app';
+    const base = process.env.FAIRFOX_URL ?? 'https://fairfox.fly.dev';
     const fragmentParts = [
       `pair=${encodeURIComponent(pairToken)}`,
       `s=${encodeURIComponent(sessionId)}`,

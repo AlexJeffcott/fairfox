@@ -48,7 +48,7 @@ import {
   waitForText,
 } from './e2e-config.ts';
 
-const TARGET = process.env.TARGET_URL ?? 'https://fairfox-production-8273.up.railway.app/agenda';
+const TARGET = process.env.TARGET_URL ?? 'https://fairfox.fly.dev/agenda';
 const HEADLESS = process.env.HEADLESS !== 'false';
 const TEST_HOME = '/tmp/fairfox-test-chat-widget';
 const ARTIFACTS = resolve(import.meta.dir, 'artifacts');

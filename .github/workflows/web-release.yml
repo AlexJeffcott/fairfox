@@ -6,9 +6,9 @@ name: web-release
 #
 #   git tag web-v0.1.0 && git push origin web-v0.1.0
 #
-# The Railway server calls fetchApp() at startup (and on demand via
+# The Fly fairfox app calls fetchApp() at startup (and on demand via
 # `POST /admin/refresh-web-bundle`) to download the asset and serve
-# it as the mesh SPA — so UI changes ship without a Railway deploy.
+# it as the mesh SPA — so UI changes ship without a Fly deploy.
 
 on:
   push:
@@ -43,14 +43,14 @@ jobs:
           generate_release_notes: true
           tag_name: ${{ github.ref_name }}
 
-      # Nudge the running Railway server to re-fetch the new bundle
-      # without a redeploy. If the token secret isn't set or the
+      # Nudge the running Fly server to re-fetch the new bundle without
+      # a `fly machine restart`. If the token secret isn't set or the
       # server is down, the step prints a warning and succeeds — the
       # server will catch up on its next cold-start or manual refresh.
       - name: Refresh deployed server bundle
         env:
           FAIRFOX_REFRESH_TOKEN: ${{ secrets.FAIRFOX_REFRESH_TOKEN }}
-          FAIRFOX_SERVER_URL: ${{ vars.FAIRFOX_SERVER_URL || 'https://fairfox-production-8273.up.railway.app' }}
+          FAIRFOX_SERVER_URL: ${{ vars.FAIRFOX_SERVER_URL || 'https://fairfox.fly.dev' }}
         run: |
           if [ -z "$FAIRFOX_REFRESH_TOKEN" ]; then
             echo "::warning::FAIRFOX_REFRESH_TOKEN secret not set — skipping server refresh"
