@@ -7,10 +7,10 @@
 // body + rendered markdown preview side-by-side on wide screens,
 // stacked on narrow).
 
-import { $meshState } from '@fairfox/polly/mesh';
 import { ActionInput, Badge, Button, Layout } from '@fairfox/polly/ui';
 import { HubBack } from '@fairfox/shared/hub-back';
 import { setPageContext } from '@fairfox/shared/page-context';
+import { projectsState } from '@fairfox/todo-v2/state';
 import { effect } from '@preact/signals';
 import type { Document } from '#src/client/state.ts';
 import {
@@ -20,21 +20,6 @@ import {
   searchQuery,
   selectedDocId,
 } from '#src/client/state.ts';
-
-// Subscribe to the same `todo:projects` CRDT the todo-v2 sub-app
-// writes, so the project dropdown stays in sync without a
-// cross-package import. A minimal local type shape keeps this file
-// decoupled from todo-v2's evolving schema.
-interface MinimalProject {
-  [key: string]: unknown;
-  pid: string;
-  name: string;
-}
-interface MinimalProjectsDoc {
-  [key: string]: unknown;
-  projects: MinimalProject[];
-}
-const projectsState = $meshState<MinimalProjectsDoc>('todo:projects', { projects: [] });
 
 function projectOptions(): string[] {
   const projs = projectsState.value?.projects ?? [];

@@ -110,6 +110,7 @@
         "@automerge/automerge-repo": "catalog:",
         "@fairfox/polly": "catalog:",
         "@fairfox/shared": "workspace:*",
+        "@fairfox/todo-v2": "workspace:*",
         "@preact/signals": "catalog:",
         "elysia": "catalog:",
         "preact": "catalog:",
