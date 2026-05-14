@@ -201,5 +201,19 @@ export async function closeMesh(client: MeshClient): Promise<void> {
   } catch {
     // best-effort; even if flush throws, still close.
   }
-  await client.close();
+  try {
+    // `client.close()` walks every DocHandle the repo carries and
+    // calls `handle.doc()` to write a final snapshot — which throws
+    // `DocHandle is not ready` on any handle still in `loading`
+    // state. Budgeted `await devicesState.loaded` in `openMeshClient`
+    // can return before every wrapper-constructed handle has reached
+    // ready, so on short read commands one or two handles can still
+    // be loading at teardown. Swallow the throw for the same reason
+    // the flush catch swallows it: the command's user-facing output
+    // has already been written; a teardown error from a still-loading
+    // handle is noise.
+    await client.close();
+  } catch {
+    // best-effort
+  }
 }
