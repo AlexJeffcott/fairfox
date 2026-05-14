@@ -19,6 +19,7 @@ import {
   upsertDeviceEntry,
 } from '@fairfox/shared/devices-state';
 import { createInvite } from '@fairfox/shared/invite';
+import { awaitLoadedBudget } from '@fairfox/shared/loaded-budget';
 import {
   generateMeshName,
   meshFingerprint,
@@ -59,6 +60,7 @@ import {
   KEYRING_PATH,
   keyringStorage,
   openMeshClient,
+  openMeshClientReadOnly,
   waitForPeer,
 } from '#src/mesh.ts';
 
@@ -557,12 +559,12 @@ export async function meshWhoami(): Promise<number> {
   const fingerprint = documentKey ? await meshFingerprint(documentKey) : '(missing document key)';
   const peerId = derivePeerId(keyring.identity.publicKey);
 
-  // Open the mesh briefly to read the name. It's fine if no peer
-  // reaches us — the local copy of mesh:meta is the authoritative
-  // "what this CLI thinks the mesh is called".
-  const client = await openMeshClient({ peerId });
+  // Read-only: local mesh:meta is the authoritative "what this
+  // CLI thinks the mesh is called". No signalling fight with a
+  // running daemon.
+  const mesh = openMeshClientReadOnly();
   try {
-    await meshMetaState.loaded;
+    await awaitLoadedBudget(meshMetaState.loaded, 3000);
     const name = meshMetaState.value.name || '(unset)';
     process.stdout.write(
       [
@@ -575,15 +577,7 @@ export async function meshWhoami(): Promise<number> {
     );
     return 0;
   } finally {
-    // polly's client.close() pokes every DocHandle and throws on
-    // ones still mid-load; whoami reads only from in-memory /
-    // NodeFS so the close can't contribute anything we need. Swallow
-    // a failure here rather than mask the successful read above.
-    try {
-      await closeMesh(client);
-    } catch {
-      // intentional
-    }
+    await mesh.close();
   }
 }
 

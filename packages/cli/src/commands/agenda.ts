@@ -13,6 +13,7 @@
 // that sub-app would drag along; shared structural types live in the
 // CRDT document itself, not in a typings package.
 
+import { awaitLoadedBudget } from '@fairfox/shared/loaded-budget';
 import { $meshState } from '@fairfox/shared/polly';
 import {
   closeMesh,
@@ -20,6 +21,7 @@ import {
   flushOutgoing,
   keyringStorage,
   openMeshClient,
+  openMeshClientReadOnly,
   waitForPeer,
 } from '#src/mesh.ts';
 
@@ -72,25 +74,14 @@ async function loadOwnPeerId(): Promise<string> {
 }
 
 export async function agendaList(): Promise<number> {
-  const peerId = await loadOwnPeerId();
-  const client = await openMeshClient({ peerId });
+  await loadOwnPeerId();
+  // Read-only: no signalling, no peer race. Data freshness is
+  // whatever the daemon (or last write from any process on this
+  // machine) persisted to ~/.fairfox/mesh/.
+  const mesh = openMeshClientReadOnly();
   try {
-    const peered = await waitForPeer(client, 8000);
-    if (!peered) {
-      process.stderr.write(
-        'fairfox agenda list: no mesh peers reachable — showing the local copy (may be stale).\n'
-      );
-    }
-    // A fresh $meshState with the same logical key yields the same
-    // deterministic DocumentId on every peer. `loaded` resolves once the
-    // document handle exists; the actual converged state arrives through
-    // the sync handshake a moment later, so give it a brief settle
-    // window before reading.
     const agenda = $meshState<AgendaDoc>('agenda:main', INITIAL);
-    await agenda.loaded;
-    if (peered) {
-      await flushOutgoing(2000);
-    }
+    await awaitLoadedBudget(agenda.loaded, 3000);
     const doc = agenda.value;
     if (doc.items.length === 0) {
       process.stdout.write('(empty)\n');
@@ -103,7 +94,7 @@ export async function agendaList(): Promise<number> {
     }
     return 0;
   } finally {
-    await closeMesh(client);
+    await mesh.close();
   }
 }
 

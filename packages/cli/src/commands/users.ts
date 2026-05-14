@@ -16,6 +16,7 @@
 
 import { devicesState } from '@fairfox/shared/devices-state';
 import { createInvite } from '@fairfox/shared/invite';
+import { awaitLoadedBudget } from '@fairfox/shared/loaded-budget';
 import { permissionsForEntry } from '@fairfox/shared/policy';
 import { generateSigningKeyPair, revokePeerLocally } from '@fairfox/shared/polly';
 import {
@@ -31,6 +32,7 @@ import {
   flushOutgoing,
   keyringStorage,
   openMeshClient,
+  openMeshClientReadOnly,
   waitForPeer,
 } from '#src/mesh.ts';
 import {
@@ -65,15 +67,13 @@ function formatEntry(entry: UserEntry): string {
 
 export function usersList(): Promise<number> {
   return (async () => {
-    const peerId = await loadOwnPeerId();
-    const client = await openMeshClient({ peerId });
+    await loadOwnPeerId();
+    // Read-only: no signalling fight with a running daemon. See
+    // `openMeshClientReadOnly` for the design rationale.
+    const mesh = openMeshClientReadOnly();
     try {
-      const peered = await waitForPeer(client, 8000);
       const users = usersState;
-      await users.loaded;
-      if (peered) {
-        await flushOutgoing(2000);
-      }
+      await awaitLoadedBudget(users.loaded, 3000);
       const entries = Object.values(users.value.users);
       if (entries.length === 0) {
         process.stdout.write('(no users yet — bootstrap one with `fairfox users bootstrap`)\n');
@@ -92,7 +92,7 @@ export function usersList(): Promise<number> {
       }
       return 0;
     } finally {
-      await closeMesh(client);
+      await mesh.close();
     }
   })();
 }
@@ -106,12 +106,11 @@ export function usersWhoami(): Promise<number> {
     return Promise.resolve(0);
   }
   return (async () => {
-    const peerId = await loadOwnPeerId();
-    const client = await openMeshClient({ peerId });
+    await loadOwnPeerId();
+    const mesh = openMeshClientReadOnly();
     try {
-      await waitForPeer(client, 4000);
       const users = usersState;
-      await users.loaded;
+      await awaitLoadedBudget(users.loaded, 3000);
       const entry = users.value.users[identity.userId];
       process.stdout.write(`userId:     ${identity.userId}\n`);
       process.stdout.write(`name:       ${identity.displayName}\n`);
@@ -132,16 +131,7 @@ export function usersWhoami(): Promise<number> {
       }
       return 0;
     } finally {
-      // Mirror the swallow in meshWhoami: closeMesh pokes every
-      // DocHandle and throws on ones still mid-load (the brief
-      // openMeshClient + waitForPeer window can leave one in
-      // 'loading' state when reading a fresh mesh). Swallow rather
-      // than propagate — the read above already succeeded.
-      try {
-        await closeMesh(client);
-      } catch {
-        // intentional
-      }
+      await mesh.close();
     }
   })();
 }
