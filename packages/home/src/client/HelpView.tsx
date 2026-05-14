@@ -321,6 +321,22 @@ function formatSyncDiagnostics(
     } else {
       lines.push('lastLoadedRejection: (none)');
     }
+    // polly#107 v0.61.0 — named failure for storage-layer hangs.
+    // Populated within ~5s when buildHandleFactory's `cached.whenReady`
+    // or `repo.storageSubsystem.loadDoc` await exceeds the timeout
+    // (the IDB-wedge shape that hung this session for three releases).
+    const soe = moduleDiag.storageOpenError;
+    if (soe && typeof soe === 'object') {
+      lines.push(`storageOpenError:    ← polly bounds storage awaits at ${soe.timeoutMs ?? '?'}ms`);
+      lines.push(`  operation:         ${soe.operation ?? '(?)'}`);
+      lines.push(
+        `  documentId:        ${typeof soe.documentId === 'string' ? soe.documentId.slice(0, 12) : '(?)'}`
+      );
+      lines.push(`  elapsedMs:         ${soe.elapsedMs ?? '?'}`);
+      lines.push(`  message:           ${soe.message ?? '(no message)'}`);
+    } else {
+      lines.push('storageOpenError:    (none — storage layer healthy)');
+    }
     // polly#107 v0.60.0 — per-wrapper structured invocation log. One
     // line per $mesh* lazy factory call: which exit path it took
     // (returned-cached / loaded-from-storage / seeded-and-imported /
@@ -357,6 +373,19 @@ function formatSyncDiagnostics(
       lines.push(
         `    ${key.padEnd(20, ' ')} ${docId} ${reason.padEnd(20, ' ')} reg=${reg} state=${state}${err}`
       );
+    }
+    // polly#107 v0.61.0 — duplicate docId report. Explains every
+    // off-by-one between `lazyWrappers.length` and `repoHandleCount`:
+    // one entry per DocumentId reached by more than one factory
+    // invocation, naming the keys that resolved to it.
+    const dupes = Array.isArray(moduleDiag.lazyWrapperDuplicateDocIds)
+      ? moduleDiag.lazyWrapperDuplicateDocIds
+      : [];
+    lines.push(`lazyWrapperDuplicateDocIds: ${dupes.length} entries`);
+    for (const d of dupes) {
+      const docId = typeof d.docId === 'string' ? d.docId.slice(0, 12) : '(?)';
+      const keys = Array.isArray(d.keys) ? d.keys.join(', ') : '(?)';
+      lines.push(`    ${docId} keys=[${keys}] records=${d.recordCount ?? '?'}`);
     }
   } else {
     lines.push('(meshStateModule absent from snapshot — polly version older than 0.58.0?)');
