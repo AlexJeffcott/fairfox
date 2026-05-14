@@ -27,6 +27,28 @@ import {
 import { setActiveView } from '#src/client/Home.tsx';
 import { selfPeerId } from '#src/client/self-peer.ts';
 
+const IDB_DELETE_TIMEOUT_MS = 5_000;
+
+// Wrap indexedDB.deleteDatabase in a Promise that resolves on every
+// terminal event (success / error / blocked) AND on a 5s timeout. The
+// timeout matches polly 0.61.0's storage-open timeout: a wedged IDB
+// can refuse to fire ANY event on deleteDatabase, and without this
+// cap the reset action would hang indefinitely in exactly the
+// scenario it's supposed to recover from.
+function deleteIndexedDbWithTimeout(name: string): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const req = indexedDB.deleteDatabase(name);
+    const finish = (): void => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(finish, IDB_DELETE_TIMEOUT_MS);
+    req.onsuccess = finish;
+    req.onerror = finish;
+    req.onblocked = finish;
+  });
+}
+
 type HandlerContext = {
   data: Record<string, string>;
   event: Event;
@@ -174,18 +196,7 @@ export const homeActions: Record<string, (ctx: HandlerContext) => void> = {
                 if (typeof name !== 'string') {
                   return Promise.resolve();
                 }
-                return new Promise<void>((resolve) => {
-                  const req = indexedDB.deleteDatabase(name);
-                  req.onsuccess = () => {
-                    resolve();
-                  };
-                  req.onerror = () => {
-                    resolve();
-                  };
-                  req.onblocked = () => {
-                    resolve();
-                  };
-                });
+                return deleteIndexedDbWithTimeout(name);
               })
           );
         }
@@ -205,6 +216,39 @@ export const homeActions: Record<string, (ctx: HandlerContext) => void> = {
       } catch {
         // best-effort
       }
+      window.location.reload();
+    })();
+  },
+
+  'app.clear-local-mesh': () => {
+    // Targeted recovery for a wedged `fairfox-mesh` IndexedDB
+    // database. Keeps the keyring and user identity intact, so the
+    // device stays paired and its identity stays the same; only the
+    // local mesh document state is dropped. The next boot re-seeds
+    // empty wrappers and the other paired devices re-sync the
+    // household state in. Use when polly reports
+    // `meshStateModule.storageOpenError` (polly 0.61.0+) — the
+    // database open is hung and a Chrome restart would otherwise be
+    // the only recourse.
+    if (typeof window === 'undefined') {
+      return;
+    }
+    void (async () => {
+      const ok = await ConfirmDialog.confirm({
+        title: 'Clear local mesh storage?',
+        body:
+          'This drops the local copy of your todos, agenda, library, ' +
+          'chat, and other mesh state, then reloads. Your keyring and ' +
+          'identity are kept, so this device stays paired. Other paired ' +
+          "devices' copies aren't affected — they'll re-sync the data " +
+          'back to this device on the next contact.',
+        danger: true,
+        confirmLabel: 'Clear and reload',
+      });
+      if (!ok) {
+        return;
+      }
+      await deleteIndexedDbWithTimeout('fairfox-mesh');
       window.location.reload();
     })();
   },

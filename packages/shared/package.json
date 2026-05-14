@@ -27,6 +27,7 @@
     "./custom-frames": "./src/custom-frames.ts",
     "./hub-back": "./src/hub-back.tsx",
     "./build-freshness": "./src/build-freshness.tsx",
+    "./storage-health": "./src/storage-health.tsx",
     "./login-page": "./src/login-page.tsx",
     "./ensure-mesh": "./src/ensure-mesh.ts",
     "./pairing-state": "./src/pairing-state.ts",

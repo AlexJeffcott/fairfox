@@ -26,6 +26,7 @@ import {
   pairingMode,
   soloDeviceMode,
 } from '#src/pairing-state.ts';
+import { StorageHealthBanner } from '#src/storage-health.tsx';
 
 async function refreshKeyringState(): Promise<void> {
   try {
@@ -87,6 +88,7 @@ export function RequirePaired({ children }: RequirePairedProps): preact.JSX.Elem
       <>
         <LoginPage />
         <BuildFreshnessBanner />
+        <StorageHealthBanner />
       </>
     );
   }

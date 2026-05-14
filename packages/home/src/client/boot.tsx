@@ -54,6 +54,7 @@ import { installPairingHashListener } from '@fairfox/shared/pairing-actions';
 import { installPwaInstallListeners } from '@fairfox/shared/pwa-install';
 import { installQrCameraLifecycle, installQrPasteListener } from '@fairfox/shared/qr-scan';
 import { installRequirePairedEffects } from '@fairfox/shared/require-paired';
+import { installStorageHealthPoll } from '@fairfox/shared/storage-health';
 import { usersState } from '@fairfox/shared/users-state';
 import { sessionsState } from '@fairfox/speakwell/state';
 import { installTheStruggleEffects } from '@fairfox/the-struggle/client';
@@ -108,6 +109,7 @@ void directoryState.value;
 
 installEventDelegation(dispatch);
 installBuildFreshnessPoll();
+installStorageHealthPoll();
 installPairingHashListener();
 installQrCameraLifecycle();
 installQrPasteListener();
