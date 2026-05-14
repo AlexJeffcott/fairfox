@@ -903,6 +903,104 @@ export async function meshFingerprintCmd(): Promise<number> {
 
 // --- legacy dispatch (kept for older imports; bin.ts no longer calls)
 
+/** `fairfox mesh compact <key>` — ADR 0008.
+ *
+ * Re-seeds the named `$meshState` document under a fresh
+ * `DocumentId` containing only the live entries (e.g. for
+ * `mesh:devices`: rows without `revokedAt`), then writes the
+ * `mesh:document-index` entry that points future
+ * `$meshState(key)` resolutions at the cleaned doc. Real
+ * byte-level reclaim — historical tombstones leave the active
+ * sync payload. The old doc remains in storage and will be
+ * removed by a future GC pass (ADR 0008's automatic-GC piece is
+ * deferred).
+ *
+ * Requires `mesh.compact` (admin role). Currently only supports
+ * `mesh:devices`; the per-key compaction shape (entry selector,
+ * keep-predicate, doc reconstructor) is hardcoded here for that
+ * key. Adding another compactable doc means another branch in the
+ * switch below.
+ */
+export async function meshCompact(rest: readonly string[]): Promise<number> {
+  const key = rest[0];
+  if (!key) {
+    process.stderr.write('fairfox mesh compact: expected a key (e.g. mesh:devices).\n');
+    return 1;
+  }
+
+  // Load the local identity and check permission against this
+  // device's effective role set. `canDo` reads through
+  // `effectivePermissionsForDevice(selfPeerId)` — works against
+  // the local mesh storage without a signalling round-trip.
+  const { canDo } = await import('@fairfox/shared/policy');
+  if (!canDo('mesh.compact')) {
+    process.stderr.write(
+      'fairfox mesh compact: requires `mesh.compact` permission (admin role).\n'
+    );
+    return 1;
+  }
+
+  // Compaction needs a networked mesh client: the index update
+  // and the new doc both broadcast via the daemon-vs-CLI signalling
+  // path. Yes this races a running daemon for the shared peerId
+  // (CLI ergonomics memory): tens of seconds wall-clock, one-shot.
+  const peerId = await loadPeerId();
+  const client = await openMeshClient({ peerId });
+  try {
+    const peered = await waitForPeer(client, 8000);
+    if (!peered) {
+      process.stderr.write(
+        'fairfox mesh compact: no mesh peers reachable — the new doc and index will sync on next contact.\n'
+      );
+    }
+
+    const { compactMeshDoc } = await import('@fairfox/shared/compact-mesh-doc');
+    const { documentIndexState } = await import('@fairfox/shared/document-index-state');
+
+    // The index doc itself must hydrate before we read its
+    // current state (so the compaction layers onto whatever
+    // previous compactions already wrote).
+    await documentIndexState.loaded;
+
+    if (key !== 'mesh:devices') {
+      process.stderr.write(
+        `fairfox mesh compact: key "${key}" not supported yet. Currently supported: mesh:devices.\n`
+      );
+      return 1;
+    }
+    const { devicesState } = await import('@fairfox/shared/devices-state');
+    const result = await compactMeshDoc({
+      key,
+      wrapper: devicesState,
+      selectEntries: (doc) => doc.devices,
+      keep: (entry) => !entry.revokedAt,
+      buildDoc: (entries) => ({ devices: entries }),
+    });
+
+    if (peered) {
+      await flushOutgoing(2000);
+    }
+
+    const sealedLine = result.previousDocId
+      ? `  sealed: ${result.previousDocId.slice(0, 16)}…\n`
+      : '';
+    process.stdout.write(
+      `compacted ${result.key}\n` +
+        `  removed: ${result.removed} entries\n` +
+        `  newDocId: ${result.newDocId.slice(0, 16)}…\n` +
+        sealedLine +
+        `  at: ${result.compactedAt}\n\n` +
+        'Other paired devices pick up the new docId via mesh:document-index sync\n' +
+        'on next contact. This CLI process should be relaunched so future commands\n' +
+        'resolve $meshState wrappers to the new doc; the daemon will pick it up at\n' +
+        'its next reconnect.\n'
+    );
+    return 0;
+  } finally {
+    await closeMesh(client);
+  }
+}
+
 export function meshUsage(stream: NodeJS.WriteStream = process.stderr): void {
   stream.write(
     [
@@ -931,6 +1029,10 @@ export function meshUsage(stream: NodeJS.WriteStream = process.stderr): void {
       '                                     machine (mini-PC, server) so the',
       '                                     mesh always has at least one peer',
       '                                     other devices can sync against.',
+      '  fairfox mesh compact <key>         Re-seed a $meshState doc with only',
+      '                                     its live entries (e.g. mesh:devices',
+      '                                     drops revoked rows). ADR 0008; admin',
+      '                                     only.',
       '',
       "Only this machine's state is affected. Other paired devices stay on",
       'the old mesh until they wipe their own state.',
@@ -965,6 +1067,9 @@ export function mesh(rest: readonly string[]): Promise<number> {
   }
   if (verb === 'serve') {
     return meshServe();
+  }
+  if (verb === 'compact') {
+    return meshCompact(args);
   }
   meshUsage();
   return Promise.resolve(1);

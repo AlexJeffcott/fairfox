@@ -55,7 +55,8 @@ export type Permission =
   | 'subapp.install'
   | 'todo.write'
   | 'agenda.write'
-  | 'agenda.complete-other';
+  | 'agenda.complete-other'
+  | 'mesh.compact';
 
 /** A fine-grained grant on top of the user's role set. The optional
  * `scope` narrows the grant to a specific sub-resource (e.g. a

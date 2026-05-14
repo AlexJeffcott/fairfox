@@ -5,8 +5,10 @@
 
 import { hostname } from 'node:os';
 import type { DocumentId } from '@automerge/automerge-repo/slim';
+import { interpretAsDocumentId, isValidDocumentId } from '@automerge/automerge-repo/slim';
 import { NodeFSStorageAdapter } from '@automerge/automerge-repo-storage-nodefs';
 import { devicesState, harvestPeerKeys, touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
+import { currentDocIdForKey, DOCUMENT_INDEX_KEY } from '@fairfox/shared/document-index-state';
 import { awaitLoadedBudget } from '@fairfox/shared/loaded-budget';
 import type { KeyringStorage, MeshClient } from '@fairfox/shared/polly';
 import {
@@ -14,6 +16,7 @@ import {
   createMeshClient,
   fileKeyringStorage,
   Repo,
+  registerDocIdResolver,
 } from '@fairfox/shared/polly';
 import { RTCPeerConnection } from 'werift';
 import { fairfoxPath } from '#src/paths.ts';
@@ -27,6 +30,27 @@ import { fairfoxPath } from '#src/paths.ts';
 // FAIRFOX_HOME via the subprocess env, not via runtime mutation.
 export const KEYRING_PATH = fairfoxPath('keyring.json');
 export const REPO_STORAGE_PATH = fairfoxPath('mesh');
+
+// ADR 0008: register the docId resolver once at module init. polly
+// keeps the registration at module scope, so a single call covers
+// every subsequent `openMeshClient` / `openMeshClientReadOnly`
+// invocation in this process. The resolver short-circuits on the
+// index doc's own key to avoid recursion when its wrapper is being
+// constructed.
+registerDocIdResolver((key) => {
+  if (key === DOCUMENT_INDEX_KEY) {
+    return undefined;
+  }
+  const stored = currentDocIdForKey(key);
+  if (!stored || !isValidDocumentId(stored)) {
+    return undefined;
+  }
+  try {
+    return interpretAsDocumentId(stored);
+  } catch {
+    return undefined;
+  }
+});
 
 export function defaultSignalingUrl(): string {
   const base = process.env.FAIRFOX_URL ?? 'https://fairfox.fly.dev';

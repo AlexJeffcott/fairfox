@@ -7,6 +7,9 @@
 // polly's resolveRepo() would throw because boot.tsx had not yet had a
 // chance to set up the Repo.
 
+import { interpretAsDocumentId, isValidDocumentId } from '@automerge/automerge-repo/slim';
+import { registerDocIdResolver } from '@fairfox/polly/mesh';
+import { currentDocIdForKey, DOCUMENT_INDEX_KEY } from '#src/document-index-state.ts';
 import { loadOrCreateKeyring } from '#src/keyring.ts';
 import { createMeshConnection, type MeshConnection } from '#src/mesh.ts';
 
@@ -30,3 +33,32 @@ async function setup(): Promise<MeshConnection | undefined> {
 }
 
 export const mesh: MeshConnection | undefined = await setup();
+
+// ADR 0008: register a polly docId resolver that consults
+// `mesh:document-index` for the currently-live docId per logical
+// key. A key absent from the index resolves via polly's deterministic
+// derive (legacy / never-compacted). The resolver short-circuits on
+// the index doc's own key to avoid infinite recursion when its
+// wrapper is itself being constructed.
+//
+// The resolver is registered after `setup()` so `configureMeshState`
+// has run; the document-index wrapper's construction inside the
+// resolver routes through the configured repo.
+if (typeof window !== 'undefined' && mesh) {
+  registerDocIdResolver((key) => {
+    if (key === DOCUMENT_INDEX_KEY) {
+      return undefined;
+    }
+    const stored = currentDocIdForKey(key);
+    if (!stored || !isValidDocumentId(stored)) {
+      return undefined;
+    }
+    try {
+      return interpretAsDocumentId(stored);
+    } catch {
+      // The index carries a malformed entry — fall back to the
+      // derived id rather than throw on every wrapper construction.
+      return undefined;
+    }
+  });
+}

@@ -41,6 +41,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'todo.write',
     'agenda.write',
     'agenda.complete-other',
+    'mesh.compact',
   ],
   member: ['device.pair', 'device.rename', 'todo.write', 'agenda.write'],
   guest: [],

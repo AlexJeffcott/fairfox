@@ -32,6 +32,10 @@ const repoRoot = resolve(scriptDir, '..');
 // future readers can re-evaluate.
 const EXEMPT_KEYS: ReadonlyMap<string, string> = new Map<string, string>([
   ['template:app', '_template package is a scaffold copy-paste source, not a real sub-app'],
+  [
+    'mesh:document-index',
+    'ADR 0008 index — exercised transitively by `fairfox mesh compact` once that has an e2e; pending the deferred sealed-pointer/grace-period work, the index has no other mutation surface',
+  ],
   // The following sub-apps are browser-only — they have no CLI verb, so
   // a CLI e2e cannot exercise their docs directly. Adding coverage means
   // either (a) a puppeteer-driven e2e for that sub-app, or (b) a CLI
