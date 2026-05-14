@@ -321,6 +321,43 @@ function formatSyncDiagnostics(
     } else {
       lines.push('lastLoadedRejection: (none)');
     }
+    // polly#107 v0.60.0 — per-wrapper structured invocation log. One
+    // line per $mesh* lazy factory call: which exit path it took
+    // (returned-cached / loaded-from-storage / seeded-and-imported /
+    // threw), whether the synchronous `repo.handles[docId]` peek in
+    // the factory's `finally` block saw the handle registered, and
+    // the handle's lifecycle state at that peek.
+    const wrappers = Array.isArray(moduleDiag.lazyWrappers) ? moduleDiag.lazyWrappers : [];
+    lines.push('');
+    lines.push(`lazyWrappers:        ${wrappers.length} record(s) (ring buffer cap 64)`);
+    // Summary by exitReason for quick disambiguation.
+    const byReason: Record<string, { total: number; registered: number }> = {};
+    for (const w of wrappers) {
+      const reason = typeof w.exitReason === 'string' ? w.exitReason : '(?)';
+      byReason[reason] ??= { total: 0, registered: 0 };
+      byReason[reason].total += 1;
+      if (w.handleRegistered === true) {
+        byReason[reason].registered += 1;
+      }
+    }
+    for (const [reason, stats] of Object.entries(byReason)) {
+      lines.push(`  ${reason.padEnd(20, ' ')} total=${stats.total} registered=${stats.registered}`);
+    }
+    lines.push('  per-record (most recent first):');
+    // Reverse so the most recent factory calls show first; ring buffer
+    // is FIFO so the tail is the latest.
+    const reversed = [...wrappers].reverse();
+    for (const w of reversed) {
+      const key = typeof w.key === 'string' ? w.key : '(no-key)';
+      const docId = typeof w.docId === 'string' ? w.docId.slice(0, 12) : '(no-doc)';
+      const reason = typeof w.exitReason === 'string' ? w.exitReason : '(?)';
+      const reg = w.handleRegistered === true ? 'yes' : 'NO';
+      const state = typeof w.handleState === 'string' ? w.handleState : '(none)';
+      const err = typeof w.errorMessage === 'string' ? ` err="${w.errorMessage.slice(0, 80)}"` : '';
+      lines.push(
+        `    ${key.padEnd(20, ' ')} ${docId} ${reason.padEnd(20, ' ')} reg=${reg} state=${state}${err}`
+      );
+    }
   } else {
     lines.push('(meshStateModule absent from snapshot — polly version older than 0.58.0?)');
   }
