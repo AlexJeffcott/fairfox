@@ -17,7 +17,9 @@ import {
   fileKeyringStorage,
   Repo,
   registerDocIdResolver,
+  registerRedirectDetector,
 } from '@fairfox/shared/polly';
+import { getSealedSentinel } from '@fairfox/shared/sealed-sentinel';
 import { RTCPeerConnection } from 'werift';
 import { fairfoxPath } from '#src/paths.ts';
 
@@ -47,6 +49,27 @@ registerDocIdResolver((key) => {
   }
   try {
     return interpretAsDocumentId(stored);
+  } catch {
+    return undefined;
+  }
+});
+
+// ADR 0008 v3b: same sealed-sentinel follow as the browser side
+// (ensure-mesh.ts). Runs on every doc change against the bound
+// wrapper's doc; a sentinel triggers a transparent rebind to the
+// migrated-to docId. Necessary in the CLI for the daemon process
+// — without it the daemon's mesh:devices wrapper stays on the old
+// docId forever after a compaction runs on the same machine.
+registerRedirectDetector((doc) => {
+  const sentinel = getSealedSentinel(doc);
+  if (!sentinel) {
+    return undefined;
+  }
+  if (!isValidDocumentId(sentinel.migratedTo)) {
+    return undefined;
+  }
+  try {
+    return interpretAsDocumentId(sentinel.migratedTo);
   } catch {
     return undefined;
   }

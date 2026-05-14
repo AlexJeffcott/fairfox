@@ -8,10 +8,11 @@
 // chance to set up the Repo.
 
 import { interpretAsDocumentId, isValidDocumentId } from '@automerge/automerge-repo/slim';
-import { registerDocIdResolver } from '@fairfox/polly/mesh';
+import { registerDocIdResolver, registerRedirectDetector } from '@fairfox/polly/mesh';
 import { currentDocIdForKey, DOCUMENT_INDEX_KEY } from '#src/document-index-state.ts';
 import { loadOrCreateKeyring } from '#src/keyring.ts';
 import { createMeshConnection, type MeshConnection } from '#src/mesh.ts';
+import { getSealedSentinel } from '#src/sealed-sentinel.ts';
 
 async function setup(): Promise<MeshConnection | undefined> {
   if (typeof window === 'undefined') {
@@ -58,6 +59,29 @@ if (typeof window !== 'undefined' && mesh) {
     } catch {
       // The index carries a malformed entry — fall back to the
       // derived id rather than throw on every wrapper construction.
+      return undefined;
+    }
+  });
+
+  // ADR 0008 v3b: continuous redirect via the in-band sealed
+  // sentinel. Runs on every doc change; if a peer-synced
+  // `__compaction__` field appears on the doc the wrapper is
+  // currently bound to, polly rebinds to the migrated-to docId
+  // and the consumer signal re-fires with the new doc's state
+  // — no reload needed. Works on devices whose
+  // `mesh:document-index` hasn't synced yet, because the
+  // sentinel rides on the sealed doc itself.
+  registerRedirectDetector((doc) => {
+    const sentinel = getSealedSentinel(doc);
+    if (!sentinel) {
+      return undefined;
+    }
+    if (!isValidDocumentId(sentinel.migratedTo)) {
+      return undefined;
+    }
+    try {
+      return interpretAsDocumentId(sentinel.migratedTo);
+    } catch {
       return undefined;
     }
   });

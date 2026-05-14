@@ -27,6 +27,7 @@ export {
   type MeshClient,
   type MeshKeyring,
   registerDocIdResolver,
+  registerRedirectDetector,
   resolveDocumentId,
   revokePeerLocally,
   type SigningKeyPair,
