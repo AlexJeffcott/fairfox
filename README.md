@@ -131,7 +131,7 @@ fairfox peers rename "Alex laptop"
 fairfox peers forget <peerId>
 
 # Deploy
-fairfox deploy                      # railway up --detach from the repo root
+fairfox deploy                      # fly deploy from the repo root
 ```
 
 ## Moving between devices
@@ -169,8 +169,8 @@ portable form; keep it somewhere you can reach from any device.
 ## Environment
 
 - `FAIRFOX_URL` overrides the default origin
-  (`https://fairfox-production-8273.up.railway.app`). The CLI
-  derives its signalling URL (`wss://…/polly/signaling`) from it.
+  (`https://fairfox.fly.dev`). The CLI derives its signalling URL
+  (`wss://…/polly/signaling`) from it.
 - `FAIRFOX_STRICT_MODE=1` tells every peer to reject unsigned
   `mesh:users` / `mesh:devices` rows at read time instead of
   logging a warning. Lenient is the default so existing devices

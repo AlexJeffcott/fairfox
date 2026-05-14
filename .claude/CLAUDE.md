@@ -94,14 +94,23 @@ needs voice, rhythm, and the freedom to break prose rules.
 - `bun typecheck` — tsc across all packages
 - `bun test` — run tests
 - `bun pair-cli <args>` — run the CLI from source against
-  localhost (no rebuild, no Railway round-trip)
+  localhost (no rebuild, no Fly round-trip)
 
 ## Deploy
 
-- `railway up` in the repo root. Single-stage Dockerfile.
+- `fly deploy` in the repo root (the `fairfox` app) for server-side
+  changes; `git tag web-vX.Y.Z && git push --tags` ships SPA-only
+  changes via GitHub Releases without a Docker rebuild (the running
+  Fly machine fetches the bundle at startup, and the
+  `/admin/refresh-web-bundle` hook in the `web-release.yml` workflow
+  nudges it mid-flight when `FAIRFOX_REFRESH_TOKEN` is set).
+- TURN is a separate Fly app (`fairfox-turn`) — `fly deploy` from
+  `turn/` for coturn config changes; the relay-port window is the
+  16-port range enumerated as individual `[[services]]` blocks in
+  `turn/fly.toml`.
 - CLI bundles are shipped via GitHub Releases (tag `vX.Y.Z`
   triggers the `cli-release` workflow); `fairfox update` on any
-  installed CLI picks up the new bundle without a Railway deploy.
+  installed CLI picks up the new bundle without a Fly deploy.
 
 ## Mesh sync verification
 
