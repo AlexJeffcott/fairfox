@@ -191,6 +191,12 @@ function formatSyncDiagnostics(snap: any): string {
   for (const p of peers) {
     lines.push(`peer ${shortId(p.peerId)}`);
     lines.push(`  keyring=${p.knownInKeyring} signalling=${p.presentInSignalling}`);
+    if (p.slotInitiationDecision) {
+      const d = p.slotInitiationDecision;
+      lines.push(
+        `  initiate: reason=${d.reason}${d.error ? ` err=${d.error}` : ''} at=${formatAgo(d.at)}`
+      );
+    }
     if (p.slot) {
       lines.push(
         `  slot: ice=${p.slot.iceConnectionState} conn=${p.slot.connectionState} dc=${p.slot.dataChannelState}`
@@ -198,6 +204,12 @@ function formatSyncDiagnostics(snap: any): string {
       lines.push(
         `        pendingSends=${p.slot.pendingSendCount} pendingRemoteIce=${p.slot.pendingRemoteIceCount}`
       );
+      if (p.slot.lastSyncHandshakeAttempt) {
+        const h = p.slot.lastSyncHandshakeAttempt;
+        lines.push(
+          `  handshake: dcOpen=${formatAgo(h.dataChannelOpenedAt)} peerCand=${formatAgo(h.peerCandidateEmittedAt)} firstSend=${formatAgo(h.firstOutboundSendAt)} firstRecv=${formatAgo(h.firstInboundMessageAt)}`
+        );
+      }
       if (p.slot.inFlightSync) {
         const i = p.slot.inFlightSync;
         const sinceMs = i.lastChunkAt ? Math.round(performance.now() - i.lastChunkAt) : null;
@@ -243,6 +255,20 @@ function shortId(id: unknown): string {
     return '(none)';
   }
   return id.slice(0, 12);
+}
+
+function formatAgo(at: unknown): string {
+  if (typeof at !== 'number') {
+    return '(none)';
+  }
+  const ms = Math.round(performance.now() - at);
+  if (ms < 0) {
+    return `${ms}ms`;
+  }
+  if (ms < 60_000) {
+    return `${ms}ms ago`;
+  }
+  return `${Math.round(ms / 1000)}s ago`;
 }
 
 startSyncDiagnosticsPolling();
