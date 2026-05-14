@@ -283,8 +283,9 @@ and pay for themselves the next time something hangs.
 - **Document growth.** Automerge documents accumulate history;
   tombstones are not garbage-collected. Long-lived sub-apps will
   eventually want a compaction story — a periodic re-snapshot under
-  a new document key with the old one archived — that has not been
-  designed yet.
+  a new document key with the old one archived. Designed in
+  [`docs/adr/0008-document-compaction-via-versioned-docids.md`](docs/adr/0008-document-compaction-via-versioned-docids.md);
+  not yet implemented.
 - **Graceful storage-layer recovery.** A wedged IndexedDB database
   (zombie connection from a previous renderer crash, blocked
   `versionchange`, transaction deadlock) leaves the SPA's mesh

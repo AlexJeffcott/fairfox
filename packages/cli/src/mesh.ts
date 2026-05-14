@@ -185,6 +185,17 @@ export async function flushOutgoing(ms = 1500): Promise<void> {
  * read sees an empty doc. Calling `repo.flush()` first blocks
  * until every dirty doc is persistent.
  */
+function readyHandleIds(client: MeshClient): string[] {
+  const handles = client.repo.handles;
+  const ids: string[] = [];
+  for (const [id, handle] of Object.entries(handles)) {
+    if (handle?.state === 'ready') {
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
 export async function closeMesh(client: MeshClient): Promise<void> {
   try {
     // Two passes: the first flush ensures any in-flight Automerge
@@ -195,23 +206,29 @@ export async function closeMesh(client: MeshClient): Promise<void> {
     // to storage — without the settle, repo.flush can return
     // before the queue receives the writes). Then a final flush
     // drains everything to disk.
-    await client.repo.flush();
+    //
+    // Filter to ready handles: `repo.flush()` with no args iterates
+    // every handle and calls `handle.doc()`, which throws on any
+    // handle still in `loading` state. Budgeted `devicesState.loaded`
+    // in `openMeshClient` lets the function return before every
+    // wrapper handle hydrates, so a short read command can carry a
+    // loading handle into teardown. Passing the explicit docId list
+    // makes the flush skip the loaders cleanly.
+    const readyIds = readyHandleIds(client);
+    await client.repo.flush(readyIds);
     await new Promise((r) => setTimeout(r, 200));
-    await client.repo.flush();
+    await client.repo.flush(readyIds);
   } catch {
     // best-effort; even if flush throws, still close.
   }
   try {
-    // `client.close()` walks every DocHandle the repo carries and
-    // calls `handle.doc()` to write a final snapshot — which throws
-    // `DocHandle is not ready` on any handle still in `loading`
-    // state. Budgeted `await devicesState.loaded` in `openMeshClient`
-    // can return before every wrapper-constructed handle has reached
-    // ready, so on short read commands one or two handles can still
-    // be loading at teardown. Swallow the throw for the same reason
-    // the flush catch swallows it: the command's user-facing output
-    // has already been written; a teardown error from a still-loading
-    // handle is noise.
+    // `client.close()` → `repo.shutdown()` → `repo.flush()` with no
+    // args — iterates every handle including loaders and throws as
+    // above. The data we cared about already landed in the filtered
+    // flushes above; this internal flush is now redundant. Swallow
+    // the throw for the same reason the explicit flush catch does:
+    // the command's user-facing output has already been written; a
+    // teardown error from a still-loading handle is noise.
     await client.close();
   } catch {
     // best-effort
