@@ -33,13 +33,14 @@ async function loadOwnPeerId(): Promise<string> {
 
 function formatEntry(entry: DeviceEntry, self: string): string {
   const selfBadge = entry.peerId === self ? ' (this device)' : '';
+  const revokedBadge = entry.revokedAt ? ' [revoked]' : '';
   const agent = entry.agent.padEnd(9, ' ');
   const shortId = entry.peerId.slice(0, 12);
   const name = entry.name || '(unnamed)';
-  return `${shortId}  ${agent}  ${name}${selfBadge}`;
+  return `${shortId}  ${agent}  ${name}${selfBadge}${revokedBadge}`;
 }
 
-export function peersList(): Promise<number> {
+export function peersList(includeRevoked = false): Promise<number> {
   return (async () => {
     const peerId = await loadOwnPeerId();
     const client = await openMeshClient({ peerId });
@@ -50,7 +51,14 @@ export function peersList(): Promise<number> {
       if (peered) {
         await flushOutgoing(2000);
       }
-      const entries = Object.values(devices.value.devices);
+      const allEntries = Object.values(devices.value.devices);
+      // Hide revoked entries by default — they synced into mesh:devices
+      // with `revokedAt` set when an admin clicked Forget. The browser's
+      // PeersView already filters them out; pre-revoke output here was
+      // padded with the historical leftovers. `--include-revoked`
+      // shows everything for forensic / audit work.
+      const entries = includeRevoked ? allEntries : allEntries.filter((e) => !e.revokedAt);
+      const revokedCount = allEntries.length - entries.length;
       if (entries.length === 0) {
         process.stdout.write('(no devices yet — pair one from a browser or another CLI)\n');
         return 0;
@@ -66,6 +74,11 @@ export function peersList(): Promise<number> {
       });
       for (const entry of entries) {
         process.stdout.write(`${formatEntry(entry, peerId)}\n`);
+      }
+      if (revokedCount > 0 && !includeRevoked) {
+        process.stdout.write(
+          `(${revokedCount} revoked entr${revokedCount === 1 ? 'y' : 'ies'} hidden; \`fairfox peers --include-revoked\` to show)\n`
+        );
       }
       return 0;
     } finally {

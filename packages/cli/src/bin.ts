@@ -192,7 +192,8 @@ function main(): Promise<number> {
     if (help !== null) {
       return Promise.resolve(help);
     }
-    return peersList();
+    const includeRevoked = rest.includes('--include-revoked');
+    return peersList(includeRevoked);
   }
 
   if (subcommand === 'users') {
