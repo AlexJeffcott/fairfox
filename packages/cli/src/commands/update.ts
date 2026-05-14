@@ -34,8 +34,12 @@ const GITHUB_REPO = 'fairfox';
 // whichever is newest *across both*, so we can't use it for the
 // CLI — a web release would mask the CLI line. We walk
 // `/releases` instead and pick the newest tag starting with `v`
-// but not `web-v`.
-const RELEASES_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
+// but not `web-v`. The SPA ships much more frequently than the
+// CLI, so we ask for the max page size and paginate up to a few
+// pages — a single page would silently miss the CLI tag once the
+// web-v* track fills the default thirty-entry first page.
+const RELEASES_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=100`;
+const MAX_RELEASE_PAGES = 5;
 const CLI_BUNDLE_URL = (tag: string): string =>
   `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download/${tag}/fairfox.js`;
 
@@ -104,24 +108,32 @@ function isCliTag(tag: string): boolean {
 }
 
 async function fetchLatestTag(): Promise<string | undefined> {
-  const res = await fetchWithTimeout(RELEASES_API);
-  if (!res?.ok) {
-    return undefined;
-  }
-  try {
-    const parsed: unknown = await res.json();
-    if (Array.isArray(parsed)) {
-      for (const entry of parsed) {
-        if (isRecord(entry)) {
-          const tag = entry.tag_name;
-          if (typeof tag === 'string' && isCliTag(tag)) {
-            return tag;
-          }
+  for (let page = 1; page <= MAX_RELEASE_PAGES; page += 1) {
+    const res = await fetchWithTimeout(`${RELEASES_API}&page=${page}`);
+    if (!res?.ok) {
+      return undefined;
+    }
+    let parsed: unknown;
+    try {
+      parsed = await res.json();
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(parsed)) {
+      return undefined;
+    }
+    if (parsed.length === 0) {
+      // No more pages.
+      return undefined;
+    }
+    for (const entry of parsed) {
+      if (isRecord(entry)) {
+        const tag = entry.tag_name;
+        if (typeof tag === 'string' && isCliTag(tag)) {
+          return tag;
         }
       }
     }
-  } catch {
-    // fall through
   }
   return undefined;
 }
