@@ -137,6 +137,7 @@ function Diagnostics(): preact.JSX.Element {
         rows={lineCount}
         value={text}
         data-action="help.select-all-textarea"
+        data-help-snapshot="true"
         style={{
           width: '100%',
           fontFamily: 'var(--polly-font-mono)',
@@ -173,6 +174,16 @@ function startSyncDiagnosticsPolling(): void {
     return;
   }
   const tick = async (): Promise<void> => {
+    // Skip ticking while the diagnostic textarea is focused so the
+    // 2s autorefresh doesn't repeatedly rewrite the text mid-copy.
+    // On mobile, selection state is lost the moment the field
+    // re-renders — refreshing under the user's fingers makes the
+    // snapshot effectively un-copyable. The autorefresh resumes on
+    // blur.
+    const active = typeof document === 'undefined' ? null : document.activeElement;
+    if (active instanceof HTMLTextAreaElement && active.dataset.helpSnapshot === 'true') {
+      return;
+    }
     try {
       await m.refreshTransportStats();
       const snap = m.getPeerStateSnapshot();
@@ -523,6 +534,7 @@ function SyncDiagnostics(): preact.JSX.Element {
         rows={lineCount}
         value={text}
         data-action="help.select-all-textarea"
+        data-help-snapshot="true"
         style={{
           width: '100%',
           fontFamily: 'var(--polly-font-mono)',
