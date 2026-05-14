@@ -6,7 +6,8 @@
   "main": "src/server/server.ts",
   "exports": {
     "./client": "./src/client/App.tsx",
-    "./actions": "./src/client/actions.ts"
+    "./actions": "./src/client/actions.ts",
+    "./state": "./src/client/state.ts"
   },
   "imports": {
     "#src/*": "./src/*"

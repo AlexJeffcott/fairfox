@@ -35,21 +35,31 @@ if (typeof window !== 'undefined') {
 }
 
 import { installAgendaEffects } from '@fairfox/agenda/client';
+import { agenda } from '@fairfox/agenda/state';
 import { installChatHistoryEffects } from '@fairfox/chat/client';
+import { chatState } from '@fairfox/chat/state';
 import { installDocsEffects } from '@fairfox/docs/client';
+import { docsState } from '@fairfox/docs/state';
+import { directoryState } from '@fairfox/family-phone-admin/state';
 import { installLibraryEffects } from '@fairfox/library/client';
+import { libraryState } from '@fairfox/library/state';
 import { installEventDelegation } from '@fairfox/polly/actions';
 import { installBuildFreshnessPoll } from '@fairfox/shared/build-freshness';
 import { installConnectionRecovery } from '@fairfox/shared/connection-recovery';
-import { touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
+import { devicesState, touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
 import { loadOrCreateKeyring } from '@fairfox/shared/keyring';
 import { installMeshGateEffects } from '@fairfox/shared/mesh-gate';
+import { meshMetaState } from '@fairfox/shared/mesh-meta-state';
 import { installPairingHashListener } from '@fairfox/shared/pairing-actions';
 import { installPwaInstallListeners } from '@fairfox/shared/pwa-install';
 import { installQrCameraLifecycle, installQrPasteListener } from '@fairfox/shared/qr-scan';
 import { installRequirePairedEffects } from '@fairfox/shared/require-paired';
+import { usersState } from '@fairfox/shared/users-state';
+import { sessionsState } from '@fairfox/speakwell/state';
 import { installTheStruggleEffects } from '@fairfox/the-struggle/client';
+import { progressState, storyState } from '@fairfox/the-struggle/state';
 import { installTodoEffects } from '@fairfox/todo-v2/client';
+import { capturesState, projectsState, tasksState } from '@fairfox/todo-v2/state';
 import { render } from 'preact';
 import { App } from '#src/client/App.tsx';
 import { installHomeEffects } from '#src/client/Home.tsx';
@@ -61,6 +71,40 @@ function derivePeerId(publicKey: Uint8Array): string {
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 }
+
+// Pre-warm every `$meshState` document handle before the first peer
+// connection forms. polly#106's diagnostic ladder pinpointed the
+// failing-shape: when the daemon's sync message for `mesh:users`
+// arrives at the browser, Automerge's NetworkSubsystem only
+// advertises docs that are already in the local repo's handle table.
+// `$meshState(key, initial)` lazily seeds + registers the handle via
+// `repo.import()` on first access; before this commit, sub-app state
+// modules only loaded on route navigation, so a freshly-paired tab
+// sitting on the hub view had no handles for `todo:tasks` /
+// `library:main` / etc., and the daemon's sync messages for those
+// docs had nothing on this side to negotiate against — `firstSend`
+// stayed `(none)` in the Help-tab diagnostic indefinitely. Touching
+// `.value` on each singleton at boot triggers the lazy `$meshState`
+// construction so the handle is registered before WebRTC opens.
+//
+// The reads are deliberately discarded — the values they return are
+// the wrappers' initial empty payload (until the bridge fires on the
+// next microtask), which is irrelevant. The side effect of `.value`
+// reaching into the singleton accessor is the point.
+void usersState.value;
+void devicesState.value;
+void meshMetaState.value;
+void projectsState.value;
+void tasksState.value;
+void capturesState.value;
+void agenda.value;
+void libraryState.value;
+void docsState.value;
+void chatState.value;
+void storyState.value;
+void progressState.value;
+void sessionsState.value;
+void directoryState.value;
 
 installEventDelegation(dispatch);
 installBuildFreshnessPoll();
