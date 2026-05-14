@@ -176,6 +176,12 @@ if (typeof window !== 'undefined') {
         console.error('[__fairfoxPurge] forgetPeer failed for', peerId, err);
       }
     }
+    // Polly's Automerge-repo storage adapter debounces persistence by
+    // default. Without a wait the reload races the debounce flush and
+    // the revocations stay in-memory only — they vanish on reboot
+    // because IDB still has the un-revoked state. 2s is well clear of
+    // any reasonable debounce window.
+    await new Promise((r) => setTimeout(r, 2000));
     window.location.reload();
     return succeeded;
   };
