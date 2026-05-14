@@ -143,6 +143,44 @@ void (async () => {
   }
 })();
 
+// One-shot bulk-purge escape hatch — same effect as clicking Forget on
+// every listed peer, but routed through a single reload instead of 76.
+// Use from the devtools console:
+//   await window.__fairfoxPurge(['0275990aef01a27e', '03573e21453fbaf6', ...])
+// Removed once the test-leftover backlog clears.
+if (typeof window !== 'undefined') {
+  const w = window as unknown as { __fairfoxPurge?: (ids: string[]) => Promise<number> };
+  w.__fairfoxPurge = async (peerIds: string[]): Promise<number> => {
+    const { loadOrCreateKeyring, forgetPeer } = await import('@fairfox/shared/keyring');
+    const { signDeviceRevocation } = await import('@fairfox/shared/user-identity');
+    const { userIdentity } = await import('@fairfox/shared/user-identity-state');
+    const { revokeDeviceEntry } = await import('@fairfox/shared/devices-state');
+    const identity = userIdentity.value;
+    if (!identity) {
+      throw new Error('no user identity — cannot sign revocations');
+    }
+    let succeeded = 0;
+    for (const peerId of peerIds) {
+      try {
+        revokeDeviceEntry(peerId, signDeviceRevocation(identity, peerId));
+        succeeded += 1;
+      } catch (err) {
+        console.error('[__fairfoxPurge] revoke failed for', peerId, err);
+      }
+    }
+    const keyring = await loadOrCreateKeyring();
+    for (const peerId of peerIds) {
+      try {
+        await forgetPeer(keyring, peerId);
+      } catch (err) {
+        console.error('[__fairfoxPurge] forgetPeer failed for', peerId, err);
+      }
+    }
+    window.location.reload();
+    return succeeded;
+  };
+}
+
 const root = document.getElementById('app');
 if (root) {
   render(<App />, root);
