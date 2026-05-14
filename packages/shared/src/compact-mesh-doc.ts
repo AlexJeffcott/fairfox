@@ -32,13 +32,7 @@
 
 import * as Automerge from '@automerge/automerge';
 import { documentIndexState } from '#src/document-index-state.ts';
-// Polly's $meshState resolution lives in @fairfox/polly/mesh; this
-// helper depends on the consumer having an open Repo whose
-// configureMeshState call wired up the wrappers. Import lazily so
-// the polly module is loaded on first call rather than at module
-// init (matches how mesh-meta-state hydrates the keyring).
-import { mesh } from '#src/ensure-mesh.ts';
-import { deriveDocumentId } from '#src/polly-reexport.ts';
+import { deriveDocumentId, type Repo } from '#src/polly-reexport.ts';
 import { buildSealedSentinel, SEALED_SENTINEL_FIELD } from '#src/sealed-sentinel.ts';
 import { userIdentity } from '#src/user-identity-state.ts';
 
@@ -65,6 +59,11 @@ type MeshDoc = Record<string, unknown>;
 interface CompactOptions<TDoc extends MeshDoc, TEntry> {
   /** The logical `$meshState` key being compacted. */
   key: string;
+  /** The Automerge Repo to write the new doc into. Browser callers
+   * pass `mesh.repo` from `ensure-mesh`; CLI callers pass
+   * `client.repo` from `openMeshClient`. Same repo the wrapper's
+   * `$meshState` resolved against. */
+  repo: Repo;
   /** The current $meshState wrapper for the key. The compaction
    * reads `wrapper.value` to source the materialised state and
    * (optionally) consults `wrapper.loaded` before reading. */
@@ -93,9 +92,6 @@ export async function compactMeshDoc<TDoc extends MeshDoc, TEntry>(
     throw new Error(
       'compactMeshDoc: no local user identity — bootstrap or import one before compacting.'
     );
-  }
-  if (!mesh) {
-    throw new Error('compactMeshDoc: no configured mesh — open a mesh client first.');
   }
 
   // Source the current materialised state.
@@ -126,7 +122,7 @@ export async function compactMeshDoc<TDoc extends MeshDoc, TEntry>(
   // the handle in the cache, `doneLoading()` flips its state to
   // ready.
   const seeded = Automerge.save(Automerge.from(cleaned));
-  const handle = mesh.repo.import(seeded, { docId: newDocumentId });
+  const handle = options.repo.import(seeded, { docId: newDocumentId });
   handle.doneLoading();
 
   // ADR 0008 v2: write the sealed sentinel into the OLD doc so a
@@ -148,15 +144,16 @@ export async function compactMeshDoc<TDoc extends MeshDoc, TEntry>(
     [SEALED_SENTINEL_FIELD]: sentinel,
   };
 
-  // Record the compaction in the index. The previous current id
-  // (if any) is rolled into `sealedDocIds`; if this is the first
-  // compaction for the key, `sealedDocIds` starts empty.
+  // Record the compaction in the index. The "previous" docId is
+  // either the prior index entry's `currentDocId` (a re-compaction)
+  // or polly's derived id for this logical key (the very first
+  // compaction — the original doc lives at `deriveDocumentId(key)`).
+  // Either way it gets pushed onto `sealedDocIds` so the reconciler
+  // can replay post-seal writes from it during the grace window.
   const previousEntry = documentIndexState.value.index[options.key];
-  const previousDocId = previousEntry?.currentDocId ?? '';
+  const previousDocId = previousEntry?.currentDocId ?? String(deriveDocumentId(options.key));
   const nextSealed: string[] = previousEntry?.sealedDocIds ? [...previousEntry.sealedDocIds] : [];
-  if (previousDocId) {
-    nextSealed.push(previousDocId);
-  }
+  nextSealed.push(previousDocId);
 
   documentIndexState.value = {
     ...documentIndexState.value,
@@ -184,5 +181,160 @@ export async function compactMeshDoc<TDoc extends MeshDoc, TEntry>(
     newDocId: newDocIdString,
     removed,
     compactedAt,
+  };
+}
+
+/** Result of a {@link reconcileMeshDoc} run. */
+export interface ReconcileResult {
+  /** The logical key reconciled. */
+  key: string;
+  /** Stringified DocumentId of the sealed doc that was read. */
+  sealedDocId: string;
+  /** Stringified DocumentId of the current doc the entries were
+   * merged into. */
+  currentDocId: string;
+  /** Entries that survived the filter on the sealed doc AND were
+   * absent from the current doc, so got copied across. */
+  copied: number;
+  /** Entries already present in the current doc (skipped). */
+  skipped: number;
+  /** Entries that didn't pass the keep filter on the sealed doc
+   * (skipped — these are intentionally dropped by compaction). */
+  filtered: number;
+}
+
+interface ReconcileOptions<TDoc extends MeshDoc, TEntry> {
+  /** The logical key being reconciled. Must already have a
+   * `mesh:document-index` entry — call after a successful
+   * compaction. */
+  key: string;
+  /** Same Repo {@link compactMeshDoc} writes to. The reconciler
+   * uses it to {@link Repo#find} both the sealed doc and the
+   * current doc directly by their stored docIds — bypassing the
+   * caller's `$meshState` wrapper, which may have been bound to
+   * the old derived docId before the index hydrated. */
+  repo: Repo;
+  /** Extract the entry map from the doc shape. */
+  selectEntries: (doc: TDoc) => Record<string, TEntry>;
+  /** The same keep predicate the original compaction used.
+   * Re-applied on the sealed doc's current state so resurrected
+   * entries (e.g. a revoked row that got un-revoked) don't ride
+   * along — the policy decision from compaction stays in force. */
+  keep: (entry: TEntry) => boolean;
+}
+
+/** Manual grace-period reconciliation — ADR 0008 v3a slice.
+ *
+ * Reads the most-recent sealed doc's current state, applies the
+ * keep predicate, and writes any entries the new doc is missing
+ * into the new doc via the wrapper. Conservative: only adds
+ * entries the new doc doesn't already have. Doesn't merge edits
+ * to entries that exist in both — the genuinely-hard CRDT-merge
+ * work where field-level edits on the sealed doc are propagated
+ * is the deferred v3b piece, and the "skipped" count surfaces
+ * how many entries fall into that bucket so the operator knows
+ * whether a manual reconcile is worth doing.
+ *
+ * Idempotent: re-running with no post-seal writes copies zero
+ * entries.
+ *
+ * Throws when there's no sealed doc in the index — i.e. the key
+ * has never been compacted, so reconciliation is meaningless. */
+export async function reconcileMeshDoc<TDoc extends MeshDoc, TEntry>(
+  options: ReconcileOptions<TDoc, TEntry>
+): Promise<ReconcileResult> {
+  const indexEntry = documentIndexState.value.index[options.key];
+  if (!indexEntry) {
+    throw new Error(
+      `reconcileMeshDoc: no mesh:document-index entry for "${options.key}" — run compact first.`
+    );
+  }
+  const sealedIds = indexEntry.sealedDocIds;
+  const mostRecentSealed = sealedIds[sealedIds.length - 1];
+  if (!mostRecentSealed) {
+    throw new Error(`reconcileMeshDoc: no sealed doc to reconcile from for "${options.key}".`);
+  }
+
+  // Load the sealed doc directly via repo.find. It's not the
+  // current wrapper's docId so the wrapper doesn't help — but the
+  // sealed doc's bytes are in local storage (synced before the
+  // compaction landed) and Automerge's find resolves it.
+  const { interpretAsDocumentId, isValidDocumentId } = await import(
+    '@automerge/automerge-repo/slim'
+  );
+  if (!isValidDocumentId(mostRecentSealed)) {
+    throw new Error(
+      `reconcileMeshDoc: sealed docId "${mostRecentSealed}" is not a valid DocumentId.`
+    );
+  }
+  const sealedDocId = interpretAsDocumentId(mostRecentSealed);
+  const sealedHandle = await options.repo.find<TDoc>(sealedDocId, {
+    allowableStates: ['ready', 'unavailable'],
+  });
+  const sealedDoc = sealedHandle.doc();
+  if (!sealedDoc) {
+    throw new Error(
+      `reconcileMeshDoc: sealed doc "${mostRecentSealed}" failed to resolve to a state.`
+    );
+  }
+
+  // Resolve the current doc by its stored docId rather than through
+  // the `$meshState` wrapper. The wrapper's resolver fires at lazy
+  // construction; if `documentIndexState` wasn't hydrated by then
+  // the wrapper bound to the derived (old) docId and reads return
+  // sealed-doc state. Going through `repo.find(currentDocId)` is
+  // unambiguous.
+  if (!isValidDocumentId(indexEntry.currentDocId)) {
+    throw new Error(
+      `reconcileMeshDoc: current docId "${indexEntry.currentDocId}" is not a valid DocumentId.`
+    );
+  }
+  const currentDocId = interpretAsDocumentId(indexEntry.currentDocId);
+  const currentHandle = await options.repo.find<TDoc>(currentDocId, {
+    allowableStates: ['ready', 'unavailable'],
+  });
+  const currentDoc = currentHandle.doc();
+  if (!currentDoc) {
+    throw new Error(
+      `reconcileMeshDoc: current doc "${indexEntry.currentDocId}" failed to resolve.`
+    );
+  }
+
+  const currentEntries = options.selectEntries(currentDoc);
+  const sealedEntries = options.selectEntries(sealedDoc);
+
+  let copied = 0;
+  let skipped = 0;
+  let filtered = 0;
+  const toCopy: [string, TEntry][] = [];
+  for (const [entryKey, entry] of Object.entries(sealedEntries)) {
+    if (!options.keep(entry)) {
+      filtered += 1;
+      continue;
+    }
+    if (entryKey in currentEntries) {
+      skipped += 1;
+      continue;
+    }
+    toCopy.push([entryKey, entry]);
+    copied += 1;
+  }
+
+  if (toCopy.length > 0) {
+    currentHandle.change((draft: TDoc) => {
+      const live = options.selectEntries(draft);
+      for (const [entryKey, entry] of toCopy) {
+        live[entryKey] = entry;
+      }
+    });
+  }
+
+  return {
+    key: options.key,
+    sealedDocId: mostRecentSealed,
+    currentDocId: indexEntry.currentDocId,
+    copied,
+    skipped,
+    filtered,
   };
 }

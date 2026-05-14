@@ -42,9 +42,11 @@ import { exportCmd } from '#src/commands/export.ts';
 import {
   meshAddDevice,
   meshAddUser,
+  meshCompact,
   meshFingerprintCmd,
   meshInit,
   meshInviteList,
+  meshReconcile,
 } from '#src/commands/mesh.ts';
 import { pair } from '#src/commands/pair.ts';
 import { peersForget, peersGcRevoked, peersList, peersRenameSelf } from '#src/commands/peers.ts';
@@ -221,6 +223,21 @@ function main(): Promise<number> {
       return Promise.resolve(help);
     }
     return meshFingerprintCmd();
+  }
+
+  // ── mesh document lifecycle (ADR 0008) ──────────────────────────
+  if (subcommand === 'mesh') {
+    const [verb, ...verbArgs] = rest;
+    if (verb === 'compact') {
+      return meshCompact(verbArgs);
+    }
+    if (verb === 'reconcile') {
+      return meshReconcile(verbArgs);
+    }
+    process.stderr.write(
+      'fairfox mesh: expected `compact` or `reconcile`. Try `fairfox mesh compact <key>`.\n'
+    );
+    return Promise.resolve(1);
   }
 
   // ── diagnostics + lifecycle ─────────────────────────────────────

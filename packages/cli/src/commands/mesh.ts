@@ -928,18 +928,6 @@ export async function meshCompact(rest: readonly string[]): Promise<number> {
     return 1;
   }
 
-  // Load the local identity and check permission against this
-  // device's effective role set. `canDo` reads through
-  // `effectivePermissionsForDevice(selfPeerId)` — works against
-  // the local mesh storage without a signalling round-trip.
-  const { canDo } = await import('@fairfox/shared/policy');
-  if (!canDo('mesh.compact')) {
-    process.stderr.write(
-      'fairfox mesh compact: requires `mesh.compact` permission (admin role).\n'
-    );
-    return 1;
-  }
-
   // Compaction needs a networked mesh client: the index update
   // and the new doc both broadcast via the daemon-vs-CLI signalling
   // path. Yes this races a running daemon for the shared peerId
@@ -956,11 +944,33 @@ export async function meshCompact(rest: readonly string[]): Promise<number> {
 
     const { compactMeshDoc } = await import('@fairfox/shared/compact-mesh-doc');
     const { documentIndexState } = await import('@fairfox/shared/document-index-state');
+    const { userIdentity } = await import('@fairfox/shared/user-identity-state');
+    const { devicesState } = await import('@fairfox/shared/devices-state');
+    const { usersState } = await import('@fairfox/shared/users-state');
+    const { canDo } = await import('@fairfox/shared/policy');
 
-    // The index doc itself must hydrate before we read its
-    // current state (so the compaction layers onto whatever
-    // previous compactions already wrote).
-    await documentIndexState.loaded;
+    // `compactMeshDoc` reads `userIdentity.value` to stamp the sentinel
+    // and the index row, and `canDo` reads it to map the local user to
+    // their permission set. In the browser the signal hydrates from
+    // IDB via `hydrateUserIdentity()`; on the CLI side nobody calls
+    // that (the CLI stores the identity on disk in a file), so we have
+    // to mirror the file-backed identity into the signal explicitly.
+    userIdentity.value = loadUserIdentityFile() ?? null;
+
+    // canDo() walks: userIdentity → devicesState (find self device) →
+    // usersState (map ownerUserIds → roles → permissions). Every one
+    // of those wrappers must be hydrated before the check or the
+    // permission gate races a still-empty doc and returns false.
+    // documentIndexState similarly has to hydrate before compactMeshDoc
+    // reads it to write the new index entry.
+    await Promise.all([devicesState.loaded, usersState.loaded, documentIndexState.loaded]);
+
+    if (!canDo('mesh.compact')) {
+      process.stderr.write(
+        'fairfox mesh compact: requires `mesh.compact` permission (admin role).\n'
+      );
+      return 1;
+    }
 
     if (key !== 'mesh:devices') {
       process.stderr.write(
@@ -968,9 +978,9 @@ export async function meshCompact(rest: readonly string[]): Promise<number> {
       );
       return 1;
     }
-    const { devicesState } = await import('@fairfox/shared/devices-state');
     const result = await compactMeshDoc({
       key,
+      repo: client.repo,
       wrapper: devicesState,
       selectEntries: (doc) => doc.devices,
       keep: (entry) => !entry.revokedAt,
@@ -994,6 +1004,84 @@ export async function meshCompact(rest: readonly string[]): Promise<number> {
         'on next contact. This CLI process should be relaunched so future commands\n' +
         'resolve $meshState wrappers to the new doc; the daemon will pick it up at\n' +
         'its next reconnect.\n'
+    );
+    return 0;
+  } finally {
+    await closeMesh(client);
+  }
+}
+
+/** `fairfox mesh reconcile <key>` — ADR 0008 v3a.
+ *
+ * Reads the most-recent sealed doc for the key, applies the same
+ * keep predicate the original compaction used, and writes any
+ * entries the current doc is missing into the current doc.
+ * Conservative — only adds entries that aren't already present.
+ * Doesn't merge field-level edits to entries that exist in both
+ * (that's v3b, deferred).
+ *
+ * Run periodically during the grace window after a compaction to
+ * pull in writes that landed at the sealed doc (because an
+ * offline device or stale-index device wrote there). Idempotent.
+ */
+export async function meshReconcile(rest: readonly string[]): Promise<number> {
+  const key = rest[0];
+  if (!key) {
+    process.stderr.write('fairfox mesh reconcile: expected a key (e.g. mesh:devices).\n');
+    return 1;
+  }
+
+  const peerId = await loadPeerId();
+  const client = await openMeshClient({ peerId });
+  try {
+    const peered = await waitForPeer(client, 8000);
+    if (!peered) {
+      process.stderr.write(
+        'fairfox mesh reconcile: no mesh peers reachable — reconciliation runs against local state only.\n'
+      );
+    }
+
+    const { reconcileMeshDoc } = await import('@fairfox/shared/compact-mesh-doc');
+    const { documentIndexState } = await import('@fairfox/shared/document-index-state');
+    const { userIdentity } = await import('@fairfox/shared/user-identity-state');
+    const { devicesState } = await import('@fairfox/shared/devices-state');
+    const { usersState } = await import('@fairfox/shared/users-state');
+    const { canDo } = await import('@fairfox/shared/policy');
+
+    userIdentity.value = loadUserIdentityFile() ?? null;
+    await Promise.all([devicesState.loaded, usersState.loaded, documentIndexState.loaded]);
+
+    if (!canDo('mesh.compact')) {
+      process.stderr.write(
+        'fairfox mesh reconcile: requires `mesh.compact` permission (admin role).\n'
+      );
+      return 1;
+    }
+
+    if (key !== 'mesh:devices') {
+      process.stderr.write(
+        `fairfox mesh reconcile: key "${key}" not supported yet. Currently supported: mesh:devices.\n`
+      );
+      return 1;
+    }
+    const result = await reconcileMeshDoc<DevicesDoc, DevicesDoc['devices'][string]>({
+      key,
+      repo: client.repo,
+      selectEntries: (doc) => doc.devices,
+      keep: (entry) => !entry.revokedAt,
+    });
+
+    if (peered) {
+      await flushOutgoing(2000);
+    }
+
+    process.stdout.write(
+      `reconciled ${result.key}\n` +
+        `  sealed: ${result.sealedDocId.slice(0, 16)}…\n` +
+        `  current: ${result.currentDocId.slice(0, 16)}…\n` +
+        `  copied: ${result.copied} entries (post-seal writes to the sealed doc)\n` +
+        `  skipped: ${result.skipped} entries (already in current doc)\n` +
+        `  filtered: ${result.filtered} entries (dropped by the keep predicate)\n`
     );
     return 0;
   } finally {
@@ -1033,6 +1121,11 @@ export function meshUsage(stream: NodeJS.WriteStream = process.stderr): void {
       '                                     its live entries (e.g. mesh:devices',
       '                                     drops revoked rows). ADR 0008; admin',
       '                                     only.',
+      '  fairfox mesh reconcile <key>       Pull post-compaction writes from the',
+      '                                     sealed doc into the current doc.',
+      '                                     Run during the grace window if you',
+      '                                     suspect offline peers wrote to the',
+      '                                     old doc after compaction.',
       '',
       "Only this machine's state is affected. Other paired devices stay on",
       'the old mesh until they wipe their own state.',
@@ -1070,6 +1163,9 @@ export function mesh(rest: readonly string[]): Promise<number> {
   }
   if (verb === 'compact') {
     return meshCompact(args);
+  }
+  if (verb === 'reconcile') {
+    return meshReconcile(args);
   }
   meshUsage();
   return Promise.resolve(1);

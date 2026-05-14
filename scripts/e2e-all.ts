@@ -49,6 +49,7 @@ const TESTS: readonly Test[] = [
   { name: 'chat-context-task', file: 'e2e-chat-context-task.ts', timeoutMs: 240_000 },
   { name: 'chat-sweep', file: 'e2e-chat-sweep.ts', timeoutMs: 180_000 },
   { name: 'mesh-large-doc', file: 'e2e-mesh-large-doc.ts', timeoutMs: 300_000 },
+  { name: 'mesh-compact-reconcile', file: 'e2e-mesh-compact-reconcile.ts', timeoutMs: 120_000 },
   // Still deferred — `e2e-chat-leader-lease.ts` exposes a polly
   // mesh-rediscovery issue: when one of two long-lived relays dies,
   // a brief CLI peer that reconnects after the kill cannot

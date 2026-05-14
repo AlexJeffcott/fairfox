@@ -1,6 +1,6 @@
 # 0008 — Document compaction via versioned docIds
 
-**Status:** Accepted, partially implemented (v1 + v2 ship in fairfox `web-v0.1.49` / CLI `v0.1.31`, polly `0.63.0`)
+**Status:** Accepted, partially implemented (v1 + v2 + v3a manual replay; CLI verbs wired, e2e at `scripts/e2e-mesh-compact-reconcile.ts`)
 **Date:** 2026-05-14
 
 ## Context and problem statement
@@ -201,18 +201,52 @@ Shipped in v2 (sealed-pointer sentinel — `shared/src/sealed-sentinel.ts`):
   the same `compactMeshDoc` call with the same `compactedAt`
   timestamp, so cross-checking the two surfaces is mechanical.
 
-Deferred to v3 (the genuinely-hard CRDT-replay work):
+Shipped in v3a (manual grace-period reconcile):
 
-- **Grace-period dual-write replay.** Writes that land at the
-  old doc dated after `sealedAt` need to be merged into the new
-  doc. The straightforward implementations (diff
-  current-old-state against snapshotted-old-state at seal time;
-  re-run filter on every read) are either O(double storage) or
-  O(rewrites-per-read). A coordinator pattern where the admin
-  who compacted is responsible for periodic replay until the
-  grace window expires is simpler but introduces a single
-  point of failure during the grace window. The right approach
-  hasn't been chosen.
+- `reconcileMeshDoc<TDoc, TEntry>(...)` primitive in
+  `shared/src/compact-mesh-doc.ts`. Reads the most-recent sealed
+  doc via `repo.find(sealedDocId)` (bypassing the `$meshState`
+  wrapper, which may have bound to the old derived docId before
+  the index hydrated), reapplies the keep predicate, and writes
+  any entries the new doc is missing into the new doc through
+  `currentHandle.change`. Idempotent: re-running with no
+  post-seal writes copies zero entries.
+- `fairfox mesh reconcile <key>` CLI verb wired through
+  `bin.ts → commands/mesh.ts → reconcileMeshDoc`. Same
+  permission gate as `mesh compact` (`mesh.compact` permission,
+  admin role). Reports `copied / skipped / filtered` counts.
+- End-to-end test at `scripts/e2e-mesh-compact-reconcile.ts`
+  drives the full path: init admin → compact → inspect index +
+  sentinel → programmatic post-seal write into the sealed doc
+  → reconcile → assert the post-seal entry reached the new doc
+  → second reconcile asserts idempotency.
+
+The CLI compact/reconcile flow surfaced (and fixed) two latent
+bugs the pre-v2 ship had hidden:
+
+- `compactMeshDoc` depended on the browser-side
+  `ensure-mesh.ts` module-global `mesh`, which is always
+  undefined in the CLI. Refactored both primitives to take an
+  explicit `repo: Repo` option; callers pass `client.repo` from
+  their `openMeshClient` / `mesh.repo` from `ensure-mesh`.
+- The CLI never hydrated `userIdentity.value` (browser hydrates
+  from IDB; CLI persists to a file but never wrote into the
+  signal). `canDo('mesh.compact')` and the sentinel-stamping
+  step both depend on the signal. Both verbs now mirror the
+  file-backed identity into the signal before the gate fires,
+  and await `usersState.loaded` + `devicesState.loaded` so the
+  permission walk runs against hydrated state.
+
+Deferred to v3b (the genuinely-hard CRDT-merge work):
+
+- **Field-level merge on entries that exist in both docs.**
+  Today `reconcileMeshDoc` only copies entries that are absent
+  from the new doc; it doesn't merge field-level edits made on
+  the sealed doc to entries that exist in both. An offline peer
+  who edited an existing entry on the sealed doc post-seal sees
+  their edit dropped on reconcile. The `skipped` count in the
+  CLI output surfaces how many entries fall into this bucket so
+  an operator can spot when manual intervention is needed.
 - **Automatic GC.** After the grace window, sealed docs are
   removed from each device's storage. Needs a polly-side
   `repo.removeFromStorage(docId)` primitive that doesn't exist
