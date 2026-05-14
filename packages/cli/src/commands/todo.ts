@@ -15,6 +15,7 @@
 // long enough for a healthy signalling round-trip, short enough
 // that an offline CLI doesn't feel stuck.
 
+import { awaitLoadedBudget } from '@fairfox/shared/loaded-budget';
 import { $meshState } from '@fairfox/shared/polly';
 import {
   closeMesh,
@@ -22,6 +23,7 @@ import {
   flushOutgoing,
   keyringStorage,
   openMeshClient,
+  openMeshClientReadOnly,
   waitForPeer,
 } from '#src/mesh.ts';
 
@@ -125,6 +127,29 @@ async function withMesh<T>(
   }
 }
 
+/** Read-only variant of `withMesh`. No signalling, no WebRTC, no
+ * peerId on the wire — so a list-style subcommand can't race the
+ * running daemon for the shared keyring's peerId. Data freshness
+ * is whatever the last write (from daemon or any process) flushed
+ * to ~/.fairfox/mesh/. */
+async function withMeshReadOnly<T>(runner: (mesh: MeshHandles) => T | Promise<T>): Promise<T> {
+  await loadOwnPeerId();
+  const mesh = openMeshClientReadOnly();
+  try {
+    const projects = $meshState<ProjectsDoc>('todo:projects', PROJECTS_INITIAL);
+    const tasks = $meshState<TasksDoc>('todo:tasks', TASKS_INITIAL);
+    const captures = $meshState<CapturesDoc>('todo:captures', CAPTURES_INITIAL);
+    await Promise.all([
+      awaitLoadedBudget(projects.loaded, 3000),
+      awaitLoadedBudget(tasks.loaded, 3000),
+      awaitLoadedBudget(captures.loaded, 3000),
+    ]);
+    return await runner({ projects, tasks, captures });
+  } finally {
+    await mesh.close();
+  }
+}
+
 // --- Tasks ---
 
 interface TaskFilters {
@@ -162,12 +187,7 @@ function formatTask(t: Task): string {
 
 function tasksList(rest: readonly string[]): Promise<number> {
   const filters = parseTaskFilters(rest);
-  return withMesh(({ tasks }, peered) => {
-    if (!peered) {
-      process.stderr.write(
-        'fairfox todo: no mesh peers reachable — showing the local copy (may be stale).\n'
-      );
-    }
+  return withMeshReadOnly(({ tasks }) => {
     let list = tasks.value.tasks;
     if (!filters.includeDone) {
       list = list.filter((t) => !t.done);
@@ -354,7 +374,7 @@ function parseProjectFilters(rest: readonly string[]): ProjectFilters {
 
 function projectsList(rest: readonly string[]): Promise<number> {
   const filters = parseProjectFilters(rest);
-  return withMesh(({ projects, tasks }) => {
+  return withMeshReadOnly(({ projects, tasks }) => {
     let list = projects.value.projects;
     if (filters.status) {
       list = list.filter((p) => p.status === filters.status);
@@ -496,7 +516,7 @@ function captureAdd(text: string): Promise<number> {
 }
 
 function captureList(): Promise<number> {
-  return withMesh(({ captures }) => {
+  return withMeshReadOnly(({ captures }) => {
     if (captures.value.captures.length === 0) {
       process.stdout.write('(no captures)\n');
       return 0;
