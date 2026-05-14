@@ -127,11 +127,22 @@ function selfPeerIdFromKeyring(): string | undefined {
   // exists in `mesh:devices` keyed by this peer's id. The one entry
   // whose row has been endorsed by our `userIdentity` is the local
   // device — find it by ownerUserIds lookup.
+  //
+  // Skip revoked rows: `effectivePermissionsForDevice` short-circuits
+  // to the empty set for any row with `revokedAt` set, so picking a
+  // revoked row here would make every downstream `canDo` return false
+  // even when the local user still holds the permission on a live
+  // device. Bulk-purge sessions (e.g. clearing test-leftover devices
+  // owned by the same user via short-lived puppeteer profiles) made
+  // this surface.
   const identity = userIdentity.value;
   if (!identity) {
     return undefined;
   }
   for (const [peerId, entry] of Object.entries(devicesState.value.devices)) {
+    if (entry.revokedAt) {
+      continue;
+    }
     const owners = entry.ownerUserIds ?? [];
     if (owners.includes(identity.userId)) {
       return peerId;
