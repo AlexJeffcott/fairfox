@@ -1,5 +1,11 @@
 # fairfox
 
+What fairfox is supposed to feel like to use lives in
+[`PRODUCT_VISION.md`](../PRODUCT_VISION.md) at the repo root —
+behaviour-shaped user stories, no implementation language. Read that
+first when scoping new work; this file describes how the current
+implementation realises those behaviours.
+
 A Bun monorepo that hosts a single Preact SPA under one `Bun.serve`,
 backed entirely by polly `$meshState` documents replicated between
 paired devices over WebRTC. The server's primary role is the
