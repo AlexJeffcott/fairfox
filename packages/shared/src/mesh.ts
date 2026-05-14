@@ -57,11 +57,6 @@ export async function createMeshConnection(
       url: options.signalingUrl,
       peerId: options.peerId,
       onCustomFrame: (frame) => {
-        // biome-ignore lint/suspicious/noExplicitAny: diagnostic-only inspection of an opaque polly frame
-        const f: any = frame;
-        console.log(
-          `[diag-pair] mesh.onCustomFrame type=${f?.type} sessionId=${typeof f?.sessionId === 'string' ? f.sessionId : '(none)'}`
-        );
         dispatchCustomFrame(frame);
       },
       // Polly types onError as `(reason: string, targetPeerId?:
