@@ -165,7 +165,8 @@ function startSyncDiagnosticsPolling(): void {
     try {
       await m.refreshTransportStats();
       const snap = m.getPeerStateSnapshot();
-      peerSnapshot.value = formatSyncDiagnostics(snap);
+      const identity = collectClientIdentity(m);
+      peerSnapshot.value = formatSyncDiagnostics(snap, identity);
     } catch (err) {
       peerSnapshot.value = `(error: ${err instanceof Error ? err.message : String(err)})`;
     }
@@ -176,9 +177,68 @@ function startSyncDiagnosticsPolling(): void {
   }, 2000);
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: polly's snapshot type isn't re-exported through the shared wrapper; keep it loose at the diagnostic boundary
-function formatSyncDiagnostics(snap: any): string {
+// biome-ignore lint/suspicious/noExplicitAny: polly's MeshConnection wraps internals (repo.networkSubsystem, repo.sharePolicy) the public type tree doesn't surface; loose at the diagnostic boundary
+function collectClientIdentity(m: any): {
+  repoPeerId: string;
+  signalingPeerId: string;
+  adapterClasses: string[];
+  sharePolicy: string;
+  localHandleIds: string[];
+} {
+  const repo = m.repo;
+  const signaling = m.signaling;
+  const adapters = repo?.networkSubsystem?.adapters ?? [];
+  const adapterClasses = Array.isArray(adapters)
+    ? // biome-ignore lint/suspicious/noExplicitAny: adapter objects vary by transport; constructor.name is the only stable identifier
+      adapters.map((a: any) => a?.constructor?.name ?? '(unknown)')
+    : [];
+  const sharePolicyFn = repo?.sharePolicy;
+  const sharePolicy =
+    typeof sharePolicyFn === 'function'
+      ? sharePolicyFn.toString().slice(0, 200)
+      : `(non-function: ${typeof sharePolicyFn})`;
+  const handles = repo?.handles ?? {};
+  const localHandleIds = typeof handles === 'object' ? Object.keys(handles) : [];
+  return {
+    repoPeerId: typeof repo?.peerId === 'string' ? repo.peerId : '(none)',
+    signalingPeerId: typeof signaling?.peerId === 'string' ? signaling.peerId : '(none)',
+    adapterClasses,
+    sharePolicy,
+    localHandleIds,
+  };
+}
+
+function formatSyncDiagnostics(
+  // biome-ignore lint/suspicious/noExplicitAny: polly's snapshot type isn't re-exported through the shared wrapper; keep it loose at the diagnostic boundary
+  snap: any,
+  identity: {
+    repoPeerId: string;
+    signalingPeerId: string;
+    adapterClasses: string[];
+    sharePolicy: string;
+    localHandleIds: string[];
+  }
+): string {
   const lines: string[] = [];
+  // polly#107 client-identity fingerprint — the cheapest cut between
+  // H5/H6 (repo identity, dup adapters), H7 (sharePolicy), H13
+  // (repo↔signalling peerId mismatch), H4 (docId set).
+  lines.push('=== client identity (polly#107) ===');
+  lines.push(`repo.peerId:       ${identity.repoPeerId}`);
+  lines.push(`signaling.peerId:  ${identity.signalingPeerId}`);
+  lines.push(
+    `  match:           ${identity.repoPeerId === identity.signalingPeerId ? 'yes' : 'NO ← H13'}`
+  );
+  lines.push(
+    `adapters:          ${identity.adapterClasses.length} [${identity.adapterClasses.join(', ')}]`
+  );
+  lines.push(`sharePolicy:       ${identity.sharePolicy}`);
+  lines.push(`local handles:     ${identity.localHandleIds.length}`);
+  for (const id of identity.localHandleIds) {
+    lines.push(`  - ${id}`);
+  }
+  lines.push('');
+  lines.push('=== peers ===');
   lines.push(`local peerId:    ${shortId(snap?.localPeerId)}`);
   lines.push(`known in keyring: ${snap?.knownPeerIds?.length ?? '?'}`);
   lines.push(`present in signalling: ${snap?.presentPeerIds?.length ?? '?'}`);
@@ -209,6 +269,27 @@ function formatSyncDiagnostics(snap: any): string {
         lines.push(
           `  handshake: dcOpen=${formatAgo(h.dataChannelOpenedAt)} peerCand=${formatAgo(h.peerCandidateEmittedAt)} firstSend=${formatAgo(h.firstOutboundSendAt)} firstRecv=${formatAgo(h.firstInboundMessageAt)}`
         );
+      }
+      // polly#107 per-handle fingerprint — the load-bearing one.
+      // Every entry `state:ready, announcedToPeer:false, in:set` →
+      // synchronizer didn't initiate (H1/H3). Every entry
+      // `announcedToPeer:false, in:undefined` → docId/shareConfig
+      // mismatch (H4/H7). Mixed handle states → polly#106 reopens.
+      const handlesMap = p.slot.handles ?? {};
+      const handleIds = handlesMap && typeof handlesMap === 'object' ? Object.keys(handlesMap) : [];
+      if (handleIds.length === 0) {
+        lines.push('  handles: (none reported)');
+      } else {
+        lines.push(`  handles: ${handleIds.length}`);
+        for (const docId of handleIds) {
+          const h = handlesMap[docId];
+          const announced = h.announcedToPeer === true ? 'yes' : 'NO';
+          const outType = h.lastSyncMessageOutType ?? '(none)';
+          const outSize = h.lastSyncMessageOutSize ?? '?';
+          lines.push(
+            `    ${docId.slice(0, 12)} state=${h.state} announced=${announced} out=${formatAgo(h.lastSyncMessageOutAt)}/${outType}/${outSize}b in=${formatAgo(h.lastSyncMessageInAt)}`
+          );
+        }
       }
       if (p.slot.inFlightSync) {
         const i = p.slot.inFlightSync;
