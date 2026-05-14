@@ -47,7 +47,7 @@ import {
   meshInviteList,
 } from '#src/commands/mesh.ts';
 import { pair } from '#src/commands/pair.ts';
-import { peersForget, peersList, peersRenameSelf } from '#src/commands/peers.ts';
+import { peersForget, peersGcRevoked, peersList, peersRenameSelf } from '#src/commands/peers.ts';
 import { todo } from '#src/commands/todo.ts';
 import { maybeNoticeUpdate, update } from '#src/commands/update.ts';
 import { usersList, usersRevoke, usersWhoami } from '#src/commands/users.ts';
@@ -191,6 +191,9 @@ function main(): Promise<number> {
     const help = helpFor('peers', rest);
     if (help !== null) {
       return Promise.resolve(help);
+    }
+    if (rest[0] === 'gc-revoked') {
+      return peersGcRevoked();
     }
     const includeRevoked = rest.includes('--include-revoked');
     return peersList(includeRevoked);

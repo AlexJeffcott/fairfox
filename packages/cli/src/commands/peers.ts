@@ -146,6 +146,60 @@ export function peersForget(peerIdToForget: string): Promise<number> {
   })();
 }
 
+/** Map-delete every entry in `mesh:devices` whose `revokedAt` is
+ * set. The revocations themselves stay in the CRDT history — this
+ * removes the entries from the document's materialised state, so
+ * the "(N revoked entries hidden)" line goes to zero and the list
+ * is clean.
+ *
+ * Not a byte-level history compaction. Automerge records each
+ * delete as its own op, so the doc's on-disk and on-wire size
+ * grows slightly. The proper byte-reclaim path is document
+ * compaction under a new docId (`docs/adr/0008-…`), which has not
+ * been built yet. Use this command when the materialised count is
+ * what's bothering you; reach for ADR 0008 when storage size is.
+ *
+ * Networked: opens the full mesh client so the deletes broadcast
+ * to every paired peer that's reachable. Devices that are offline
+ * will pick up the deletes through normal CRDT merge on their
+ * next sync. */
+export function peersGcRevoked(): Promise<number> {
+  return (async () => {
+    const peerId = await loadOwnPeerId();
+    const client = await openMeshClient({ peerId });
+    try {
+      const peered = await waitForPeer(client, 8000);
+      const devices = $meshState<DevicesDoc>('mesh:devices', DEVICES_INITIAL);
+      await devices.loaded;
+      const before = devices.value.devices;
+      const kept: Record<string, DeviceEntry> = {};
+      let removed = 0;
+      for (const [id, entry] of Object.entries(before)) {
+        if (entry.revokedAt) {
+          removed += 1;
+        } else {
+          kept[id] = entry;
+        }
+      }
+      if (removed === 0) {
+        process.stdout.write('no revoked entries to remove\n');
+        return 0;
+      }
+      devices.value = { ...devices.value, devices: kept };
+      if (peered) {
+        await flushOutgoing(2000);
+      }
+      const peerSuffix = peered ? '' : ' (no peers reachable; will broadcast on next sync)';
+      process.stdout.write(
+        `removed ${removed} revoked entr${removed === 1 ? 'y' : 'ies'}${peerSuffix}\n`
+      );
+      return 0;
+    } finally {
+      await closeMesh(client);
+    }
+  })();
+}
+
 export function peersUsage(stream: NodeJS.WriteStream = process.stderr): void {
   stream.write(
     [
@@ -153,8 +207,10 @@ export function peersUsage(stream: NodeJS.WriteStream = process.stderr): void {
       '',
       'Usage:',
       '  fairfox peers                  List every paired device (this one first).',
+      '  fairfox peers --include-revoked  Show revoked entries too (default: hidden).',
       '  fairfox peers rename <name>    Rename this device in the shared registry.',
       '  fairfox peers forget <peerId>  Stop syncing with a peer on this machine.',
+      '  fairfox peers gc-revoked       Map-delete revoked entries from the doc.',
       '',
     ].join('\n')
   );
@@ -162,14 +218,17 @@ export function peersUsage(stream: NodeJS.WriteStream = process.stderr): void {
 
 export function peers(rest: readonly string[]): Promise<number> {
   const [verb, ...args] = rest;
-  if (!verb) {
-    return peersList();
+  if (!verb || verb === '--include-revoked') {
+    return peersList(verb === '--include-revoked');
   }
   if (verb === 'rename') {
     return peersRenameSelf(args.join(' '));
   }
   if (verb === 'forget' && args[0]) {
     return peersForget(args[0]);
+  }
+  if (verb === 'gc-revoked') {
+    return peersGcRevoked();
   }
   if (verb === 'help' || verb === '--help' || verb === '-h') {
     peersUsage(process.stdout);
