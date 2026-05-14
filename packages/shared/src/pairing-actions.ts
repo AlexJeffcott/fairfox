@@ -117,7 +117,11 @@ function unsubscribePairReturn(): void {
 
 function subscribeToPairReturn(sessionId: string): void {
   unsubscribePairReturn();
+  console.log(`[diag-pair] subscribeToPairReturn sessionId=${sessionId}`);
   pairReturnUnsubscribe = subscribeCustomFrames((frame: CustomFrame) => {
+    console.log(
+      `[diag-pair] custom-frame type=${frame.type} frameSession=${typeof frame.sessionId === 'string' ? frame.sessionId : '(none)'} expectedSession=${sessionId}`
+    );
     if (frame.type === 'pair-error' && frame.sessionId === sessionId) {
       pairingError.value =
         typeof frame.reason === 'string' ? `Pairing relay: ${frame.reason}` : 'Pairing relay error';
@@ -127,6 +131,7 @@ function subscribeToPairReturn(sessionId: string): void {
     if (frame.type !== 'pair-return' || frame.sessionId !== sessionId) {
       return;
     }
+    console.log('[diag-pair] pair-return matched, applying');
     const token = typeof frame.token === 'string' ? frame.token : null;
     if (!token) {
       return;
@@ -257,6 +262,9 @@ async function generateIssueArtefacts(): Promise<void> {
   // ceremony.
   const sessionId = generateSessionId();
   const sent = mesh?.signaling.sendCustom('pair-issue', { sessionId }) ?? false;
+  console.log(
+    `[diag-pair] pair-issue sent=${sent} sessionId=${sessionId} mesh=${mesh ? 'yes' : 'no'} sigConnected=${mesh?.signaling.isConnected ?? 'n/a'}`
+  );
   pairingSessionId.value = sent ? sessionId : null;
   issuerWaitingForReturn.value = sent;
   if (sent) {
