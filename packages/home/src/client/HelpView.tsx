@@ -290,6 +290,37 @@ function formatSyncDiagnostics(
     lines.push(`configured:          ${moduleDiag.configured === true ? 'yes' : 'NO'}`);
     lines.push(`wasResolved:         ${moduleDiag.wasResolved === true ? 'yes' : 'NO'}`);
     lines.push(`lastConfigRepoPid:   ${moduleDiag.lastConfiguredRepoPeerId ?? '(none)'}`);
+    // polly#107 v0.59.0 instrumentation — splits the remaining post-H5
+    // ladder: gap between lazyInvocations and lazyReachedRepo localises
+    // a throw to the factory body; lastLoadedRejection names the call
+    // site; counters equal but repoHandleCount low moves the bug into
+    // Automerge's synchroniser layer.
+    const inv =
+      typeof moduleDiag.lazyInvocations === 'number' ? moduleDiag.lazyInvocations : '(absent)';
+    const reached =
+      typeof moduleDiag.lazyReachedRepo === 'number' ? moduleDiag.lazyReachedRepo : '(absent)';
+    lines.push(`lazyInvocations:     ${inv}    ($mesh* wrapper constructions seen)`);
+    lines.push(`lazyReachedRepo:     ${reached} (factory reached repo.handles[docId])`);
+    if (typeof inv === 'number' && typeof reached === 'number' && inv > reached) {
+      lines.push(
+        `  gap:               ${inv - reached} wrapper(s) threw between factory entry and Repo`
+      );
+    }
+    const rej = moduleDiag.lastLoadedRejection;
+    if (rej && typeof rej === 'object') {
+      lines.push('lastLoadedRejection:');
+      lines.push(`  name:              ${rej.name ?? '(no name)'}`);
+      lines.push(`  message:           ${rej.message ?? '(no message)'}`);
+      lines.push(`  at:                ${rej.at ?? '(no timestamp)'}`);
+      if (typeof rej.stack === 'string') {
+        const stackLines = rej.stack.split('\n').slice(0, 8);
+        for (const sl of stackLines) {
+          lines.push(`    ${sl.trim()}`);
+        }
+      }
+    } else {
+      lines.push('lastLoadedRejection: (none)');
+    }
   } else {
     lines.push('(meshStateModule absent from snapshot — polly version older than 0.58.0?)');
   }
