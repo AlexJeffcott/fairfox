@@ -1,6 +1,6 @@
 # 0008 — Document compaction via versioned docIds
 
-**Status:** Proposed
+**Status:** Accepted, partially implemented (v1 ships in fairfox `web-v0.1.48` / CLI `v0.1.30`, polly `0.63.0`)
 **Date:** 2026-05-14
 
 ## Context and problem statement
@@ -154,6 +154,58 @@ to its current hash-of-key behaviour. Polly-side change.
 - Sync replay between old and new docs during the grace period
   doubles sync traffic per write. Acceptable at household scale,
   not at fleet scale.
+
+## v1 implementation status (2026-05-14)
+
+Shipped in this slice:
+
+- Polly 0.63.0: `registerDocIdResolver(fn)` hook in `mesh-state.ts`;
+  `buildHandleFactory` consults `resolveDocumentId(key)` (resolver
+  → derived) instead of `deriveDocumentId(key)` directly.
+  `deriveDocumentId` is now an exported public helper so
+  consumers can compute the same id polly does for arbitrary
+  logical keys.
+- fairfox: `mesh:document-index` `$meshState` wrapper holding
+  `{ index: Record<key, { currentDocId, sealedDocIds[],
+  compactedAt, compactedBy, signature }> }`.
+- fairfox: resolver registration in both `ensure-mesh.ts` and
+  `cli/src/mesh.ts`; both short-circuit on
+  `mesh:document-index` to avoid recursion.
+- fairfox: `compactMeshDoc<TDoc, TEntry>` primitive in
+  `shared/src/compact-mesh-doc.ts` — reads current state via the
+  consumer's wrapper, applies a keep predicate, seeds the
+  cleaned state at `deriveDocumentId(key + ':v' +
+  isoTimestamp)`, writes the index row.
+- fairfox: `fairfox mesh compact <key>` CLI command. Currently
+  supports `mesh:devices` only (keep predicate: `!revokedAt`);
+  any other key returns an "unsupported" error pending its
+  selector / predicate / buildDoc registration.
+- fairfox: `mesh.compact` permission added to the Permission
+  union and admin role's permission set.
+
+Deferred to follow-up sessions (still load-bearing for the full
+ADR):
+
+- **Sealed-pointer sentinel + grace-period dual-write.** The old
+  doc gets a `__compaction__` entry pointing at the new docId on
+  compaction; peers reading the old doc follow the pointer.
+  Writes that land at the old doc during the 14-day window are
+  replayed into the new doc by any peer that sees them. Until
+  this lands, the v1 caveat in `compact-mesh-doc.ts`'s header
+  applies: offline-pending writes after the compaction stamp are
+  lost.
+- **Automatic GC.** After the grace window, sealed docs are
+  removed from each device's storage. Needs a polly-side
+  `repo.removeFromStorage(docId)` primitive that doesn't exist
+  yet.
+- **Browser admin button.** A Help-tab admin control that fires
+  the compaction action without a CLI. Same logic as
+  `meshCompact`.
+- **Index-row signing + strict verification.** The v1 index row
+  carries an empty signature; consumers don't yet refuse
+  unsigned rows. The signed/strict path rides on the sentinel
+  work because the sentinel is what makes the migration
+  asymmetric enough to need signed evidence.
 
 ## Open questions, deferred to implementation
 
