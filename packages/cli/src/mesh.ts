@@ -6,6 +6,7 @@
 import { hostname } from 'node:os';
 import { NodeFSStorageAdapter } from '@automerge/automerge-repo-storage-nodefs';
 import { devicesState, harvestPeerKeys, touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
+import { awaitLoadedBudget } from '@fairfox/shared/loaded-budget';
 import type { KeyringStorage, MeshClient } from '@fairfox/shared/polly';
 import { createMeshClient, fileKeyringStorage } from '@fairfox/shared/polly';
 import { RTCPeerConnection } from 'werift';
@@ -111,7 +112,18 @@ export async function openMeshClient(options: ConnectOptions): Promise<MeshClien
     // in-memory signal, storage then loads its (older) copy over the
     // top, and the self-row never reaches the Automerge doc at all —
     // which is why `fairfox peers` saw every peer but itself.
-    await devicesState.loaded;
+    //
+    // Budget the wait: polly's $meshState `.loaded` resolves once the
+    // handle reaches `ready`, which routes through Automerge's repo
+    // and can stall for tens of seconds when storage's bytes haven't
+    // yet driven the handle out of `loading`. Every CLI command
+    // flows through this code path; an unbounded wait makes
+    // `fairfox users`, `fairfox peers`, every command sit at 50+
+    // seconds before printing. CRDT reconciliation on the next
+    // command re-merges anything that arrived after the budget;
+    // missing a fresh self-row touch is preferable to making every
+    // read feel broken.
+    await awaitLoadedBudget(devicesState.loaded, 3000);
     // Publish our pubkey in mesh:devices so other peers can harvest
     // it and add us to their keyring without a pair-token exchange.
     const storage = keyringStorage();
