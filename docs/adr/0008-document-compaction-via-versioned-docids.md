@@ -1,6 +1,6 @@
 # 0008 — Document compaction via versioned docIds
 
-**Status:** Accepted, partially implemented (v1 ships in fairfox `web-v0.1.48` / CLI `v0.1.30`, polly `0.63.0`)
+**Status:** Accepted, partially implemented (v1 + v2 ship in fairfox `web-v0.1.49` / CLI `v0.1.31`, polly `0.63.0`)
 **Date:** 2026-05-14
 
 ## Context and problem statement
@@ -157,7 +157,7 @@ to its current hash-of-key behaviour. Polly-side change.
 
 ## v1 implementation status (2026-05-14)
 
-Shipped in this slice:
+Shipped in v1 (the resolver + index + compaction surface):
 
 - Polly 0.63.0: `registerDocIdResolver(fn)` hook in `mesh-state.ts`;
   `buildHandleFactory` consults `resolveDocumentId(key)` (resolver
@@ -183,17 +183,36 @@ Shipped in this slice:
 - fairfox: `mesh.compact` permission added to the Permission
   union and admin role's permission set.
 
-Deferred to follow-up sessions (still load-bearing for the full
-ADR):
+Shipped in v2 (sealed-pointer sentinel — `shared/src/sealed-sentinel.ts`):
 
-- **Sealed-pointer sentinel + grace-period dual-write.** The old
-  doc gets a `__compaction__` entry pointing at the new docId on
-  compaction; peers reading the old doc follow the pointer.
-  Writes that land at the old doc during the 14-day window are
-  replayed into the new doc by any peer that sees them. Until
-  this lands, the v1 caveat in `compact-mesh-doc.ts`'s header
-  applies: offline-pending writes after the compaction stamp are
-  lost.
+- `__compaction__` field stamped on the OLD doc by
+  `compactMeshDoc` on every compaction. Payload:
+  `{ migratedTo, sealedAt, sealedBy, signature }`. The
+  reserved field name and the doc-shape `[key: string]: unknown`
+  index signature mean consumers don't need to widen any
+  existing TypeScript shape; the sentinel rides on the same
+  CRDT writes the rest of the doc uses.
+- `getSealedSentinel(doc)` / `isSealedDoc(doc)` /
+  `buildSealedSentinel({ … })` helpers from
+  `@fairfox/shared/sealed-sentinel`. Consumers reading any
+  `$meshState` doc can detect that the doc has been sealed and
+  follow the pointer without needing to consult the index.
+- The sentinel and the matching index entry are written from
+  the same `compactMeshDoc` call with the same `compactedAt`
+  timestamp, so cross-checking the two surfaces is mechanical.
+
+Deferred to v3 (the genuinely-hard CRDT-replay work):
+
+- **Grace-period dual-write replay.** Writes that land at the
+  old doc dated after `sealedAt` need to be merged into the new
+  doc. The straightforward implementations (diff
+  current-old-state against snapshotted-old-state at seal time;
+  re-run filter on every read) are either O(double storage) or
+  O(rewrites-per-read). A coordinator pattern where the admin
+  who compacted is responsible for periodic replay until the
+  grace window expires is simpler but introduces a single
+  point of failure during the grace window. The right approach
+  hasn't been chosen.
 - **Automatic GC.** After the grace window, sealed docs are
   removed from each device's storage. Needs a polly-side
   `repo.removeFromStorage(docId)` primitive that doesn't exist
@@ -201,11 +220,12 @@ ADR):
 - **Browser admin button.** A Help-tab admin control that fires
   the compaction action without a CLI. Same logic as
   `meshCompact`.
-- **Index-row signing + strict verification.** The v1 index row
-  carries an empty signature; consumers don't yet refuse
-  unsigned rows. The signed/strict path rides on the sentinel
-  work because the sentinel is what makes the migration
-  asymmetric enough to need signed evidence.
+- **Index-row + sentinel signing + strict verification.** Both
+  surfaces carry an empty signature in v2. The strict path
+  needs to sign each on write and verify on read, refusing
+  redirects backed by malformed evidence. The two surfaces
+  need to be signed together (each unsigned-with-other-signed
+  state is exploitable).
 
 ## Open questions, deferred to implementation
 

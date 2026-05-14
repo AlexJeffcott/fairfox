@@ -39,6 +39,7 @@ import { documentIndexState } from '#src/document-index-state.ts';
 // init (matches how mesh-meta-state hydrates the keyring).
 import { mesh } from '#src/ensure-mesh.ts';
 import { deriveDocumentId } from '#src/polly-reexport.ts';
+import { buildSealedSentinel, SEALED_SENTINEL_FIELD } from '#src/sealed-sentinel.ts';
 import { userIdentity } from '#src/user-identity-state.ts';
 
 /** Result of a successful compaction. The caller typically logs
@@ -128,6 +129,25 @@ export async function compactMeshDoc<TDoc extends MeshDoc, TEntry>(
   const handle = mesh.repo.import(seeded, { docId: newDocumentId });
   handle.doneLoading();
 
+  // ADR 0008 v2: write the sealed sentinel into the OLD doc so a
+  // peer that reads the old doc directly (its index hasn't synced
+  // the redirect yet, or its wrapper bound to the old docId
+  // before the compaction landed) sees the pointer to the new
+  // doc. The wrapper still resolves to the OLD doc inside this
+  // same process — the resolver fires at lazy construction and
+  // wrappers are cached — so writing through `options.wrapper`
+  // here writes to the old doc by design.
+  const newDocIdString = String(newDocumentId);
+  const sentinel = buildSealedSentinel({
+    migratedTo: newDocIdString,
+    sealedAt: compactedAt,
+    sealedBy: identity.userId,
+  });
+  options.wrapper.value = {
+    ...options.wrapper.value,
+    [SEALED_SENTINEL_FIELD]: sentinel,
+  };
+
   // Record the compaction in the index. The previous current id
   // (if any) is rolled into `sealedDocIds`; if this is the first
   // compaction for the key, `sealedDocIds` starts empty.
@@ -143,14 +163,16 @@ export async function compactMeshDoc<TDoc extends MeshDoc, TEntry>(
     index: {
       ...documentIndexState.value.index,
       [options.key]: {
-        currentDocId: String(newDocumentId),
+        currentDocId: newDocIdString,
         sealedDocIds: nextSealed,
         compactedAt,
         compactedBy: identity.userId,
-        // Lenient mode: signature is empty in v1. ADR 0008 calls
-        // for a signed entry once the `mesh.compact` permission
-        // is enforced at every read; that lives on the
-        // sealed-pointer / grace-period work that's deferred.
+        // Lenient mode: signature is empty in v2. The strict
+        // verification path waits on signing both the sentinel
+        // and the index row together — both surfaces have to be
+        // signed before either is verified, otherwise a malicious
+        // peer can write a fake sentinel + unsigned index entry
+        // and the redirect goes through.
         signature: [],
       },
     },
@@ -159,7 +181,7 @@ export async function compactMeshDoc<TDoc extends MeshDoc, TEntry>(
   return {
     key: options.key,
     previousDocId,
-    newDocId: String(newDocumentId),
+    newDocId: newDocIdString,
     removed,
     compactedAt,
   };

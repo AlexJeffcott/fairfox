@@ -19,6 +19,7 @@
     "./mesh-meta-state": "./src/mesh-meta-state.ts",
     "./document-index-state": "./src/document-index-state.ts",
     "./compact-mesh-doc": "./src/compact-mesh-doc.ts",
+    "./sealed-sentinel": "./src/sealed-sentinel.ts",
     "./user-identity": "./src/user-identity.ts",
     "./user-identity-state": "./src/user-identity-state.ts",
     "./invite": "./src/invite.ts",
