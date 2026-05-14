@@ -4,11 +4,17 @@
 // already exposes. Shared by every subcommand that reaches into the mesh.
 
 import { hostname } from 'node:os';
+import type { DocumentId } from '@automerge/automerge-repo/slim';
 import { NodeFSStorageAdapter } from '@automerge/automerge-repo-storage-nodefs';
 import { devicesState, harvestPeerKeys, touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
 import { awaitLoadedBudget } from '@fairfox/shared/loaded-budget';
 import type { KeyringStorage, MeshClient } from '@fairfox/shared/polly';
-import { createMeshClient, fileKeyringStorage } from '@fairfox/shared/polly';
+import {
+  configureMeshState,
+  createMeshClient,
+  fileKeyringStorage,
+  Repo,
+} from '@fairfox/shared/polly';
 import { RTCPeerConnection } from 'werift';
 import { fairfoxPath } from '#src/paths.ts';
 
@@ -185,15 +191,66 @@ export async function flushOutgoing(ms = 1500): Promise<void> {
  * read sees an empty doc. Calling `repo.flush()` first blocks
  * until every dirty doc is persistent.
  */
-function readyHandleIds(client: MeshClient): string[] {
-  const handles = client.repo.handles;
-  const ids: string[] = [];
-  for (const [id, handle] of Object.entries(handles)) {
+/** Collect the DocumentId of every handle currently in `ready` state.
+ * Used to filter `repo.flush()` — calling `handle.doc()` (which
+ * flush does internally per handle) throws on a handle still in
+ * `loading`. The branded `DocumentId` type is read off
+ * `handle.documentId` so the result is typed correctly without a
+ * cast through `string`. */
+function readyHandleIds(repo: Repo): DocumentId[] {
+  const ids: DocumentId[] = [];
+  for (const handle of Object.values(repo.handles)) {
     if (handle?.state === 'ready') {
-      ids.push(id);
+      ids.push(handle.documentId);
     }
   }
   return ids;
+}
+
+export interface ReadOnlyMesh {
+  readonly repo: Repo;
+  close(): Promise<void>;
+}
+
+/**
+ * Open a network-less Repo for read-only CLI commands. No signalling
+ * connection, no WebRTC slot, no `peerId`-on-the-wire — so a
+ * short-lived `fairfox peers`, `fairfox users`, etc. doesn't race
+ * the running `fairfox daemon` for the shared keyring's peerId on
+ * the signalling server. The trade-off: data is whatever the
+ * daemon (or a previous mesh-client invocation) last persisted to
+ * `~/.fairfox/mesh/`. For read commands where the data only flows
+ * one way — daemon writes, CLI displays — that's the right
+ * trade.
+ *
+ * Encryption is on the network adapter, not at rest, so reading
+ * straight from the NodeFS adapter without a keyring is safe.
+ * `configureMeshState` is called against the new Repo so the
+ * `$meshState` wrappers' lazy `defaultRepo` resolution finds this
+ * Repo (not the previous one, if any) on first `.value` access.
+ */
+export function openMeshClientReadOnly(): ReadOnlyMesh {
+  const repo = new Repo({
+    storage: new NodeFSStorageAdapter(REPO_STORAGE_PATH),
+    isEphemeral: true,
+  });
+  configureMeshState(repo);
+  return {
+    repo,
+    close: async (): Promise<void> => {
+      try {
+        await repo.flush(readyHandleIds(repo));
+      } catch {
+        // best-effort
+      }
+      try {
+        await repo.shutdown();
+      } catch {
+        // best-effort — same DocHandle-not-ready shape as the
+        // networked path's close.
+      }
+    },
+  };
 }
 
 export async function closeMesh(client: MeshClient): Promise<void> {
@@ -214,7 +271,7 @@ export async function closeMesh(client: MeshClient): Promise<void> {
     // wrapper handle hydrates, so a short read command can carry a
     // loading handle into teardown. Passing the explicit docId list
     // makes the flush skip the loaders cleanly.
-    const readyIds = readyHandleIds(client);
+    const readyIds = readyHandleIds(client.repo);
     await client.repo.flush(readyIds);
     await new Promise((r) => setTimeout(r, 200));
     await client.repo.flush(readyIds);

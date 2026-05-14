@@ -10,6 +10,7 @@ import {
   touchSelfDeviceEntry,
   upsertDeviceEntry,
 } from '@fairfox/shared/devices-state';
+import { awaitLoadedBudget } from '@fairfox/shared/loaded-budget';
 import { $meshState, revokePeerLocally } from '@fairfox/shared/polly';
 import {
   closeMesh,
@@ -17,6 +18,7 @@ import {
   flushOutgoing,
   keyringStorage,
   openMeshClient,
+  openMeshClientReadOnly,
   waitForPeer,
 } from '#src/mesh.ts';
 
@@ -43,14 +45,24 @@ function formatEntry(entry: DeviceEntry, self: string): string {
 export function peersList(includeRevoked = false): Promise<number> {
   return (async () => {
     const peerId = await loadOwnPeerId();
-    const client = await openMeshClient({ peerId });
+    // Read-only: no signalling, no WebRTC, no peerId on the wire.
+    // Avoids racing a running `fairfox daemon` for the shared peerId
+    // on the signalling server (the same keyring derives the same
+    // peerId in both processes; the server boots whichever joined
+    // first when the second one connects, and the resulting
+    // ping-pong burns tens of seconds per command). Data freshness
+    // depends on the daemon (or whichever process most recently
+    // wrote to the local mesh storage) having sync'd the latest
+    // state; for a read command that's the right trade.
+    const mesh = openMeshClientReadOnly();
     try {
-      const peered = await waitForPeer(client, 8000);
       const devices = $meshState<DevicesDoc>('mesh:devices', DEVICES_INITIAL);
-      await devices.loaded;
-      if (peered) {
-        await flushOutgoing(2000);
-      }
+      // Budget against the same shape as the networked path: the
+      // wrapper's `.loaded` waits for handle.whenReady, which can
+      // stall briefly even on a local-only path while NodeFS bytes
+      // hydrate. Three seconds is the same budget `openMeshClient`
+      // uses for the self-row write.
+      await awaitLoadedBudget(devices.loaded, 3000);
       const allEntries = Object.values(devices.value.devices);
       // Hide revoked entries by default — they synced into mesh:devices
       // with `revokedAt` set when an admin clicked Forget. The browser's
@@ -82,7 +94,7 @@ export function peersList(includeRevoked = false): Promise<number> {
       }
       return 0;
     } finally {
-      await closeMesh(client);
+      await mesh.close();
     }
   })();
 }
