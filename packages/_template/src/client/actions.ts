@@ -25,17 +25,21 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
 
   'item.add': (ctx) => {
     const text = ctx.data.value;
-    if (text) {
-      appState.value = { items: [...appState.value.items, text] };
-    }
+    if (!text) return;
+    const handle = appState.handle;
+    if (!handle) return;
+    handle.change((doc) => {
+      doc.items.push(text);
+    });
   },
 
   'item.remove': (ctx) => {
     const index = Number(ctx.data.index);
-    if (!Number.isNaN(index)) {
-      const items = [...appState.value.items];
-      items.splice(index, 1);
-      appState.value = { items };
-    }
+    if (Number.isNaN(index)) return;
+    const handle = appState.handle;
+    if (!handle) return;
+    handle.change((doc) => {
+      doc.items.splice(index, 1);
+    });
   },
 };
