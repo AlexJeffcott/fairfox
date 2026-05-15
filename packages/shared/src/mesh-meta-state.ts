@@ -15,7 +15,7 @@ import type { DocHandle } from '@fairfox/shared/polly';
 import { signal } from '@preact/signals';
 
 interface MeshMetaPrimitive {
-  value: MeshMetaDoc;
+  readonly value: MeshMetaDoc;
   readonly loaded: Promise<void>;
   readonly handle: DocHandle<MeshMetaDoc> | undefined;
 }
@@ -38,9 +38,6 @@ function primitive(): MeshMetaPrimitive {
 export const meshMetaState: MeshMetaPrimitive = {
   get value(): MeshMetaDoc {
     return primitive().value;
-  },
-  set value(next: MeshMetaDoc) {
-    primitive().value = next;
   },
   get loaded(): Promise<void> {
     return primitive().loaded;

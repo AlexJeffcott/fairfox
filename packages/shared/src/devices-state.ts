@@ -26,7 +26,7 @@ import { detectCapabilities } from '#src/capabilities.ts';
 // applyTopLevel (which clobbers the whole `devices` map on each
 // `value =` assignment, racing concurrent issuer/scanner writes).
 interface DevicesPrimitive {
-  value: DevicesDoc;
+  readonly value: DevicesDoc;
   readonly loaded: Promise<void>;
   readonly handle: DocHandle<DevicesDoc> | undefined;
 }
@@ -124,9 +124,6 @@ function primitive(): DevicesPrimitive {
 export const devicesState: DevicesPrimitive = {
   get value(): DevicesDoc {
     return primitive().value;
-  },
-  set value(next: DevicesDoc) {
-    primitive().value = next;
   },
   get loaded(): Promise<void> {
     return primitive().loaded;

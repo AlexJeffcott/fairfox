@@ -34,7 +34,7 @@ import { logLenientViolation, strictMode } from '#src/strict-mode.ts';
 export const OBSERVED_MESH_STATE_MODULE_ID_FROM_USERS_STATE = MESH_STATE_MODULE_ID;
 
 interface UsersPrimitive {
-  value: UsersDoc;
+  readonly value: UsersDoc;
   readonly loaded: Promise<void>;
   readonly handle: DocHandle<UsersDoc> | undefined;
 }
@@ -115,9 +115,6 @@ function primitive(): UsersPrimitive {
 export const usersState: UsersPrimitive = {
   get value(): UsersDoc {
     return primitive().value;
-  },
-  set value(next: UsersDoc) {
-    primitive().value = next;
   },
   get loaded(): Promise<void> {
     return primitive().loaded;

@@ -19,7 +19,7 @@ import { $meshState } from '@fairfox/polly/mesh';
 import type { DocHandle } from '@fairfox/shared/polly';
 
 interface DocumentIndexPrimitive {
-  value: DocumentIndexDoc;
+  readonly value: DocumentIndexDoc;
   readonly loaded: Promise<void>;
   readonly handle: DocHandle<DocumentIndexDoc> | undefined;
 }
@@ -75,9 +75,6 @@ function primitive(): DocumentIndexPrimitive {
 export const documentIndexState: DocumentIndexPrimitive = {
   get value(): DocumentIndexDoc {
     return primitive().value;
-  },
-  set value(next: DocumentIndexDoc) {
-    primitive().value = next;
   },
   get loaded(): Promise<void> {
     return primitive().loaded;
