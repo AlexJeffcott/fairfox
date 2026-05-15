@@ -26,10 +26,16 @@ function generateId(): string {
 
 function updateDoc(id: string, patch: Partial<Document>): void {
   const now = new Date().toISOString();
-  docsState.value = {
-    ...docsState.value,
-    docs: docsState.value.docs.map((d) => (d.id === id ? { ...d, ...patch, updatedAt: now } : d)),
-  };
+  docsState.handle?.change((doc) => {
+    const target = doc.docs.find((d) => d.id === id);
+    if (!target) {
+      return;
+    }
+    for (const [key, value] of Object.entries(patch)) {
+      (target as Record<string, unknown>)[key] = value;
+    }
+    target.updatedAt = now;
+  });
 }
 
 /** Actions that mutate `docs:main`. The unified shell's dispatcher
@@ -51,7 +57,7 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     const now = new Date().toISOString();
     const base = slugify('untitled') || 'untitled';
     const taken = new Set(docsState.value.docs.map((d) => d.slug));
-    const doc: Document = {
+    const newDoc: Document = {
       id: generateId(),
       title: 'Untitled',
       slug: uniqueSlug(base, taken),
@@ -60,11 +66,10 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       createdAt: now,
       updatedAt: now,
     };
-    docsState.value = {
-      ...docsState.value,
-      docs: [...docsState.value.docs, doc],
-    };
-    selectedDocId.value = doc.id;
+    docsState.handle?.change((doc) => {
+      doc.docs.push(newDoc);
+    });
+    selectedDocId.value = newDoc.id;
     activeView.value = 'edit';
   },
 
@@ -129,10 +134,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id) {
       return;
     }
-    docsState.value = {
-      ...docsState.value,
-      docs: docsState.value.docs.filter((d) => d.id !== id),
-    };
+    docsState.handle?.change((doc) => {
+      const idx = doc.docs.findIndex((d) => d.id === id);
+      if (idx >= 0) {
+        doc.docs.splice(idx, 1);
+      }
+    });
     if (selectedDocId.value === id) {
       selectedDocId.value = null;
       activeView.value = 'list';
