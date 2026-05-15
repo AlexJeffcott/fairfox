@@ -31,8 +31,9 @@ function updateDoc(id: string, patch: Partial<Document>): void {
     if (!target) {
       return;
     }
+    const fields = target as unknown as Record<string, unknown>;
     for (const [key, value] of Object.entries(patch)) {
-      (target as Record<string, unknown>)[key] = value;
+      fields[key] = value;
     }
     target.updatedAt = now;
   });

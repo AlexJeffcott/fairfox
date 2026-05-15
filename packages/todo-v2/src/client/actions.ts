@@ -201,7 +201,8 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       if (!target) {
         return;
       }
-      (target as Record<string, unknown>)[field] = normalised;
+      const fields = target as unknown as Record<string, unknown>;
+      fields[field] = normalised;
     });
   },
 
@@ -355,7 +356,8 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       if (!target) {
         return;
       }
-      (target as Record<string, unknown>)[field] = value;
+      const fields = target as unknown as Record<string, unknown>;
+      fields[field] = value;
     });
   },
 
