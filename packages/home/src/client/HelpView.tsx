@@ -423,7 +423,7 @@ function formatSyncDiagnostics(
     }
     if (p.slot) {
       lines.push(
-        `  slot: ice=${p.slot.iceConnectionState} conn=${p.slot.connectionState} dc=${p.slot.dataChannelState}`
+        `  slot: sig=${p.slot.signalingState ?? '(?)'} ice=${p.slot.iceConnectionState} conn=${p.slot.connectionState} dc=${p.slot.dataChannelState}`
       );
       lines.push(
         `        pendingSends=${p.slot.pendingSendCount} pendingRemoteIce=${p.slot.pendingRemoteIceCount}`
