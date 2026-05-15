@@ -47,10 +47,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       name,
       createdAt: new Date().toISOString(),
     };
-    directoryState.value = {
-      ...directoryState.value,
-      humans: [...directoryState.value.humans, human],
-    };
+    directoryState.handle?.change((doc) => {
+      doc.humans.push(human);
+    });
   },
 
   'human.remove': (ctx) => {
@@ -58,10 +57,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id) {
       return;
     }
-    directoryState.value = {
-      ...directoryState.value,
-      humans: directoryState.value.humans.filter((h) => h.id !== id),
-    };
+    directoryState.handle?.change((doc) => {
+      const idx = doc.humans.findIndex((h) => h.id === id);
+      if (idx >= 0) {
+        doc.humans.splice(idx, 1);
+      }
+    });
   },
 
   'device.register': (ctx) => {
@@ -81,10 +82,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       pairedAt: new Date().toISOString(),
       revokedAt: null,
     };
-    directoryState.value = {
-      ...directoryState.value,
-      devices: [...directoryState.value.devices, device],
-    };
+    directoryState.handle?.change((doc) => {
+      doc.devices.push(device);
+    });
   },
 
   'device.revoke': (ctx) => {
@@ -92,12 +92,13 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id) {
       return;
     }
-    directoryState.value = {
-      ...directoryState.value,
-      devices: directoryState.value.devices.map((d) =>
-        d.id === id ? { ...d, revokedAt: new Date().toISOString() } : d
-      ),
-    };
+    const now = new Date().toISOString();
+    directoryState.handle?.change((doc) => {
+      const target = doc.devices.find((d) => d.id === id);
+      if (target) {
+        target.revokedAt = now;
+      }
+    });
   },
 
   'device.rename': (ctx) => {
@@ -106,10 +107,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id || !name) {
       return;
     }
-    directoryState.value = {
-      ...directoryState.value,
-      devices: directoryState.value.devices.map((d) => (d.id === id ? { ...d, name } : d)),
-    };
+    directoryState.handle?.change((doc) => {
+      const target = doc.devices.find((d) => d.id === id);
+      if (target) {
+        target.name = name;
+      }
+    });
   },
 
   'directory.tab': (ctx) => {
