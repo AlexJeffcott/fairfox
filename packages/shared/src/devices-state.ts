@@ -218,66 +218,69 @@ export function upsertDeviceEntry(
   }
 
   const handle = devicesState.handle;
-  if (handle) {
-    handle.change((doc) => {
-      if (!doc.devices) {
-        doc.devices = {};
-      }
-      const current = doc.devices[peerId];
-      if (!current) {
-        // First write — initialise the whole entry.
-        doc.devices[peerId] = next;
-        return;
-      }
-      // Existing entry: write only the fields the caller actually
-      // patched, leaving every other field at its Automerge-tracked
-      // value. Same-peer concurrent updates that touch DIFFERENT
-      // fields merge cleanly (e.g. issuer writes name + agent while
-      // scanner writes endorsements + ownerUserIds during pair
-      // completion); same-field concurrent updates resolve LWW per
-      // field, which is fine for rename and lastSeenAt-bump cases.
-      // Always bump lastSeenAt — every write is a "I saw it" signal.
-      current.lastSeenAt = next.lastSeenAt;
-      if (patch.name !== undefined) {
-        current.name = next.name;
-      }
-      if (patch.agent !== undefined) {
-        current.agent = next.agent;
-      }
-      if (patch.publicKey !== undefined) {
-        current.publicKey = next.publicKey;
-      }
-      if (patch.ownerUserIds !== undefined) {
-        current.ownerUserIds = next.ownerUserIds;
-      }
-      if (patch.endorsements !== undefined) {
-        current.endorsements = next.endorsements;
-      }
-      if (patch.capabilities !== undefined) {
-        current.capabilities = next.capabilities;
-      }
-      if (patch.revokedAt !== undefined) {
-        current.revokedAt = next.revokedAt;
-      }
-      if (patch.revocationSignature !== undefined) {
-        current.revocationSignature = next.revocationSignature;
-      }
-      if (patch.revokedByUserId !== undefined) {
-        current.revokedByUserId = next.revokedByUserId;
-      }
-    });
-    return;
+  if (!handle) {
+    // Per-key writes are the only legal write surface — silent
+    // merge-loss via the value-setter fallback is exactly what
+    // ADR 0009 forbids. The boot race that used to motivate the
+    // fallback (write arriving before `loaded` resolves) is now
+    // a programming bug surfaced loudly: every caller must
+    // `await devicesState.loaded` first. `touchSelfDeviceEntry`
+    // is reached only post-load (after `ensureMesh`); the
+    // pairing-flow callers (`addEndorsementToDevice`,
+    // `removeEndorsementFromDevice`, `revokeDeviceEntry`) all
+    // gate on the doc already containing the target peer's row,
+    // which can only be true after load.
+    throw new Error(
+      'upsertDeviceEntry: devicesState.handle not bridged — caller must await devicesState.loaded before writing'
+    );
   }
-  // Pre-loaded fallback: the wrapper hasn't bridged its handle yet
-  // (rare; happens at boot when the very first write arrives before
-  // the loaded promise resolves). Fall through to the value-setter
-  // so the write isn't lost — it'll get clobbered if a concurrent
-  // peer write arrives in the same window, but that's strictly no
-  // worse than the prior behaviour.
-  devicesState.value = {
-    ...devicesState.value,
-    devices: { ...devicesState.value.devices, [peerId]: next },
-  };
+  handle.change((doc) => {
+    if (!doc.devices) {
+      doc.devices = {};
+    }
+    const current = doc.devices[peerId];
+    if (!current) {
+      // First write — initialise the whole entry.
+      doc.devices[peerId] = next;
+      return;
+    }
+    // Existing entry: write only the fields the caller actually
+    // patched, leaving every other field at its Automerge-tracked
+    // value. Same-peer concurrent updates that touch DIFFERENT
+    // fields merge cleanly (e.g. issuer writes name + agent while
+    // scanner writes endorsements + ownerUserIds during pair
+    // completion); same-field concurrent updates resolve LWW per
+    // field, which is fine for rename and lastSeenAt-bump cases.
+    // Always bump lastSeenAt — every write is a "I saw it" signal.
+    current.lastSeenAt = next.lastSeenAt;
+    if (patch.name !== undefined) {
+      current.name = next.name;
+    }
+    if (patch.agent !== undefined) {
+      current.agent = next.agent;
+    }
+    if (patch.publicKey !== undefined) {
+      current.publicKey = next.publicKey;
+    }
+    if (patch.ownerUserIds !== undefined) {
+      current.ownerUserIds = next.ownerUserIds;
+    }
+    if (patch.endorsements !== undefined) {
+      current.endorsements = next.endorsements;
+    }
+    if (patch.capabilities !== undefined) {
+      current.capabilities = next.capabilities;
+    }
+    if (patch.revokedAt !== undefined) {
+      current.revokedAt = next.revokedAt;
+    }
+    if (patch.revocationSignature !== undefined) {
+      current.revocationSignature = next.revocationSignature;
+    }
+    if (patch.revokedByUserId !== undefined) {
+      current.revokedByUserId = next.revokedByUserId;
+    }
+  });
 }
 
 /** Merge a fresh endorsement into a device row. Called from the

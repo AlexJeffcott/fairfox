@@ -32,7 +32,7 @@
 
 import * as Automerge from '@automerge/automerge';
 import { documentIndexState } from '#src/document-index-state.ts';
-import { deriveDocumentId, type Repo } from '#src/polly-reexport.ts';
+import { type DocHandle, deriveDocumentId, type Repo } from '#src/polly-reexport.ts';
 import { buildSealedSentinel, SEALED_SENTINEL_FIELD } from '#src/sealed-sentinel.ts';
 import { userIdentity } from '#src/user-identity-state.ts';
 
@@ -65,9 +65,15 @@ interface CompactOptions<TDoc extends MeshDoc, TEntry> {
    * `$meshState` resolved against. */
   repo: Repo;
   /** The current $meshState wrapper for the key. The compaction
-   * reads `wrapper.value` to source the materialised state and
-   * (optionally) consults `wrapper.loaded` before reading. */
-  wrapper: { value: TDoc; readonly loaded: Promise<void> };
+   * reads `wrapper.value` to source the materialised state,
+   * consults `wrapper.loaded` before reading, and writes the
+   * sealed sentinel via `wrapper.handle.change` (per ADR 0009 —
+   * per-key writes only; no top-level value-setter assigns). */
+  wrapper: {
+    value: TDoc;
+    readonly loaded: Promise<void>;
+    readonly handle: DocHandle<TDoc> | undefined;
+  };
   /** Extract the entry map from the document. For `mesh:devices`
    * this is `(doc) => doc.devices`; for arbitrary docs the
    * extractor maps the doc's shape to the inner map. */
@@ -139,10 +145,20 @@ export async function compactMeshDoc<TDoc extends MeshDoc, TEntry>(
     sealedAt: compactedAt,
     sealedBy: identity.userId,
   });
-  options.wrapper.value = {
-    ...options.wrapper.value,
-    [SEALED_SENTINEL_FIELD]: sentinel,
-  };
+  // Per ADR 0009 non-negotiable #1 — write the sentinel through
+  // the Automerge handle so the change lands as a per-key op,
+  // not a top-level field replacement that would race concurrent
+  // edits to other top-level fields and silently win/lose by
+  // actor-id hash.
+  const oldDocHandle = options.wrapper.handle;
+  if (!oldDocHandle) {
+    throw new Error(
+      'compactMeshDoc: wrapper.handle not bridged — caller must await wrapper.loaded before compacting'
+    );
+  }
+  oldDocHandle.change((doc: TDoc) => {
+    (doc as Record<string, unknown>)[SEALED_SENTINEL_FIELD] = sentinel;
+  });
 
   // Record the compaction in the index. The "previous" docId is
   // either the prior index entry's `currentDocId` (a re-compaction)
@@ -155,25 +171,30 @@ export async function compactMeshDoc<TDoc extends MeshDoc, TEntry>(
   const nextSealed: string[] = previousEntry?.sealedDocIds ? [...previousEntry.sealedDocIds] : [];
   nextSealed.push(previousDocId);
 
-  documentIndexState.value = {
-    ...documentIndexState.value,
-    index: {
-      ...documentIndexState.value.index,
-      [options.key]: {
-        currentDocId: newDocIdString,
-        sealedDocIds: nextSealed,
-        compactedAt,
-        compactedBy: identity.userId,
-        // Lenient mode: signature is empty in v2. The strict
-        // verification path waits on signing both the sentinel
-        // and the index row together — both surfaces have to be
-        // signed before either is verified, otherwise a malicious
-        // peer can write a fake sentinel + unsigned index entry
-        // and the redirect goes through.
-        signature: [],
-      },
-    },
-  };
+  const indexHandle = documentIndexState.handle;
+  if (!indexHandle) {
+    throw new Error(
+      'compactMeshDoc: documentIndexState.handle not bridged — caller must await documentIndexState.loaded before compacting'
+    );
+  }
+  indexHandle.change((doc) => {
+    if (!doc.index) {
+      doc.index = {};
+    }
+    doc.index[options.key] = {
+      currentDocId: newDocIdString,
+      sealedDocIds: nextSealed,
+      compactedAt,
+      compactedBy: identity.userId,
+      // Lenient mode: signature is empty in v2. The strict
+      // verification path waits on signing both the sentinel
+      // and the index row together — both surfaces have to be
+      // signed before either is verified, otherwise a malicious
+      // peer can write a fake sentinel + unsigned index entry
+      // and the redirect goes through.
+      signature: [],
+    };
+  });
 
   return {
     key: options.key,
