@@ -2,9 +2,9 @@
 // Peers view — the per-device list backed by `mesh:devices` and the
 // signalling presence signal. Each row surfaces the device's name,
 // peer-id prefix, agent, last-seen relative time, and an online dot.
-// The row for this device is flagged and offers an inline rename; the
-// other rows offer reconnect (close + re-open the mesh client) and
-// forget-locally (revoke + drop from this keyring, then reload).
+// The row for this device is flagged and offers an inline rename;
+// the other rows offer forget-locally (revoke + drop from this
+// keyring, then reload).
 
 import { ActionInput, Badge, Button, Layout } from '@fairfox/polly/ui';
 import { devicesState } from '@fairfox/shared/devices-state';
@@ -322,13 +322,6 @@ export function PeersView() {
                 <span />
               ) : (
                 <Layout columns="auto auto auto" gap="var(--polly-space-xs)" alignItems="center">
-                  <Button
-                    label="Reconnect"
-                    size="small"
-                    tier="tertiary"
-                    data-action="peers.reconnect"
-                    data-action-peer-id={entry.peerId}
-                  />
                   {/* Shared-device add-me: show only when the local
                    * user isn't already endorsed on this device and
                    * holds device.pair. Leaving is self-service; an

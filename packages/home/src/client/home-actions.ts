@@ -118,16 +118,6 @@ export const homeActions: Record<string, (ctx: HandlerContext) => void> = {
     }
     upsertDeviceEntry(peerId, { name, agent: 'browser' });
   },
-  'peers.reconnect': (ctx) => {
-    // Per-peer reconnect is not surfaced by polly's MeshClient — its
-    // WebRTC adapter exposes no per-peer close. The nearest-cost
-    // operation is a full-client reload, which reconstructs the mesh
-    // stack from the keyring and re-establishes every channel.
-    if (typeof window !== 'undefined') {
-      window.location.reload();
-    }
-    void ctx;
-  },
   'peers.forget-local': (ctx) => {
     if (!canDo('device.revoke')) {
       console.warn('[policy] blocked peers.forget-local: user lacks device.revoke');
