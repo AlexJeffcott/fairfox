@@ -43,10 +43,18 @@ jobs:
           generate_release_notes: true
           tag_name: ${{ github.ref_name }}
 
-      # Nudge the running Fly server to re-fetch the new bundle without
-      # a `fly machine restart`. If the token secret isn't set or the
-      # server is down, the step prints a warning and succeeds — the
-      # server will catch up on its next cold-start or manual refresh.
+      # Nudge the running Fly server to re-fetch the new bundle
+      # without a `fly machine restart`. If the GH Actions secret is
+      # absent the step warns and continues — that's the only path
+      # we treat as recoverable, because it means the operator
+      # intentionally hasn't configured server-side refresh and the
+      # server will catch up at next cold-start. Any other failure
+      # (401, 403, 503, network error) means the refresh pipeline
+      # is silently broken — a previous regression where the Fly
+      # secret was missing while the GH secret was present went
+      # undetected for ~10 web releases because the step swallowed
+      # the curl exit status. Fail the workflow loudly so the next
+      # such drift gets caught at the tag that introduced it.
       - name: Refresh deployed server bundle
         env:
           FAIRFOX_REFRESH_TOKEN: ${{ secrets.FAIRFOX_REFRESH_TOKEN }}
@@ -58,5 +66,4 @@ jobs:
           fi
           curl -fsS -X POST \
             -H "Authorization: Bearer $FAIRFOX_REFRESH_TOKEN" \
-            "$FAIRFOX_SERVER_URL/admin/refresh-web-bundle" \
-            || echo "::warning::refresh endpoint non-2xx; server will catch up on next cold-start"
+            "$FAIRFOX_SERVER_URL/admin/refresh-web-bundle"
