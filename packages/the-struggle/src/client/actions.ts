@@ -63,7 +63,16 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       placeNames: [],
       visitedPassages: [startPassage.id],
     };
-    progressState.value = { progress };
+    // Single-player game state: at any moment exactly one device
+    // is the active player. game.init/reset are transactional and
+    // re-seed the whole progress object; that's a single field
+    // write either way (we're flipping null↔object), so the
+    // per-key vs top-level distinction doesn't apply. Per-field
+    // writes for the in-progress mutations (game.navigate) DO
+    // matter and they live in the handle.change below.
+    progressState.handle?.change((doc) => {
+      doc.progress = progress;
+    });
   },
 
   'game.navigate': (ctx) => {
@@ -83,17 +92,16 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!target) {
       return;
     }
-    const visited = current.visitedPassages.includes(target.passage.id)
-      ? current.visitedPassages
-      : [...current.visitedPassages, target.passage.id];
-    progressState.value = {
-      progress: {
-        ...current,
-        currentChapterId: target.chapter.id,
-        currentPassageId: target.passage.id,
-        visitedPassages: visited,
-      },
-    };
+    progressState.handle?.change((doc) => {
+      if (!doc.progress) {
+        return;
+      }
+      doc.progress.currentChapterId = target.chapter.id;
+      doc.progress.currentPassageId = target.passage.id;
+      if (!doc.progress.visitedPassages.includes(target.passage.id)) {
+        doc.progress.visitedPassages.push(target.passage.id);
+      }
+    });
   },
 
   'game.inspect': (ctx) => {
@@ -107,7 +115,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
   },
 
   'game.reset': () => {
-    progressState.value = { progress: null };
+    progressState.handle?.change((doc) => {
+      doc.progress = null;
+    });
   },
 
   'game.tab': (ctx) => {
