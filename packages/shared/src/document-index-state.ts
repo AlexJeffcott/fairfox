@@ -16,10 +16,12 @@
 
 import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
+import type { DocHandle } from '@fairfox/shared/polly';
 
 interface DocumentIndexPrimitive {
   value: DocumentIndexDoc;
   readonly loaded: Promise<void>;
+  readonly handle: DocHandle<DocumentIndexDoc> | undefined;
 }
 
 /** Single entry in {@link DocumentIndexDoc.index}, one per logical
@@ -79,6 +81,9 @@ export const documentIndexState: DocumentIndexPrimitive = {
   },
   get loaded(): Promise<void> {
     return primitive().loaded;
+  },
+  get handle(): DocHandle<DocumentIndexDoc> | undefined {
+    return primitive().handle;
   },
 };
 

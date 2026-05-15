@@ -11,11 +11,13 @@
 
 import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
+import type { DocHandle } from '@fairfox/shared/polly';
 import { signal } from '@preact/signals';
 
 interface MeshMetaPrimitive {
   value: MeshMetaDoc;
   readonly loaded: Promise<void>;
+  readonly handle: DocHandle<MeshMetaDoc> | undefined;
 }
 
 export interface MeshMetaDoc {
@@ -42,6 +44,9 @@ export const meshMetaState: MeshMetaPrimitive = {
   },
   get loaded(): Promise<void> {
     return primitive().loaded;
+  },
+  get handle(): DocHandle<MeshMetaDoc> | undefined {
+    return primitive().handle;
   },
 };
 

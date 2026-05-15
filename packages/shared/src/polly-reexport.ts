@@ -6,10 +6,18 @@
 // Result: `devicesState.loaded` in a CLI command throws
 // "no Repo configured" even after `openMeshClient` has run.
 
+export type { DocHandle } from '@automerge/automerge-repo/slim';
 // Re-export the bare Repo so storage-only readers (the doctor)
 // can open the same docs as a running mesh client without
 // joining the signalling network — same keyring would otherwise
 // produce a peerId clash that kicks the running relay off.
+//
+// `DocHandle` is the type every `$meshState` wrapper now exposes
+// via `.handle`. Per ADR 0009 non-negotiable #1, every writer that
+// touches a household-shared document goes through
+// `handle.change(...)` rather than the `.value = ...` setter,
+// which lowers to polly's `applyTopLevel` and races concurrent
+// per-key edits to a silent merge-loss by actor-id hash.
 export { Repo } from '@automerge/automerge-repo/slim';
 export { isRecord } from '@fairfox/polly/guards';
 export {

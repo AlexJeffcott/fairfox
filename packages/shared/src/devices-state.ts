@@ -17,20 +17,18 @@
 
 import '@fairfox/shared/ensure-mesh';
 import { $meshState } from '@fairfox/polly/mesh';
+import type { DocHandle } from '@fairfox/shared/polly';
 import { detectCapabilities } from '#src/capabilities.ts';
 
 // Internal type for the CrdtPrimitive returned by $meshState. We use
 // `value` (read/write), `loaded`, and `handle` — the last one is
-// needed for per-key writes that don't go through polly's
+// the per-key write surface that doesn't go through polly's
 // applyTopLevel (which clobbers the whole `devices` map on each
 // `value =` assignment, racing concurrent issuer/scanner writes).
-interface DocHandleLike {
-  change(updater: (doc: DevicesDoc) => void): void;
-}
 interface DevicesPrimitive {
   value: DevicesDoc;
   readonly loaded: Promise<void>;
-  readonly handle: DocHandleLike | undefined;
+  readonly handle: DocHandle<DevicesDoc> | undefined;
 }
 
 export type DeviceAgent = 'browser' | 'cli' | 'extension';
@@ -133,9 +131,8 @@ export const devicesState: DevicesPrimitive = {
   get loaded(): Promise<void> {
     return primitive().loaded;
   },
-  get handle(): DocHandleLike | undefined {
-    const p = primitive();
-    return (p as unknown as { handle?: DocHandleLike }).handle;
+  get handle(): DocHandle<DevicesDoc> | undefined {
+    return primitive().handle;
   },
 };
 

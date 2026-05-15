@@ -23,6 +23,7 @@ import {
   sign,
   verify,
 } from '@fairfox/polly/mesh';
+import type { DocHandle } from '@fairfox/shared/polly';
 import '@fairfox/shared/ensure-mesh';
 import { logLenientViolation, strictMode } from '#src/strict-mode.ts';
 
@@ -35,6 +36,7 @@ export const OBSERVED_MESH_STATE_MODULE_ID_FROM_USERS_STATE = MESH_STATE_MODULE_
 interface UsersPrimitive {
   value: UsersDoc;
   readonly loaded: Promise<void>;
+  readonly handle: DocHandle<UsersDoc> | undefined;
 }
 
 /** A role groups a collection of permissions for the common case.
@@ -119,6 +121,9 @@ export const usersState: UsersPrimitive = {
   },
   get loaded(): Promise<void> {
     return primitive().loaded;
+  },
+  get handle(): DocHandle<UsersDoc> | undefined {
+    return primitive().handle;
   },
 };
 
