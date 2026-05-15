@@ -118,28 +118,22 @@ export async function agendaAdd(name: string): Promise<number> {
       points: 1,
       active: true,
     };
-    // Push directly through the Automerge handle. Going via
-    // `agenda.value = { ..., items: [...prev, item] }` produces a
-    // list-replace op at the Automerge level (polly's
-    // applyTopLevel does `doc.items = newArray`), and two peers
-    // doing that concurrently lose one of the writes — whichever
-    // sync arrives last clobbers the other's list. A handle.change
-    // with `.push` produces an insert op that merges cleanly with
-    // a concurrent insert from another peer.
+    // Push directly through the Automerge handle. Per ADR 0009
+    // non-negotiable #1: a `.value =` assign lowers to
+    // applyTopLevel's `doc.items = newArray`, which races
+    // concurrent inserts to a winner-take-all merge by actor-id
+    // hash. The handle.change path emits a per-element insert
+    // that merges with another peer's concurrent insert cleanly.
     const handle = agenda.handle;
-    if (handle) {
-      handle.change((doc: AgendaDoc) => {
-        if (!Array.isArray(doc.items)) {
-          doc.items = [];
-        }
-        doc.items.push(item);
-      });
-    } else {
-      agenda.value = {
-        ...agenda.value,
-        items: [...agenda.value.items, item],
-      };
+    if (!handle) {
+      throw new Error('agenda add: agenda.handle not bridged — caller must await agenda.loaded');
     }
+    handle.change((doc: AgendaDoc) => {
+      if (!Array.isArray(doc.items)) {
+        doc.items = [];
+      }
+      doc.items.push(item);
+    });
     await flushOutgoing();
     process.stdout.write(`added: ${name}\n`);
     return 0;

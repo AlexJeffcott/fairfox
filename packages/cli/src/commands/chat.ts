@@ -611,10 +611,9 @@ function writeCapWarning(
     model: HARD_DEFAULT_MODEL,
     costUsd: 0,
   };
-  chatSignal.value = {
-    ...chatSignal.value,
-    messages: [...chatSignal.value.messages, warning],
-  };
+  chatSignal.handle?.change((doc) => {
+    doc.messages.push(warning);
+  });
 }
 
 interface LeaderContext {
@@ -638,12 +637,14 @@ function tryAcquireLease(
   if (held && !heldBySelf) {
     return false;
   }
-  leaseSignal.value = {
-    deviceId: ctx.deviceId,
-    daemonId: ctx.daemonId,
-    expiresAt: new Date(nowMs + LEASE_TTL_MS).toISOString(),
-    renewedAt: new Date(nowMs).toISOString(),
-  };
+  const expiresAt = new Date(nowMs + LEASE_TTL_MS).toISOString();
+  const renewedAt = new Date(nowMs).toISOString();
+  leaseSignal.handle?.change((doc) => {
+    doc.deviceId = ctx.deviceId;
+    doc.daemonId = ctx.daemonId;
+    doc.expiresAt = expiresAt;
+    doc.renewedAt = renewedAt;
+  });
   return true;
 }
 
@@ -655,12 +656,14 @@ function releaseLease(
   if (current.daemonId !== ctx.daemonId) {
     return;
   }
-  leaseSignal.value = {
-    deviceId: ctx.deviceId,
-    daemonId: '',
-    expiresAt: new Date(0).toISOString(),
-    renewedAt: new Date().toISOString(),
-  };
+  const expiresAt = new Date(0).toISOString();
+  const renewedAt = new Date().toISOString();
+  leaseSignal.handle?.change((doc) => {
+    doc.deviceId = ctx.deviceId;
+    doc.daemonId = '';
+    doc.expiresAt = expiresAt;
+    doc.renewedAt = renewedAt;
+  });
 }
 
 /** Mark any pending user message older than STALE_TURN_MS — or
@@ -711,15 +714,17 @@ function sweepStaleTurns(
     daemonId: selfPeerId,
     costUsd: 0,
   }));
-  chatSignal.value = {
-    ...chatSignal.value,
-    messages: [
-      ...chatSignal.value.messages.map((m) =>
-        toMark.some((t) => t.id === m.id) ? { ...m, pending: false } : m
-      ),
-      ...errors,
-    ],
-  };
+  const toMarkIds = new Set(toMark.map((t) => t.id));
+  chatSignal.handle?.change((doc) => {
+    for (const m of doc.messages) {
+      if (toMarkIds.has(m.id)) {
+        m.pending = false;
+      }
+    }
+    for (const err of errors) {
+      doc.messages.push(err);
+    }
+  });
   return toMark.length;
 }
 
@@ -770,23 +775,19 @@ async function processOne(
     costUsd: finalCost,
     daemonId: selfPeerId,
   };
-  chatSignal.value = {
-    ...chatSignal.value,
-    chats: chatSignal.value.chats.map((c) =>
-      c.id === target.chatId
-        ? {
-            ...c,
-            updatedAt: reply.createdAt,
-            totalCostUsd: Math.round(((c.totalCostUsd ?? 0) + finalCost) * 10_000) / 10_000,
-            typing: false,
-          }
-        : c
-    ),
-    messages: [
-      ...chatSignal.value.messages.map((m) => (m.id === target.id ? { ...m, pending: false } : m)),
-      reply,
-    ],
-  };
+  chatSignal.handle?.change((doc) => {
+    const chat = doc.chats.find((c) => c.id === target.chatId);
+    if (chat) {
+      chat.updatedAt = reply.createdAt;
+      chat.totalCostUsd = Math.round(((chat.totalCostUsd ?? 0) + finalCost) * 10_000) / 10_000;
+      chat.typing = false;
+    }
+    const parent = doc.messages.find((m) => m.id === target.id);
+    if (parent) {
+      parent.pending = false;
+    }
+    doc.messages.push(reply);
+  });
   process.stdout.write(
     `[chat serve] replied to ${target.id} (${replyText.length} chars · $${finalCost.toFixed(4)})\n`
   );
@@ -944,10 +945,10 @@ export async function chatSend(text: string): Promise<number> {
           }
         : {}),
     };
-    chatSignal.value = {
-      chats: [...chatSignal.value.chats, chat],
-      messages: [...chatSignal.value.messages, message],
-    };
+    chatSignal.handle?.change((doc) => {
+      doc.chats.push(chat);
+      doc.messages.push(message);
+    });
     await flushOutgoing(2500);
     process.stdout.write(`wrote message ${message.id} in chat ${chat.id}\n`);
     return 0;
@@ -1083,10 +1084,12 @@ export async function chatServe(): Promise<number> {
       leader: false,
     };
     const next: RelayHealth = { ...prev, ...patch, peerId, daemonId, version: cliVersion };
-    healthSignal.value = {
-      ...healthSignal.value,
-      relays: { ...healthSignal.value.relays, [peerId]: next },
-    };
+    healthSignal.handle?.change((doc) => {
+      if (!doc.relays) {
+        doc.relays = {};
+      }
+      doc.relays[peerId] = next;
+    });
   }
   writeHealth({ startedAt, lastTickAt: startedAt });
 

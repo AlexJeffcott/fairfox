@@ -259,24 +259,28 @@ function taskAdd(rest: readonly string[]): Promise<number> {
       links: '',
       notes: '',
     };
-    tasks.value = { ...tasks.value, tasks: [...tasks.value.tasks, task] };
+    tasks.handle?.change((doc) => {
+      doc.tasks.push(task);
+    });
     await flushOutgoing();
     process.stdout.write(`added ${task.tid}: ${task.description}\n`);
     return 0;
   });
 }
 
-function taskMutate(tid: string, mutator: (t: Task) => Task, label: string): Promise<number> {
+function taskMutate(tid: string, mutator: (t: Task) => void, label: string): Promise<number> {
   return withMesh(async ({ tasks }) => {
     const exists = tasks.value.tasks.find((t) => t.tid === tid);
     if (!exists) {
       process.stderr.write(`fairfox todo: no task with tid "${tid}".\n`);
       return Promise.resolve(1);
     }
-    tasks.value = {
-      ...tasks.value,
-      tasks: tasks.value.tasks.map((t) => (t.tid === tid ? mutator(t) : t)),
-    };
+    tasks.handle?.change((doc) => {
+      const target = doc.tasks.find((t) => t.tid === tid);
+      if (target) {
+        mutator(target);
+      }
+    });
     await flushOutgoing();
     process.stdout.write(`${label} ${tid}\n`);
     return 0;
@@ -284,24 +288,38 @@ function taskMutate(tid: string, mutator: (t: Task) => Task, label: string): Pro
 }
 
 function taskDone(tid: string): Promise<number> {
-  return taskMutate(tid, (t) => ({ ...t, done: true }), 'done');
+  return taskMutate(
+    tid,
+    (t) => {
+      t.done = true;
+    },
+    'done'
+  );
 }
 
 function taskReopen(tid: string): Promise<number> {
-  return taskMutate(tid, (t) => ({ ...t, done: false }), 'reopened');
+  return taskMutate(
+    tid,
+    (t) => {
+      t.done = false;
+    },
+    'reopened'
+  );
 }
 
 function taskDelete(tid: string): Promise<number> {
   return withMesh(async ({ tasks }) => {
-    const before = tasks.value.tasks.length;
-    tasks.value = {
-      ...tasks.value,
-      tasks: tasks.value.tasks.filter((t) => t.tid !== tid),
-    };
-    if (tasks.value.tasks.length === before) {
+    const exists = tasks.value.tasks.find((t) => t.tid === tid);
+    if (!exists) {
       process.stderr.write(`fairfox todo: no task with tid "${tid}".\n`);
       return Promise.resolve(1);
     }
+    tasks.handle?.change((doc) => {
+      const idx = doc.tasks.findIndex((t) => t.tid === tid);
+      if (idx >= 0) {
+        doc.tasks.splice(idx, 1);
+      }
+    });
     await flushOutgoing();
     process.stdout.write(`deleted ${tid}\n`);
     return 0;
@@ -426,10 +444,9 @@ function projectAdd(rest: readonly string[]): Promise<number> {
       notes: '',
       sortOrder: projects.value.projects.length,
     };
-    projects.value = {
-      ...projects.value,
-      projects: [...projects.value.projects, project],
-    };
+    projects.handle?.change((doc) => {
+      doc.projects.push(project);
+    });
     await flushOutgoing();
     process.stdout.write(`added ${project.pid}: ${project.name}\n`);
     return 0;
@@ -450,25 +467,22 @@ function projectUpdate(pid: string, rest: readonly string[]): Promise<number> {
       process.stderr.write(`fairfox todo: no project with pid "${pid}".\n`);
       return Promise.resolve(1);
     }
-    projects.value = {
-      ...projects.value,
-      projects: projects.value.projects.map((p) => {
-        if (p.pid !== pid) {
-          return p;
+    projects.handle?.change((doc) => {
+      const target = doc.projects.find((p) => p.pid === pid);
+      if (!target) {
+        return;
+      }
+      const fields = target as unknown as Record<string, unknown>;
+      for (const pair of pairs) {
+        if (pair.field === 'status' && !isProjectStatus(pair.value)) {
+          continue;
         }
-        const patch: Partial<Project> = {};
-        for (const pair of pairs) {
-          if (pair.field === 'status' && !isProjectStatus(pair.value)) {
-            continue;
-          }
-          if (pair.field === 'category' && pair.value !== 'personal' && pair.value !== 'amboss') {
-            continue;
-          }
-          patch[pair.field] = pair.field === 'parent' && pair.value === '' ? null : pair.value;
+        if (pair.field === 'category' && pair.value !== 'personal' && pair.value !== 'amboss') {
+          continue;
         }
-        return { ...p, ...patch };
-      }),
-    };
+        fields[pair.field] = pair.field === 'parent' && pair.value === '' ? null : pair.value;
+      }
+    });
     await flushOutgoing();
     process.stdout.write(`updated ${pid}\n`);
     return 0;
@@ -477,15 +491,17 @@ function projectUpdate(pid: string, rest: readonly string[]): Promise<number> {
 
 function projectDelete(pid: string): Promise<number> {
   return withMesh(async ({ projects }) => {
-    const before = projects.value.projects.length;
-    projects.value = {
-      ...projects.value,
-      projects: projects.value.projects.filter((p) => p.pid !== pid),
-    };
-    if (projects.value.projects.length === before) {
+    const exists = projects.value.projects.find((p) => p.pid === pid);
+    if (!exists) {
       process.stderr.write(`fairfox todo: no project with pid "${pid}".\n`);
       return Promise.resolve(1);
     }
+    projects.handle?.change((doc) => {
+      const idx = doc.projects.findIndex((p) => p.pid === pid);
+      if (idx >= 0) {
+        doc.projects.splice(idx, 1);
+      }
+    });
     await flushOutgoing();
     process.stdout.write(`deleted ${pid}\n`);
     return 0;
@@ -505,10 +521,9 @@ function captureAdd(text: string): Promise<number> {
       text,
       createdAt: new Date().toISOString(),
     };
-    captures.value = {
-      ...captures.value,
-      captures: [...captures.value.captures, capture],
-    };
+    captures.handle?.change((doc) => {
+      doc.captures.push(capture);
+    });
     await flushOutgoing();
     process.stdout.write(`added ${capture.id}: ${text}\n`);
     return 0;
@@ -531,15 +546,17 @@ function captureList(): Promise<number> {
 
 function captureDelete(id: string): Promise<number> {
   return withMesh(async ({ captures }) => {
-    const before = captures.value.captures.length;
-    captures.value = {
-      ...captures.value,
-      captures: captures.value.captures.filter((c) => c.id !== id),
-    };
-    if (captures.value.captures.length === before) {
+    const exists = captures.value.captures.find((c) => c.id === id);
+    if (!exists) {
       process.stderr.write(`fairfox todo: no capture with id "${id}".\n`);
       return Promise.resolve(1);
     }
+    captures.handle?.change((doc) => {
+      const idx = doc.captures.findIndex((c) => c.id === id);
+      if (idx >= 0) {
+        doc.captures.splice(idx, 1);
+      }
+    });
     await flushOutgoing();
     process.stdout.write(`deleted ${id}\n`);
     return 0;
@@ -638,9 +655,22 @@ function importLegacy(rest: readonly string[]): Promise<number> {
       createdAt: c.created_at,
     }));
 
-    projects.value = { projects: nextProjects };
-    tasks.value = { tasks: nextTasks };
-    captures.value = { captures: nextCaptures };
+    // Legacy import is a one-shot bulk replace. There are no
+    // concurrent peer edits in scope for this run by design — the
+    // user issuing `todo import-legacy` is replacing the doc
+    // wholesale from a known upstream source — so the per-key
+    // merge concern doesn't apply. But the rule is uniform, so we
+    // still route through handle.change: an array reset is just
+    // splice-then-push, both per-element ops.
+    projects.handle?.change((doc) => {
+      doc.projects.splice(0, doc.projects.length, ...nextProjects);
+    });
+    tasks.handle?.change((doc) => {
+      doc.tasks.splice(0, doc.tasks.length, ...nextTasks);
+    });
+    captures.handle?.change((doc) => {
+      doc.captures.splice(0, doc.captures.length, ...nextCaptures);
+    });
 
     await flushOutgoing(2000);
 

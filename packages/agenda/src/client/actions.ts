@@ -79,10 +79,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       points: kind === 'chore' ? 1 : 0,
       active: true,
     };
-    agenda.value = {
-      ...agenda.value,
-      items: [...agenda.value.items, item],
-    };
+    agenda.handle?.change((doc) => {
+      doc.items.push(item);
+    });
   },
 
   'item.create-from-draft': () => {
@@ -123,10 +122,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
         item.onceDate = draft.onceDate;
       }
     }
-    agenda.value = {
-      ...agenda.value,
-      items: [...agenda.value.items, item],
-    };
+    agenda.handle?.change((doc) => {
+      doc.items.push(item);
+    });
     resetItemDraft();
   },
 
@@ -135,10 +133,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id) {
       return;
     }
-    agenda.value = {
-      ...agenda.value,
-      items: agenda.value.items.filter((i) => i.id !== id),
-    };
+    agenda.handle?.change((doc) => {
+      const idx = doc.items.findIndex((i) => i.id === id);
+      if (idx >= 0) {
+        doc.items.splice(idx, 1);
+      }
+    });
   },
 
   'item.toggle-active': (ctx) => {
@@ -146,10 +146,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id) {
       return;
     }
-    agenda.value = {
-      ...agenda.value,
-      items: agenda.value.items.map((i) => (i.id === id ? { ...i, active: !i.active } : i)),
-    };
+    agenda.handle?.change((doc) => {
+      const target = doc.items.find((i) => i.id === id);
+      if (target) {
+        target.active = !target.active;
+      }
+    });
   },
 
   'chore.done': (ctx) => {
@@ -165,10 +167,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       completedAt: new Date().toISOString(),
       kind: 'done',
     };
-    agenda.value = {
-      ...agenda.value,
-      completions: [...agenda.value.completions, completion],
-    };
+    agenda.handle?.change((doc) => {
+      doc.completions.push(completion);
+    });
   },
 
   'chore.snooze': (ctx) => {
@@ -189,10 +190,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       completedAt: new Date().toISOString(),
       kind,
     };
-    agenda.value = {
-      ...agenda.value,
-      completions: [...agenda.value.completions, completion],
-    };
+    agenda.handle?.change((doc) => {
+      doc.completions.push(completion);
+    });
   },
 
   'agenda.tab': (ctx) => {

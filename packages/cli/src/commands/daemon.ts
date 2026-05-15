@@ -119,15 +119,6 @@ function readString(obj: Record<string, unknown>, key: string): string | undefin
   return typeof v === 'string' ? v : undefined;
 }
 
-function upsertSession(prev: SessionsActive, entry: SessionAnnouncement): SessionsActive {
-  const filtered = prev.sessions.filter((s) => s.sessionId !== entry.sessionId);
-  return { sessions: [...filtered, entry] };
-}
-
-function removeSessionById(prev: SessionsActive, sessionId: string): SessionsActive {
-  return { sessions: prev.sessions.filter((s) => `${s.sessionId}` !== sessionId) };
-}
-
 async function daemonHook(kindRaw: string): Promise<number> {
   if (!isHookKind(kindRaw)) {
     process.stderr.write(
@@ -181,10 +172,21 @@ async function daemonHook(kindRaw: string): Promise<number> {
       return 1;
     }
 
+    const handle = signal.handle;
+    if (!handle) {
+      throw new Error(
+        'daemon hook: sessions:active handle not bridged after loaded — cannot write'
+      );
+    }
     if (kindRaw === 'session-stop') {
       // Drop the session from sessions:active on stop. Future phase
       // may keep a short tombstone window; v1 removes immediately.
-      signal.value = removeSessionById(signal.value, sessionIdRaw);
+      handle.change((doc) => {
+        const idx = doc.sessions.findIndex((s) => `${s.sessionId}` === sessionIdRaw);
+        if (idx >= 0) {
+          doc.sessions.splice(idx, 1);
+        }
+      });
     } else {
       const entry: SessionAnnouncement = {
         sessionId,
@@ -196,7 +198,13 @@ async function daemonHook(kindRaw: string): Promise<number> {
         ...(promptPreview ? { lastPromptPreview: promptPreview.slice(0, 200) } : {}),
         ...(toolName ? { lastToolName: toolName } : {}),
       };
-      signal.value = upsertSession(signal.value, entry);
+      handle.change((doc) => {
+        const idx = doc.sessions.findIndex((s) => s.sessionId === entry.sessionId);
+        if (idx >= 0) {
+          doc.sessions.splice(idx, 1);
+        }
+        doc.sessions.push(entry);
+      });
     }
 
     await flushOutgoing(HOOK_FLUSH_MS);
