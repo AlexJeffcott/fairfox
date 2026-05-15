@@ -7,6 +7,7 @@ import { hostname } from 'node:os';
 import {
   type DeviceEntry,
   type DevicesDoc,
+  devicesState,
   touchSelfDeviceEntry,
   upsertDeviceEntry,
 } from '@fairfox/shared/devices-state';
@@ -169,23 +170,43 @@ export function peersGcRevoked(): Promise<number> {
     const client = await openMeshClient({ peerId });
     try {
       const peered = await waitForPeer(client, 8000);
-      const devices = $meshState<DevicesDoc>('mesh:devices', DEVICES_INITIAL);
-      await devices.loaded;
-      const before = devices.value.devices;
-      const kept: Record<string, DeviceEntry> = {};
-      let removed = 0;
-      for (const [id, entry] of Object.entries(before)) {
-        if (entry.revokedAt) {
-          removed += 1;
-        } else {
-          kept[id] = entry;
-        }
+      await devicesState.loaded;
+      // Per-key deletes through `handle.change`, NOT a whole-map
+      // replacement. Assigning `devicesState.value = { devices: kept }`
+      // routes through polly's `applyTopLevel`, which lowers to a
+      // single Automerge op `doc.devices = incoming` that replaces
+      // the entire field — conflict-resolved by actor-id hash. A
+      // concurrent per-key write on a remote peer (e.g. a self-row
+      // `lastSeenAt` bump) then "wins" the merge on a coin-flip and
+      // every delete in this batch is silently discarded on the
+      // loser side. fairfox#22 caught this in the field: a daemon
+      // ran `gc-revoked`, dropped 87 entries locally, but the
+      // iPhone won the merge by actor-id hash and kept its 89-entry
+      // view forever, with no diff for future sync rounds to merge.
+      // Per-key `delete` ops merge cleanly under Automerge — every
+      // receiver applies them as discrete per-key changes without
+      // colliding with other per-key updates on the same map.
+      const handle = devicesState.handle;
+      if (!handle) {
+        process.stdout.write('mesh:devices handle not bridged; cannot gc\n');
+        return 1;
       }
+      let removed = 0;
+      handle.change((doc) => {
+        if (!doc.devices) {
+          return;
+        }
+        for (const id of Object.keys(doc.devices)) {
+          if (doc.devices[id]?.revokedAt) {
+            delete doc.devices[id];
+            removed += 1;
+          }
+        }
+      });
       if (removed === 0) {
         process.stdout.write('no revoked entries to remove\n');
         return 0;
       }
-      devices.value = { ...devices.value, devices: kept };
       if (peered) {
         await flushOutgoing(2000);
       }
