@@ -42,11 +42,13 @@ function generateId(): string {
   return `SW${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
-function updateSession(id: string, mutator: (s: Session) => Session): void {
-  sessionsState.value = {
-    ...sessionsState.value,
-    sessions: sessionsState.value.sessions.map((s) => (s.id === id ? mutator(s) : s)),
-  };
+function withSession(id: string, mutator: (s: Session) => void): void {
+  sessionsState.handle?.change((doc) => {
+    const target = doc.sessions.find((s) => s.id === id);
+    if (target) {
+      mutator(target);
+    }
+  });
 }
 
 export const registry: Record<string, (ctx: HandlerContext) => void> = {
@@ -72,10 +74,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       turns: [],
       rating: null,
     };
-    sessionsState.value = {
-      ...sessionsState.value,
-      sessions: [...sessionsState.value.sessions, session],
-    };
+    sessionsState.handle?.change((doc) => {
+      doc.sessions.push(session);
+    });
   },
 
   'session.add-turn': (ctx) => {
@@ -90,7 +91,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       text,
       timestamp: new Date().toISOString(),
     };
-    updateSession(id, (s) => ({ ...s, turns: [...s.turns, turn] }));
+    withSession(id, (s) => {
+      s.turns.push(turn);
+    });
   },
 
   'session.rate': (ctx) => {
@@ -99,7 +102,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id || Number.isNaN(rating) || rating < 1 || rating > 5) {
       return;
     }
-    updateSession(id, (s) => ({ ...s, rating }));
+    withSession(id, (s) => {
+      s.rating = rating;
+    });
   },
 
   'session.end': (ctx) => {
@@ -107,7 +112,10 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id) {
       return;
     }
-    updateSession(id, (s) => ({ ...s, endedAt: new Date().toISOString() }));
+    const now = new Date().toISOString();
+    withSession(id, (s) => {
+      s.endedAt = now;
+    });
   },
 
   'speakwell.tab': (ctx) => {
