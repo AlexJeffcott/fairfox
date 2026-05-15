@@ -22,14 +22,16 @@
 // case still passes; the assertion is "one of the two is lost",
 // which is the failure mode we don't want code to depend on.
 
-import * as Automerge from '@automerge/automerge';
 import { describe, expect, test } from 'bun:test';
+import * as Automerge from '@automerge/automerge';
 
 interface DevicesDoc {
+  [key: string]: unknown;
   devices: Record<string, { name: string }>;
 }
 
 interface ItemsDoc {
+  [key: string]: unknown;
   items: string[];
 }
 

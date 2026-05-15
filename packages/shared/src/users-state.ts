@@ -199,11 +199,31 @@ export function createBootstrapUser(options: CreateBootstrapUserOptions): UserEn
   };
   const signature = sign(encodeUserForSigning(draft), options.userKey.secretKey);
   const entry: UserEntry = { ...draft, signature: Array.from(signature) };
-  usersState.value = {
-    ...usersState.value,
-    users: { ...usersState.value.users, [userId]: entry },
-  };
+  writeUserEntry(userId, entry);
   return entry;
+}
+
+/** Apply a per-key write to `mesh:users.users[userId]` through the
+ * Automerge handle. This is the only write surface for the doc —
+ * the previous `usersState.value = { ...users, [id]: entry }` path
+ * lowered to polly's `applyTopLevel`, which replaces the entire
+ * `users` field in one Automerge op and silently loses to
+ * concurrent per-key writes by actor-id hash (fairfox#22, ADR
+ * 0009). Throws if the wrapper hasn't bridged; callers must
+ * `await usersState.loaded` before any write. */
+function writeUserEntry(userId: string, entry: UserEntry): void {
+  const handle = usersState.handle;
+  if (!handle) {
+    throw new Error(
+      'usersState: handle not bridged — caller must await usersState.loaded before writing'
+    );
+  }
+  handle.change((doc) => {
+    if (!doc.users) {
+      doc.users = {};
+    }
+    doc.users[userId] = entry;
+  });
 }
 
 export interface UpsertUserOptions {
@@ -214,10 +234,7 @@ export interface UpsertUserOptions {
 }
 
 export function upsertUser(options: UpsertUserOptions): void {
-  usersState.value = {
-    ...usersState.value,
-    users: { ...usersState.value.users, [options.entry.userId]: options.entry },
-  };
+  writeUserEntry(options.entry.userId, options.entry);
 }
 
 export interface SetGrantsOptions {
@@ -254,10 +271,7 @@ export function setUserGrants(options: SetGrantsOptions): void {
     createdByUserId: options.granterUserId,
     signature: Array.from(signature),
   };
-  usersState.value = {
-    ...usersState.value,
-    users: { ...usersState.value.users, [options.userId]: next },
-  };
+  writeUserEntry(options.userId, next);
 }
 
 export interface RevokeUserOptions {
@@ -282,10 +296,7 @@ export function revokeUser(options: RevokeUserOptions): void {
     revokedByUserId: options.revokerUserId,
     revocationSignature: Array.from(revocationSignature),
   };
-  usersState.value = {
-    ...usersState.value,
-    users: { ...usersState.value.users, [options.userId]: next },
-  };
+  writeUserEntry(options.userId, next);
 }
 
 /** Verify that a user row's `signature` was produced by the expected
