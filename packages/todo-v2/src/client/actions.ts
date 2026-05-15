@@ -90,10 +90,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       notes: '',
       sortOrder: projectsState.value.projects.length,
     };
-    projectsState.value = {
-      ...projectsState.value,
-      projects: [...projectsState.value.projects, project],
-    };
+    projectsState.handle?.change((doc) => {
+      doc.projects.push(project);
+    });
   },
 
   'project.update-status': (ctx) => {
@@ -102,10 +101,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!pid || !status || !isProjectStatus(status)) {
       return;
     }
-    projectsState.value = {
-      ...projectsState.value,
-      projects: projectsState.value.projects.map((p) => (p.pid === pid ? { ...p, status } : p)),
-    };
+    projectsState.handle?.change((doc) => {
+      const target = doc.projects.find((p) => p.pid === pid);
+      if (target) {
+        target.status = status;
+      }
+    });
   },
 
   'project.delete': (ctx) => {
@@ -113,10 +114,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!pid) {
       return;
     }
-    projectsState.value = {
-      ...projectsState.value,
-      projects: projectsState.value.projects.filter((p) => p.pid !== pid),
-    };
+    projectsState.handle?.change((doc) => {
+      const idx = doc.projects.findIndex((p) => p.pid === pid);
+      if (idx >= 0) {
+        doc.projects.splice(idx, 1);
+      }
+    });
   },
 
   // --- Project detail navigation ---
@@ -144,10 +147,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       notes: '',
       sortOrder: projectsState.value.projects.length,
     };
-    projectsState.value = {
-      ...projectsState.value,
-      projects: [...projectsState.value.projects, project],
-    };
+    projectsState.handle?.change((doc) => {
+      doc.projects.push(project);
+    });
     setSelectedProjectId(project.pid);
   },
 
@@ -156,10 +158,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!pid) {
       return;
     }
-    projectsState.value = {
-      ...projectsState.value,
-      projects: projectsState.value.projects.filter((p) => p.pid !== pid),
-    };
+    projectsState.handle?.change((doc) => {
+      const idx = doc.projects.findIndex((p) => p.pid === pid);
+      if (idx >= 0) {
+        doc.projects.splice(idx, 1);
+      }
+    });
     setSelectedProjectId(null);
   },
 
@@ -191,11 +195,14 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (field === 'status' && !isProjectStatus(value)) {
       return;
     }
-    const patch: Partial<Project> = { [field]: field === 'parent' && value === '' ? null : value };
-    projectsState.value = {
-      ...projectsState.value,
-      projects: projectsState.value.projects.map((p) => (p.pid === pid ? { ...p, ...patch } : p)),
-    };
+    const normalised = field === 'parent' && value === '' ? null : value;
+    projectsState.handle?.change((doc) => {
+      const target = doc.projects.find((p) => p.pid === pid);
+      if (!target) {
+        return;
+      }
+      (target as Record<string, unknown>)[field] = normalised;
+    });
   },
 
   // --- Tasks ---
@@ -214,10 +221,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       links: '',
       notes: '',
     };
-    tasksState.value = {
-      ...tasksState.value,
-      tasks: [...tasksState.value.tasks, task],
-    };
+    tasksState.handle?.change((doc) => {
+      doc.tasks.push(task);
+    });
   },
 
   'task.toggle-done': (ctx) => {
@@ -225,10 +231,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!tid) {
       return;
     }
-    tasksState.value = {
-      ...tasksState.value,
-      tasks: tasksState.value.tasks.map((t) => (t.tid === tid ? { ...t, done: !t.done } : t)),
-    };
+    tasksState.handle?.change((doc) => {
+      const target = doc.tasks.find((t) => t.tid === tid);
+      if (target) {
+        target.done = !target.done;
+      }
+    });
   },
 
   'task.set-priority': (ctx) => {
@@ -237,10 +245,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!tid || !priority || !isTaskPriority(priority)) {
       return;
     }
-    tasksState.value = {
-      ...tasksState.value,
-      tasks: tasksState.value.tasks.map((t) => (t.tid === tid ? { ...t, priority } : t)),
-    };
+    tasksState.handle?.change((doc) => {
+      const target = doc.tasks.find((t) => t.tid === tid);
+      if (target) {
+        target.priority = priority;
+      }
+    });
   },
 
   'task.update-notes': (ctx) => {
@@ -249,10 +259,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!tid) {
       return;
     }
-    tasksState.value = {
-      ...tasksState.value,
-      tasks: tasksState.value.tasks.map((t) => (t.tid === tid ? { ...t, notes } : t)),
-    };
+    tasksState.handle?.change((doc) => {
+      const target = doc.tasks.find((t) => t.tid === tid);
+      if (target) {
+        target.notes = notes;
+      }
+    });
   },
 
   'task.delete': (ctx) => {
@@ -260,10 +272,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!tid) {
       return;
     }
-    tasksState.value = {
-      ...tasksState.value,
-      tasks: tasksState.value.tasks.filter((t) => t.tid !== tid),
-    };
+    tasksState.handle?.change((doc) => {
+      const idx = doc.tasks.findIndex((t) => t.tid === tid);
+      if (idx >= 0) {
+        doc.tasks.splice(idx, 1);
+      }
+    });
   },
 
   // --- Detail-view navigation ---
@@ -288,10 +302,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       links: '',
       notes: '',
     };
-    tasksState.value = {
-      ...tasksState.value,
-      tasks: [...tasksState.value.tasks, task],
-    };
+    tasksState.handle?.change((doc) => {
+      doc.tasks.push(task);
+    });
     setSelectedTaskId(task.tid);
   },
 
@@ -300,10 +313,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!tid) {
       return;
     }
-    tasksState.value = {
-      ...tasksState.value,
-      tasks: tasksState.value.tasks.filter((t) => t.tid !== tid),
-    };
+    tasksState.handle?.change((doc) => {
+      const idx = doc.tasks.findIndex((t) => t.tid === tid);
+      if (idx >= 0) {
+        doc.tasks.splice(idx, 1);
+      }
+    });
     setSelectedTaskId(null);
   },
 
@@ -335,11 +350,13 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (field === 'priority' && !isTaskPriority(value)) {
       return;
     }
-    const patch: Partial<Task> = { [field]: value };
-    tasksState.value = {
-      ...tasksState.value,
-      tasks: tasksState.value.tasks.map((t) => (t.tid === tid ? { ...t, ...patch } : t)),
-    };
+    tasksState.handle?.change((doc) => {
+      const target = doc.tasks.find((t) => t.tid === tid);
+      if (!target) {
+        return;
+      }
+      (target as Record<string, unknown>)[field] = value;
+    });
   },
 
   // --- Quick Capture ---
@@ -353,10 +370,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       text,
       createdAt: new Date().toISOString(),
     };
-    capturesState.value = {
-      ...capturesState.value,
-      captures: [...capturesState.value.captures, capture],
-    };
+    capturesState.handle?.change((doc) => {
+      doc.captures.push(capture);
+    });
   },
 
   'capture.delete': (ctx) => {
@@ -364,10 +380,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id) {
       return;
     }
-    capturesState.value = {
-      ...capturesState.value,
-      captures: capturesState.value.captures.filter((c) => c.id !== id),
-    };
+    capturesState.handle?.change((doc) => {
+      const idx = doc.captures.findIndex((c) => c.id === id);
+      if (idx >= 0) {
+        doc.captures.splice(idx, 1);
+      }
+    });
   },
 
   'capture.update': (ctx) => {
@@ -376,10 +394,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id || text === undefined) {
       return;
     }
-    capturesState.value = {
-      ...capturesState.value,
-      captures: capturesState.value.captures.map((c) => (c.id === id ? { ...c, text } : c)),
-    };
+    capturesState.handle?.change((doc) => {
+      const target = doc.captures.find((c) => c.id === id);
+      if (target) {
+        target.text = text;
+      }
+    });
   },
 
   /**
@@ -406,14 +426,15 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       links: '',
       notes: '',
     };
-    tasksState.value = {
-      ...tasksState.value,
-      tasks: [...tasksState.value.tasks, task],
-    };
-    capturesState.value = {
-      ...capturesState.value,
-      captures: capturesState.value.captures.filter((c) => c.id !== id),
-    };
+    tasksState.handle?.change((doc) => {
+      doc.tasks.push(task);
+    });
+    capturesState.handle?.change((doc) => {
+      const idx = doc.captures.findIndex((c) => c.id === id);
+      if (idx >= 0) {
+        doc.captures.splice(idx, 1);
+      }
+    });
     setActiveTab('tasks');
     setSelectedTaskId(task.tid);
   },
