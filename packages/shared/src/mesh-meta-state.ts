@@ -51,7 +51,21 @@ export const meshMetaState: MeshMetaPrimitive = {
 };
 
 export function setMeshName(name: string): void {
-  meshMetaState.value = { ...meshMetaState.value, name };
+  // Per-key write through the handle. The previous value-setter
+  // path went through polly's applyTopLevel, which would replace
+  // every top-level field at once and race concurrent peer writes
+  // on a sibling field by actor-id hash (ADR 0009). mesh:meta only
+  // has one current field but the rule is uniform: every shared
+  // doc gets the same write surface.
+  const handle = meshMetaState.handle;
+  if (!handle) {
+    throw new Error(
+      'meshMetaState: handle not bridged — caller must await meshMetaState.loaded before writing'
+    );
+  }
+  handle.change((doc) => {
+    doc.name = name;
+  });
 }
 
 /** A pool of short lines in the key of Dylan Thomas — pastoral,
