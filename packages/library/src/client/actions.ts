@@ -37,10 +37,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       body: '',
       notes: '',
     };
-    libraryState.value = {
-      ...libraryState.value,
-      refs: [...libraryState.value.refs, ref],
-    };
+    libraryState.handle?.change((doc) => {
+      doc.refs.push(ref);
+    });
   },
 
   'ref.update': (ctx) => {
@@ -48,17 +47,18 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id) {
       return;
     }
-    const updates: Partial<Ref> = {};
-    if (ctx.data.body !== undefined) {
-      updates.body = ctx.data.body;
-    }
-    if (ctx.data.notes !== undefined) {
-      updates.notes = ctx.data.notes;
-    }
-    libraryState.value = {
-      ...libraryState.value,
-      refs: libraryState.value.refs.map((r) => (r.id === id ? { ...r, ...updates } : r)),
-    };
+    libraryState.handle?.change((doc) => {
+      const target = doc.refs.find((r) => r.id === id);
+      if (!target) {
+        return;
+      }
+      if (ctx.data.body !== undefined) {
+        target.body = ctx.data.body;
+      }
+      if (ctx.data.notes !== undefined) {
+        target.notes = ctx.data.notes;
+      }
+    });
   },
 
   'ref.delete': (ctx) => {
@@ -66,10 +66,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id) {
       return;
     }
-    libraryState.value = {
-      ...libraryState.value,
-      refs: libraryState.value.refs.filter((r) => r.id !== id),
-    };
+    libraryState.handle?.change((doc) => {
+      const idx = doc.refs.findIndex((r) => r.id === id);
+      if (idx >= 0) {
+        doc.refs.splice(idx, 1);
+      }
+    });
   },
 
   'doc.create': (ctx) => {
@@ -77,7 +79,7 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!title) {
       return;
     }
-    const doc: Doc = {
+    const newDoc: Doc = {
       id: generateId('D'),
       path: '',
       category: 'world',
@@ -85,10 +87,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       content: '',
       lastModified: new Date().toISOString(),
     };
-    libraryState.value = {
-      ...libraryState.value,
-      docs: [...libraryState.value.docs, doc],
-    };
+    libraryState.handle?.change((doc) => {
+      doc.docs.push(newDoc);
+    });
   },
 
   'doc.update': (ctx) => {
@@ -96,17 +97,20 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id) {
       return;
     }
-    const updates: Partial<Doc> = {};
-    if (ctx.data.content !== undefined) {
-      updates.content = ctx.data.content;
-    }
-    if (Object.keys(updates).length > 0) {
-      updates.lastModified = new Date().toISOString();
-    }
-    libraryState.value = {
-      ...libraryState.value,
-      docs: libraryState.value.docs.map((d) => (d.id === id ? { ...d, ...updates } : d)),
-    };
+    libraryState.handle?.change((doc) => {
+      const target = doc.docs.find((d) => d.id === id);
+      if (!target) {
+        return;
+      }
+      let touched = false;
+      if (ctx.data.content !== undefined) {
+        target.content = ctx.data.content;
+        touched = true;
+      }
+      if (touched) {
+        target.lastModified = new Date().toISOString();
+      }
+    });
   },
 
   'doc.delete': (ctx) => {
@@ -114,10 +118,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id) {
       return;
     }
-    libraryState.value = {
-      ...libraryState.value,
-      docs: libraryState.value.docs.filter((d) => d.id !== id),
-    };
+    libraryState.handle?.change((doc) => {
+      const idx = doc.docs.findIndex((d) => d.id === id);
+      if (idx >= 0) {
+        doc.docs.splice(idx, 1);
+      }
+    });
   },
 
   'library.tab': (ctx) => {
@@ -139,10 +145,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id) {
       return;
     }
-    libraryState.value = {
-      ...libraryState.value,
-      refs: libraryState.value.refs.filter((r) => r.id !== id),
-    };
+    libraryState.handle?.change((doc) => {
+      const idx = doc.refs.findIndex((r) => r.id === id);
+      if (idx >= 0) {
+        doc.refs.splice(idx, 1);
+      }
+    });
     setSelectedRefId(null);
   },
 
@@ -159,10 +167,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id) {
       return;
     }
-    libraryState.value = {
-      ...libraryState.value,
-      docs: libraryState.value.docs.filter((d) => d.id !== id),
-    };
+    libraryState.handle?.change((doc) => {
+      const idx = doc.docs.findIndex((d) => d.id === id);
+      if (idx >= 0) {
+        doc.docs.splice(idx, 1);
+      }
+    });
     setSelectedDocId(null);
   },
 };
