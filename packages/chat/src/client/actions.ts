@@ -96,35 +96,31 @@ function ensureActiveChat(
     createdByUserId: creatorUserId,
     contextRefs: pageCtx ? [pageCtx] : [],
   };
-  chatState.value = {
-    ...chatState.value,
-    chats: [...chatState.value.chats, fresh],
-  };
+  chatState.handle?.change((doc) => {
+    doc.chats.push(fresh);
+  });
   activeChatId.value = fresh.id;
   return fresh;
 }
 
 function appendContextToChat(chatId: string, ctx: PageContext): void {
-  chatState.value = {
-    ...chatState.value,
-    chats: chatState.value.chats.map((c) => {
-      if (c.id !== chatId) {
-        return c;
-      }
-      if (contextAlreadyPresent(c.contextRefs, ctx)) {
-        return c;
-      }
-      return { ...c, contextRefs: [...c.contextRefs, ctx] };
-    }),
-  };
+  chatState.handle?.change((doc) => {
+    const target = doc.chats.find((c) => c.id === chatId);
+    if (!target || contextAlreadyPresent(target.contextRefs, ctx)) {
+      return;
+    }
+    target.contextRefs.push(ctx);
+  });
 }
 
 function bumpChatTimestamp(chatId: string): void {
   const now = new Date().toISOString();
-  chatState.value = {
-    ...chatState.value,
-    chats: chatState.value.chats.map((c) => (c.id === chatId ? { ...c, updatedAt: now } : c)),
-  };
+  chatState.handle?.change((doc) => {
+    const target = doc.chats.find((c) => c.id === chatId);
+    if (target) {
+      target.updatedAt = now;
+    }
+  });
 }
 
 export const CHAT_WRITE_ACTIONS: ReadonlySet<string> = new Set([
@@ -246,10 +242,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       return;
     }
     const now = new Date().toISOString();
-    chatState.value = {
-      ...chatState.value,
-      chats: chatState.value.chats.map((c) => (c.id === id ? { ...c, archivedAt: now } : c)),
-    };
+    chatState.handle?.change((doc) => {
+      const target = doc.chats.find((c) => c.id === id);
+      if (target) {
+        target.archivedAt = now;
+      }
+    });
     if (activeChatId.value === id) {
       activeChatId.value = null;
     }
@@ -261,18 +259,16 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!chatId || !key) {
       return;
     }
-    chatState.value = {
-      ...chatState.value,
-      chats: chatState.value.chats.map((c) => {
-        if (c.id !== chatId) {
-          return c;
-        }
-        return {
-          ...c,
-          contextRefs: c.contextRefs.filter((r) => `${r.kind}:${r.id ?? ''}` !== key),
-        };
-      }),
-    };
+    chatState.handle?.change((doc) => {
+      const target = doc.chats.find((c) => c.id === chatId);
+      if (!target) {
+        return;
+      }
+      const idx = target.contextRefs.findIndex((r) => `${r.kind}:${r.id ?? ''}` === key);
+      if (idx >= 0) {
+        target.contextRefs.splice(idx, 1);
+      }
+    });
   },
 
   'chat.pin-context': () => {
@@ -319,10 +315,9 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
         pending: true,
         createdAt: new Date().toISOString(),
       };
-      chatState.value = {
-        ...chatState.value,
-        messages: [...chatState.value.messages, message],
-      };
+      chatState.handle?.change((doc) => {
+        doc.messages.push(message);
+      });
       bumpChatTimestamp(chat.id);
       resetDraft();
     });
@@ -333,10 +328,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id) {
       return;
     }
-    chatState.value = {
-      ...chatState.value,
-      messages: chatState.value.messages.filter((m) => m.id !== id),
-    };
+    chatState.handle?.change((doc) => {
+      const idx = doc.messages.findIndex((m) => m.id === id);
+      if (idx >= 0) {
+        doc.messages.splice(idx, 1);
+      }
+    });
   },
 
   'chat.cancel-pending': (ctx) => {
@@ -344,10 +341,12 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     if (!id) {
       return;
     }
-    chatState.value = {
-      ...chatState.value,
-      messages: chatState.value.messages.map((m) => (m.id === id ? { ...m, pending: false } : m)),
-    };
+    chatState.handle?.change((doc) => {
+      const target = doc.messages.find((m) => m.id === id);
+      if (target) {
+        target.pending = false;
+      }
+    });
   },
 
   // Regenerate an errored assistant turn. Deletes the assistant
@@ -364,12 +363,16 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       return;
     }
     const parentId = errored.parentId;
-    chatState.value = {
-      ...chatState.value,
-      messages: chatState.value.messages
-        .filter((m) => m.id !== id)
-        .map((m) => (m.id === parentId ? { ...m, pending: true } : m)),
-    };
+    chatState.handle?.change((doc) => {
+      const erroredIdx = doc.messages.findIndex((m) => m.id === id);
+      if (erroredIdx >= 0) {
+        doc.messages.splice(erroredIdx, 1);
+      }
+      const parent = doc.messages.find((m) => m.id === parentId);
+      if (parent) {
+        parent.pending = true;
+      }
+    });
   },
 
   'chat.history-search': (ctx) => {
