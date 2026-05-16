@@ -24,6 +24,7 @@ import {
   type Role,
   revokeUser,
   type UserEntry,
+  upsertUser,
   usersState,
 } from '@fairfox/shared/users-state';
 import {
@@ -280,21 +281,17 @@ export function usersInvite(rest: readonly string[]): Promise<number> {
       // Also write the invitee's UserEntry so the row exists
       // regardless of whether the invitee's own upsertUser survives
       // their post-pair reload; CRDT merge handles duplicates.
-      users.value = {
-        ...users.value,
-        users: {
-          ...users.value.users,
-          [payload.userId]: {
-            userId: payload.userId,
-            displayName: payload.displayName,
-            roles: payload.roles,
-            grants: payload.grants,
-            createdByUserId: payload.createdByUserId,
-            createdAt: payload.createdAt,
-            signature: payload.signature,
-          },
+      upsertUser({
+        entry: {
+          userId: payload.userId,
+          displayName: payload.displayName,
+          roles: payload.roles,
+          grants: payload.grants,
+          createdByUserId: payload.createdByUserId,
+          createdAt: payload.createdAt,
+          signature: payload.signature,
         },
-      };
+      });
       if (peered) {
         await flushOutgoing(2000);
       }

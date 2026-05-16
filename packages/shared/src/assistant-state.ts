@@ -133,25 +133,30 @@ export type SessionState =
   | { readonly tag: 'stopped'; readonly since: string; readonly reason: string };
 
 // --- mesh-resident additions -----------------------------------
+// These interfaces back $meshState docs that callers mutate through
+// `handle.change`. Per-field readonly modifiers would block those
+// writes; protection against top-level `.value =` reassignment lives
+// in the wrapper-setter restriction (df3542f) and the
+// check-no-mesh-state-value-assign lint (7df0a52), not at this layer.
 export interface AssistantMessageExtras {
-  readonly model?: ModelId;
-  readonly inputTokens?: number;
-  readonly outputTokens?: number;
-  readonly cachedInputTokens?: number;
-  readonly costUsd?: number;
-  readonly toolsUsed?: readonly string[];
-  readonly durationMs?: number;
-  readonly error?: TurnError;
-  readonly daemonId?: string;
-  readonly startedAt?: string;
-  readonly finishedAt?: string;
+  model?: ModelId;
+  inputTokens?: number;
+  outputTokens?: number;
+  cachedInputTokens?: number;
+  costUsd?: number;
+  toolsUsed?: string[];
+  durationMs?: number;
+  error?: TurnError;
+  daemonId?: string;
+  startedAt?: string;
+  finishedAt?: string;
 }
 
 export interface ChatExtras {
-  readonly typing?: boolean;
-  readonly totalCostUsd?: number;
-  readonly pinnedModel?: ModelId;
-  readonly scopeOverrideKey?: string;
+  typing?: boolean;
+  totalCostUsd?: number;
+  pinnedModel?: ModelId;
+  scopeOverrideKey?: string;
 }
 
 // --- mesh doc ids ----------------------------------------------
@@ -174,45 +179,45 @@ export const CHAT_HEALTH_DOC_ID = 'chat:health';
 // visible until someone manually clears it).
 export interface RelayHealth {
   [key: string]: unknown;
-  readonly peerId: string;
-  readonly daemonId: string;
-  readonly version: string;
-  readonly startedAt: string;
-  readonly lastTickAt: string;
-  readonly peers: number;
-  readonly pending: number;
-  readonly chats: number;
-  readonly messages: number;
-  readonly leader: boolean;
-  readonly lastRepliedAt?: string;
-  readonly lastReplyId?: string;
-  readonly lastReplyDurationMs?: number;
-  readonly lastErrorAt?: string;
-  readonly lastErrorKind?: string;
-  readonly lastErrorMessage?: string;
+  peerId: string;
+  daemonId: string;
+  version: string;
+  startedAt: string;
+  lastTickAt: string;
+  peers: number;
+  pending: number;
+  chats: number;
+  messages: number;
+  leader: boolean;
+  lastRepliedAt?: string;
+  lastReplyId?: string;
+  lastReplyDurationMs?: number;
+  lastErrorAt?: string;
+  lastErrorKind?: string;
+  lastErrorMessage?: string;
   // Sync telemetry — Automerge sync messages exchanged through the
   // network adapter. peers > 0 only proves signalling found a
   // peer; non-zero counters here prove data is actually flowing
   // through the WebRTC channel. The per-peer breakdown isolates
   // "this specific peer isn't talking" from "no peer is talking".
-  readonly syncMessagesSent?: number;
-  readonly syncMessagesReceived?: number;
-  readonly lastSyncSentAt?: string;
-  readonly lastSyncReceivedAt?: string;
-  readonly lastSyncFromPeer?: string;
-  readonly lastSyncToPeer?: string;
+  syncMessagesSent?: number;
+  syncMessagesReceived?: number;
+  lastSyncSentAt?: string;
+  lastSyncReceivedAt?: string;
+  lastSyncFromPeer?: string;
+  lastSyncToPeer?: string;
   // Per-doc sync breakdown. Keys are friendly logical doc names
   // when known (chat:main, chat:health, daemon:leader, …), or a
   // truncated docId when not. Values are { rx, tx } counts. When
   // chat:main shows rx=0 while the aggregate has thousands, the
   // peer isn't sharing chat:main — a per-doc share-set bug, not
   // a connection bug.
-  readonly syncByDoc?: Record<string, { rx: number; tx: number }>;
+  syncByDoc?: Record<string, { rx: number; tx: number }>;
 }
 
 export interface ChatHealth {
   [key: string]: unknown;
-  readonly relays: Record<string, RelayHealth>;
+  relays: Record<string, RelayHealth>;
 }
 
 export const CHAT_HEALTH_INITIAL: ChatHealth = { relays: {} };
@@ -220,10 +225,10 @@ export const CHAT_HEALTH_INITIAL: ChatHealth = { relays: {} };
 // --- leader lease / sessions:active ----------------------------
 export interface LeaderLease {
   [key: string]: unknown;
-  readonly deviceId: string;
-  readonly daemonId: string;
-  readonly expiresAt: string;
-  readonly renewedAt: string;
+  deviceId: string;
+  daemonId: string;
+  expiresAt: string;
+  renewedAt: string;
 }
 
 export type SessionAnnouncementState =
@@ -235,20 +240,20 @@ export type SessionAnnouncementState =
 
 export interface SessionAnnouncement {
   [key: string]: unknown;
-  readonly sessionId: SessionId;
-  readonly deviceId: string;
-  readonly cwd: AbsolutePath;
-  readonly transcriptPath: AbsolutePath;
-  readonly state: SessionAnnouncementState;
-  readonly lastToolName?: string;
-  readonly lastPromptPreview?: string;
-  readonly updatedAt: string;
-  readonly stale?: boolean;
+  sessionId: SessionId;
+  deviceId: string;
+  cwd: AbsolutePath;
+  transcriptPath: AbsolutePath;
+  state: SessionAnnouncementState;
+  lastToolName?: string;
+  lastPromptPreview?: string;
+  updatedAt: string;
+  stale?: boolean;
 }
 
 export interface SessionsActive {
   [key: string]: unknown;
-  readonly sessions: readonly SessionAnnouncement[];
+  sessions: SessionAnnouncement[];
 }
 
 // --- pricing (per-million-token USD) ----------------------------
