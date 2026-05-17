@@ -37,7 +37,7 @@ import {
   parseModelId,
 } from '@fairfox/shared/assistant-state';
 import { devicesState } from '@fairfox/shared/devices-state';
-import { $meshState } from '@fairfox/shared/polly';
+import { $meshState, type MeshClient, revokePeerLocally } from '@fairfox/shared/polly';
 import { usersState } from '@fairfox/shared/users-state';
 import { localVersion } from '#src/commands/update.ts';
 import {
@@ -48,6 +48,7 @@ import {
   openMeshClient,
   waitForPeer,
 } from '#src/mesh.ts';
+import { clearPendingRevocation, loadPendingRevocations } from '#src/pending-revocations.ts';
 import { loadUserIdentityFile } from '#src/user-identity-node.ts';
 
 type Sender = 'user' | 'assistant';
@@ -996,6 +997,69 @@ export async function chatDump(): Promise<number> {
   }
 }
 
+/**
+ * Polly#112 / fairfox#26 — heartbeat-driven resume of transport-
+ * level revocations that `users revoke` deferred because the
+ * target peer wasn't reachable at issuance time. Reads the
+ * pending-revocations marker file every tick; for each entry,
+ * scans the snapshot for the named devicePeerId; if the peer has
+ * converged on mesh:users (peerDocumentStatus === 'has' and a
+ * post-issuance inbound sync message recorded), applies
+ * `revokePeerLocally`, saves the keyring, and clears the marker
+ * entry. Idempotent — calling it on a snapshot with nothing
+ * convergent is a no-op.
+ *
+ * The convergence check uses `lastSyncMessageInAt` against the
+ * issuance instant. Because `lastSyncMessageInAt` is a
+ * `performance.now()` reading from polly's adapter and `issuedAt`
+ * is an ISO timestamp from the original CLI's wall clock, the
+ * comparison is approximate across processes. Treat any post-
+ * relay-start inbound sync message as convergence proof: the
+ * `chat serve` heartbeat only runs after `client` is fully wired,
+ * and any inbound sync since the peer connected to THIS relay
+ * implies the peer has acknowledged the mesh:users heads we just
+ * sent them on join (which include the revocation row by virtue
+ * of admin's on-disk doc carrying it from the earlier `users
+ * revoke` commit).
+ */
+async function resumeDeferredTransportRevocations(client: MeshClient): Promise<void> {
+  const pending = loadPendingRevocations();
+  const entries = Object.values(pending.entries);
+  if (entries.length === 0) {
+    return;
+  }
+  const snap = client.getPeerStateSnapshot();
+  const meshUsersDocId = snap.meshStateModule.lazyWrappers.find(
+    (w) => w.key === 'mesh:users'
+  )?.docId;
+  if (!meshUsersDocId) {
+    return;
+  }
+  // `client.keyring` returns the same in-memory instance polly's
+  // adapter is reading on every send/receive; mutating it via
+  // `revokePeerLocally` takes effect immediately for `tryUnwrap`.
+  // `storage.save` afterwards persists across restarts.
+  const keyring = client.keyring;
+  const storage = keyringStorage();
+  let appliedAny = false;
+  for (const entry of entries) {
+    const peer = snap.peers.find((p) => p.peerId === entry.devicePeerId);
+    const slotHandles = peer?.slot?.handles;
+    const handle = slotHandles?.[meshUsersDocId];
+    if (handle && handle.peerDocumentStatus === 'has' && handle.lastSyncMessageInAt !== undefined) {
+      revokePeerLocally(entry.devicePeerId, keyring);
+      clearPendingRevocation(entry.devicePeerId);
+      appliedAny = true;
+      process.stdout.write(
+        `[chat serve] deferred transport revocation applied: peer ${entry.devicePeerId} (user ${entry.revokedUserId.slice(0, 16)}…)\n`
+      );
+    }
+  }
+  if (appliedAny) {
+    await storage.save(keyring);
+  }
+}
+
 export async function chatServe(): Promise<number> {
   const storage = keyringStorage();
   const keyring = await storage.load();
@@ -1265,6 +1329,16 @@ export async function chatServe(): Promise<number> {
       ...(lastSyncReceivedAt ? { lastSyncReceivedAt } : {}),
       ...(lastSyncFromPeer ? { lastSyncFromPeer } : {}),
       ...(lastSyncToPeer ? { lastSyncToPeer } : {}),
+    });
+    // Polly#112 / fairfox#26 — resume any transport-level
+    // revocation deferred by `users revoke` because the target peer
+    // wasn't online (or hadn't acknowledged) at issuance time. Each
+    // heartbeat checks the snapshot; the instant the snapshot shows
+    // the target peer has converged on mesh:users with traffic newer
+    // than the revocation, close the gate and clear the marker.
+    void resumeDeferredTransportRevocations(client).catch(() => {
+      // diagnostic-best-effort — never let the resume path crash
+      // the heartbeat.
     });
   }, 10_000);
   void tick();
