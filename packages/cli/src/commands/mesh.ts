@@ -11,6 +11,7 @@
 
 import { existsSync, unlinkSync } from 'node:fs';
 import { hostname } from 'node:os';
+import type { ChatHealth, LeaderLease } from '@fairfox/shared/assistant-state';
 import type { DevicesDoc } from '@fairfox/shared/devices-state';
 import {
   addEndorsementToDevice,
@@ -903,29 +904,70 @@ export async function meshFingerprintCmd(): Promise<number> {
 
 // --- legacy dispatch (kept for older imports; bin.ts no longer calls)
 
+const HEARTBEAT_COMPACTION_KEYS = ['daemon:leader', 'chat:health'] as const;
+const ALL_COMPACTION_KEYS = ['mesh:devices', 'daemon:leader', 'chat:health'] as const;
+
+function parseCompactArgs(rest: readonly string[]): readonly string[] | null {
+  if (rest.length === 0) {
+    return null;
+  }
+  const flag = rest[0];
+  if (flag === '--all') {
+    return ALL_COMPACTION_KEYS;
+  }
+  if (flag === '--heartbeats') {
+    return HEARTBEAT_COMPACTION_KEYS;
+  }
+  return rest;
+}
+
 /** `fairfox mesh compact <key>` — ADR 0008.
  *
  * Re-seeds the named `$meshState` document under a fresh
- * `DocumentId` containing only the live entries (e.g. for
- * `mesh:devices`: rows without `revokedAt`), then writes the
- * `mesh:document-index` entry that points future
- * `$meshState(key)` resolutions at the cleaned doc. Real
- * byte-level reclaim — historical tombstones leave the active
- * sync payload. The old doc remains in storage and will be
- * removed by a future GC pass (ADR 0008's automatic-GC piece is
- * deferred).
+ * `DocumentId` and writes the `mesh:document-index` entry that
+ * points future `$meshState(key)` resolutions at the cleaned doc.
+ * The polly-side redirect detector picks up the sealed sentinel on
+ * the old doc and rebinds in-process wrappers transparently, so a
+ * running daemon doesn't need a restart to start writing through
+ * the new doc.
  *
- * Requires `mesh.compact` (admin role). Currently only supports
- * `mesh:devices`; the per-key compaction shape (entry selector,
- * keep-predicate, doc reconstructor) is hardcoded here for that
- * key. Adding another compactable doc means another branch in the
- * switch below.
+ * Two compaction shapes are wired:
+ *
+ *   - **Entries-map filter** (`mesh:devices`): drop dead rows
+ *     (`revokedAt` set) and keep the rest. Real byte-level reclaim
+ *     for tombstone-heavy registries.
+ *   - **Verbatim snapshot** (`daemon:leader`, `chat:health`):
+ *     seed the new doc with the current materialised state as-is.
+ *     Collapses the Automerge change history of heartbeat-style
+ *     docs that get a write every few seconds; the per-tick history
+ *     entries have no recovery value once the current state is
+ *     captured. This is the path that rescues a mobile peer from
+ *     OOMing on first sync when these docs have accumulated
+ *     thousands of incremental chunks.
+ *
+ * Multi-key forms:
+ *   `--heartbeats`  daemon:leader, chat:health
+ *   `--all`         every supported key
+ *
+ * Requires `mesh.compact` (admin role).
  */
 export async function meshCompact(rest: readonly string[]): Promise<number> {
-  const key = rest[0];
-  if (!key) {
-    process.stderr.write('fairfox mesh compact: expected a key (e.g. mesh:devices).\n');
+  const keys = parseCompactArgs(rest);
+  if (!keys || keys.length === 0) {
+    process.stderr.write(
+      'fairfox mesh compact: usage: fairfox mesh compact <key> | --heartbeats | --all\n' +
+        `  supported keys: ${ALL_COMPACTION_KEYS.join(', ')}\n`
+    );
     return 1;
+  }
+  const supported = new Set<string>(ALL_COMPACTION_KEYS);
+  for (const key of keys) {
+    if (!supported.has(key)) {
+      process.stderr.write(
+        `fairfox mesh compact: key "${key}" not supported. Currently supported: ${ALL_COMPACTION_KEYS.join(', ')}.\n`
+      );
+      return 1;
+    }
   }
 
   // Compaction needs a networked mesh client: the index update
@@ -942,27 +984,17 @@ export async function meshCompact(rest: readonly string[]): Promise<number> {
       );
     }
 
-    const { compactMeshDoc } = await import('@fairfox/shared/compact-mesh-doc');
+    const { compactMeshDoc, snapshotMeshDoc } = await import('@fairfox/shared/compact-mesh-doc');
     const { documentIndexState } = await import('@fairfox/shared/document-index-state');
     const { userIdentity } = await import('@fairfox/shared/user-identity-state');
     const { devicesState } = await import('@fairfox/shared/devices-state');
     const { usersState } = await import('@fairfox/shared/users-state');
     const { canDo } = await import('@fairfox/shared/policy');
+    const { CHAT_HEALTH_DOC_ID, CHAT_HEALTH_INITIAL, LEADER_LEASE_DOC_ID } = await import(
+      '@fairfox/shared/assistant-state'
+    );
 
-    // `compactMeshDoc` reads `userIdentity.value` to stamp the sentinel
-    // and the index row, and `canDo` reads it to map the local user to
-    // their permission set. In the browser the signal hydrates from
-    // IDB via `hydrateUserIdentity()`; on the CLI side nobody calls
-    // that (the CLI stores the identity on disk in a file), so we have
-    // to mirror the file-backed identity into the signal explicitly.
     userIdentity.value = loadUserIdentityFile() ?? null;
-
-    // canDo() walks: userIdentity → devicesState (find self device) →
-    // usersState (map ownerUserIds → roles → permissions). Every one
-    // of those wrappers must be hydrated before the check or the
-    // permission gate races a still-empty doc and returns false.
-    // documentIndexState similarly has to hydrate before compactMeshDoc
-    // reads it to write the new index entry.
     await Promise.all([devicesState.loaded, usersState.loaded, documentIndexState.loaded]);
 
     if (!canDo('mesh.compact')) {
@@ -972,38 +1004,65 @@ export async function meshCompact(rest: readonly string[]): Promise<number> {
       return 1;
     }
 
-    if (key !== 'mesh:devices') {
-      process.stderr.write(
-        `fairfox mesh compact: key "${key}" not supported yet. Currently supported: mesh:devices.\n`
+    for (const key of keys) {
+      let result: {
+        key: string;
+        previousDocId: string;
+        newDocId: string;
+        removed: number;
+        compactedAt: string;
+      };
+      if (key === 'mesh:devices') {
+        result = await compactMeshDoc<DevicesDoc, DevicesDoc['devices'][string]>({
+          key,
+          repo: client.repo,
+          wrapper: devicesState,
+          selectEntries: (doc) => doc.devices,
+          keep: (entry) => !entry.revokedAt,
+          buildDoc: (entries) => ({ devices: entries }),
+        });
+      } else if (key === 'daemon:leader') {
+        const leaseSignal = $meshState<LeaderLease>(LEADER_LEASE_DOC_ID, {
+          deviceId: '',
+          daemonId: '',
+          expiresAt: '',
+          renewedAt: '',
+        });
+        await leaseSignal.loaded;
+        result = await snapshotMeshDoc<LeaderLease>({
+          key,
+          repo: client.repo,
+          wrapper: leaseSignal,
+        });
+      } else {
+        const healthSignal = $meshState<ChatHealth>(CHAT_HEALTH_DOC_ID, CHAT_HEALTH_INITIAL);
+        await healthSignal.loaded;
+        result = await snapshotMeshDoc<ChatHealth>({
+          key,
+          repo: client.repo,
+          wrapper: healthSignal,
+        });
+      }
+      const sealedLine = result.previousDocId
+        ? `  sealed: ${result.previousDocId.slice(0, 16)}…\n`
+        : '';
+      process.stdout.write(
+        `compacted ${result.key}\n` +
+          (result.removed > 0 ? `  removed: ${result.removed} entries\n` : '') +
+          `  newDocId: ${result.newDocId.slice(0, 16)}…\n` +
+          sealedLine +
+          `  at: ${result.compactedAt}\n`
       );
-      return 1;
     }
-    const result = await compactMeshDoc({
-      key,
-      repo: client.repo,
-      wrapper: devicesState,
-      selectEntries: (doc) => doc.devices,
-      keep: (entry) => !entry.revokedAt,
-      buildDoc: (entries) => ({ devices: entries }),
-    });
 
     if (peered) {
       await flushOutgoing(2000);
     }
 
-    const sealedLine = result.previousDocId
-      ? `  sealed: ${result.previousDocId.slice(0, 16)}…\n`
-      : '';
     process.stdout.write(
-      `compacted ${result.key}\n` +
-        `  removed: ${result.removed} entries\n` +
-        `  newDocId: ${result.newDocId.slice(0, 16)}…\n` +
-        sealedLine +
-        `  at: ${result.compactedAt}\n\n` +
-        'Other paired devices pick up the new docId via mesh:document-index sync\n' +
-        'on next contact. This CLI process should be relaunched so future commands\n' +
-        'resolve $meshState wrappers to the new doc; the daemon will pick it up at\n' +
-        'its next reconnect.\n'
+      '\nOther paired devices pick up the new docId via mesh:document-index sync\n' +
+        'on next contact. A running daemon rebinds its wrappers via the in-process\n' +
+        'redirect detector; no restart needed.\n'
     );
     return 0;
   } finally {
@@ -1117,10 +1176,13 @@ export function meshUsage(stream: NodeJS.WriteStream = process.stderr): void {
       '                                     machine (mini-PC, server) so the',
       '                                     mesh always has at least one peer',
       '                                     other devices can sync against.',
-      '  fairfox mesh compact <key>         Re-seed a $meshState doc with only',
-      '                                     its live entries (e.g. mesh:devices',
-      '                                     drops revoked rows). ADR 0008; admin',
-      '                                     only.',
+      '  fairfox mesh compact <key>         Re-seed a $meshState doc and collapse',
+      '                                     its Automerge history. mesh:devices',
+      '                                     drops revoked rows; daemon:leader and',
+      '                                     chat:health snapshot the current state.',
+      '                                     --heartbeats: daemon:leader+chat:health',
+      '                                     --all: every supported key',
+      '                                     ADR 0008; admin only.',
       '  fairfox mesh reconcile <key>       Pull post-compaction writes from the',
       '                                     sealed doc into the current doc.',
       '                                     Run during the grace window if you',

@@ -205,6 +205,134 @@ export async function compactMeshDoc<TDoc extends MeshDoc, TEntry>(
   };
 }
 
+interface SnapshotOptions<TDoc extends MeshDoc> {
+  /** The logical `$meshState` key being snapshotted. */
+  key: string;
+  /** Same Repo {@link compactMeshDoc} writes to. */
+  repo: Repo;
+  /** The current `$meshState` wrapper. Its `.value` is the
+   * materialised state that becomes the new doc's initial content;
+   * its `.handle` is where the sealed sentinel is written. */
+  wrapper: {
+    value: TDoc;
+    readonly loaded: Promise<void>;
+    readonly handle: DocHandle<TDoc> | undefined;
+  };
+}
+
+/** Whole-doc snapshot — the no-filter sibling of
+ * {@link compactMeshDoc}. Seeds a fresh doc with the wrapper's
+ * current materialised state verbatim, then writes the sealed
+ * sentinel + index entry so peers (and the in-process redirect
+ * detector) follow the redirect to the new doc.
+ *
+ * Use this for heartbeat-style keys (`daemon:leader`,
+ * `chat:health`, sessions, presence) where history is worthless —
+ * only the current state matters — and the doc isn't shaped as an
+ * entries map that {@link compactMeshDoc}'s filter API can target.
+ * For entries-map docs with a "drop dead rows" policy
+ * (`mesh:devices` dropping revoked entries) use
+ * {@link compactMeshDoc} so the dead rows are filtered out, not
+ * preserved verbatim. */
+export async function snapshotMeshDoc<TDoc extends MeshDoc>(
+  options: SnapshotOptions<TDoc>
+): Promise<CompactionResult> {
+  const identity = userIdentity.value;
+  if (!identity) {
+    throw new Error(
+      'snapshotMeshDoc: no local user identity — bootstrap or import one before snapshotting.'
+    );
+  }
+
+  await options.wrapper.loaded;
+  const cleaned = options.wrapper.value;
+
+  const compactedAt = new Date().toISOString();
+  const versionedKey = `${options.key}:v${compactedAt}`;
+  const newDocumentId = deriveDocumentId(versionedKey);
+  const seeded = Automerge.save(Automerge.from(cleaned));
+  const handle = options.repo.import(seeded, { docId: newDocumentId });
+  handle.doneLoading();
+
+  const newDocIdString = String(newDocumentId);
+  const sentinel = buildSealedSentinel({
+    migratedTo: newDocIdString,
+    sealedAt: compactedAt,
+    sealedBy: identity.userId,
+  });
+  const oldDocHandle = options.wrapper.handle;
+  if (!oldDocHandle) {
+    throw new Error(
+      'snapshotMeshDoc: wrapper.handle not bridged — caller must await wrapper.loaded before snapshotting'
+    );
+  }
+  oldDocHandle.change((doc: TDoc) => {
+    (doc as Record<string, unknown>)[SEALED_SENTINEL_FIELD] = sentinel;
+  });
+
+  const previousEntry = documentIndexState.value.index[options.key];
+  const previousDocId = previousEntry?.currentDocId ?? String(deriveDocumentId(options.key));
+  const nextSealed: string[] = previousEntry?.sealedDocIds ? [...previousEntry.sealedDocIds] : [];
+  nextSealed.push(previousDocId);
+
+  const indexHandle = documentIndexState.handle;
+  if (!indexHandle) {
+    throw new Error(
+      'snapshotMeshDoc: documentIndexState.handle not bridged — caller must await documentIndexState.loaded before snapshotting'
+    );
+  }
+  indexHandle.change((doc) => {
+    if (!doc.index) {
+      doc.index = {};
+    }
+    doc.index[options.key] = {
+      currentDocId: newDocIdString,
+      sealedDocIds: nextSealed,
+      compactedAt,
+      compactedBy: identity.userId,
+      signature: [],
+    };
+  });
+
+  return {
+    key: options.key,
+    previousDocId,
+    newDocId: newDocIdString,
+    removed: 0,
+    compactedAt,
+  };
+}
+
+/** Count of Automerge changes in the wrapper's current document.
+ * Each change is one increment of the doc's history, and polly's
+ * NodeFS storage adapter writes ~one file per change to the
+ * `incremental/` dir, so this count is a faithful proxy for "how
+ * many incremental chunks does this doc carry on disk." Use it to
+ * decide when a heartbeat-style doc has accumulated enough history
+ * to be worth compacting (no historical value, only the current
+ * state matters; the per-tick changes pile up unbounded).
+ *
+ * Returns 0 if the wrapper's handle hasn't bridged yet (caller
+ * should await `wrapper.loaded` before reading). */
+export function meshDocChangeCount<TDoc extends MeshDoc>(wrapper: {
+  readonly handle: DocHandle<TDoc> | undefined;
+}): number {
+  const handle = wrapper.handle;
+  if (!handle) {
+    return 0;
+  }
+  let doc: TDoc | undefined;
+  try {
+    doc = handle.doc();
+  } catch {
+    return 0;
+  }
+  if (!doc) {
+    return 0;
+  }
+  return Automerge.getAllChanges(doc as unknown as Automerge.Doc<TDoc>).length;
+}
+
 /** Result of a {@link reconcileMeshDoc} run. */
 export interface ReconcileResult {
   /** The logical key reconciled. */

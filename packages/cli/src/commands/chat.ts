@@ -36,8 +36,11 @@ import {
   LEADER_LEASE_DOC_ID,
   parseModelId,
 } from '@fairfox/shared/assistant-state';
+import { meshDocChangeCount, snapshotMeshDoc } from '@fairfox/shared/compact-mesh-doc';
 import { devicesState } from '@fairfox/shared/devices-state';
+import { documentIndexState } from '@fairfox/shared/document-index-state';
 import { $meshState, type MeshClient, revokePeerLocally } from '@fairfox/shared/polly';
+import { userIdentity } from '@fairfox/shared/user-identity-state';
 import { usersState } from '@fairfox/shared/users-state';
 import { localVersion } from '#src/commands/update.ts';
 import {
@@ -1076,6 +1079,13 @@ export async function chatServe(): Promise<number> {
     );
     return 1;
   }
+  // Mirror the file-backed identity into the signal so
+  // `snapshotMeshDoc` (called from the auto-compaction tick below)
+  // can stamp the sealed sentinel + index row with sealedBy. Browser
+  // boot does the equivalent via `hydrateUserIdentity()`; the CLI
+  // stores the identity on disk so nothing populates the signal
+  // automatically.
+  userIdentity.value = identity;
   const peerId = derivePeerId(keyring.identity.publicKey);
   const client = await openMeshClient({ peerId });
   process.stdout.write(
@@ -1102,6 +1112,7 @@ export async function chatServe(): Promise<number> {
   await Promise.all([
     usersState.loaded,
     devicesState.loaded,
+    documentIndexState.loaded,
     todoProjects().loaded,
     todoTasks().loaded,
     agendaMain().loaded,
@@ -1235,6 +1246,73 @@ export async function chatServe(): Promise<number> {
     process.stdout.write(`[chat serve] monthly cost cap: $${cap.toFixed(2)}\n`);
   }
 
+  // Auto-compaction of heartbeat-style docs. `daemon:leader` and
+  // `chat:health` get a write every few seconds, and Automerge
+  // stores one incremental chunk per change with no compaction
+  // by default. Left alone, the per-doc storage grows unboundedly
+  // (thousands of chunks per day) and the next freshly-paired
+  // peer OOMs trying to replay them on first sync — observed on
+  // mobile Safari, surfaces as "page repeatedly crashed."
+  //
+  // The heartbeat below counts the wrapper's Automerge history
+  // every 10s. Once it crosses HEARTBEAT_COMPACTION_HISTORY_THRESHOLD
+  // changes, the snapshot path runs: seed a fresh doc with the
+  // current state verbatim, write the sealed sentinel into the
+  // old doc so peers (and in-process wrappers, via polly's
+  // redirect detector) follow the redirect, and update
+  // mesh:document-index. The cooldown prevents repeated fire if
+  // a single tick happens not to bring the history under the
+  // threshold (snapshotMeshDoc itself does).
+  const HEARTBEAT_COMPACTION_HISTORY_THRESHOLD = 500;
+  const HEARTBEAT_COMPACTION_COOLDOWN_MS = 5 * 60 * 1000;
+  const heartbeatLastCompactionAt = new Map<string, number>();
+  async function maybeAutoCompactHeartbeats(): Promise<void> {
+    const leaderCount = meshDocChangeCount(leaseSignal);
+    if (
+      leaderCount >= HEARTBEAT_COMPACTION_HISTORY_THRESHOLD &&
+      Date.now() - (heartbeatLastCompactionAt.get('daemon:leader') ?? 0) >=
+        HEARTBEAT_COMPACTION_COOLDOWN_MS
+    ) {
+      try {
+        const result = await snapshotMeshDoc({
+          key: 'daemon:leader',
+          repo: client.repo,
+          wrapper: leaseSignal,
+        });
+        heartbeatLastCompactionAt.set('daemon:leader', Date.now());
+        process.stdout.write(
+          `[chat serve] auto-compacted daemon:leader: history=${leaderCount} → newDocId=${result.newDocId.slice(0, 12)}…\n`
+        );
+      } catch (err) {
+        process.stderr.write(
+          `[chat serve] auto-compaction of daemon:leader failed: ${err instanceof Error ? err.message : String(err)}\n`
+        );
+      }
+    }
+    const healthCount = meshDocChangeCount(healthSignal);
+    if (
+      healthCount >= HEARTBEAT_COMPACTION_HISTORY_THRESHOLD &&
+      Date.now() - (heartbeatLastCompactionAt.get('chat:health') ?? 0) >=
+        HEARTBEAT_COMPACTION_COOLDOWN_MS
+    ) {
+      try {
+        const result = await snapshotMeshDoc({
+          key: 'chat:health',
+          repo: client.repo,
+          wrapper: healthSignal,
+        });
+        heartbeatLastCompactionAt.set('chat:health', Date.now());
+        process.stdout.write(
+          `[chat serve] auto-compacted chat:health: history=${healthCount} → newDocId=${result.newDocId.slice(0, 12)}…\n`
+        );
+      } catch (err) {
+        process.stderr.write(
+          `[chat serve] auto-compaction of chat:health failed: ${err instanceof Error ? err.message : String(err)}\n`
+        );
+      }
+    }
+  }
+
   let busy = false;
   const tick = async (): Promise<void> => {
     if (busy) {
@@ -1340,6 +1418,10 @@ export async function chatServe(): Promise<number> {
       // diagnostic-best-effort — never let the resume path crash
       // the heartbeat.
     });
+    // Auto-compact heartbeat-style mesh docs when their Automerge
+    // history accumulates past the threshold. Failures log and
+    // continue; never crash the heartbeat.
+    void maybeAutoCompactHeartbeats().catch(() => undefined);
   }, 10_000);
   void tick();
 
