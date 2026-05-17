@@ -94,29 +94,56 @@ try {
   );
   await waitForLine(adminServer.stdout, /peers=1/, 30_000, 'admin sees phone peer');
   await waitForLine(phoneServer.stdout, /peers=1/, 30_000, 'phone sees admin peer');
-  // Sync window — handshake completes and mesh:users replicates.
-  await new Promise((r) => setTimeout(r, 8000));
+  // mesh:users convergence: wait until phone's heartbeat shows
+  // mesh:users=rx/tx with rx >= 1, i.e. at least one sync message
+  // landed against that doc. Without this, the previous 8-s sleep
+  // was a coin flip: sync messages cross the channel in seconds,
+  // but the heartbeat that surfaces them ticks every 10 s, and
+  // the doc was sometimes still empty when the test killed the
+  // server.
+  await waitForLine(
+    phoneServer.stdout,
+    /mesh:users=[1-9]\d*\/\d+/,
+    30_000,
+    'phone mesh:users converges'
+  );
 } catch (e) {
   await killAndWait(adminServer).catch(() => undefined);
   await killAndWait(phoneServer).catch(() => undefined);
   throw e;
 }
 
-// Stop the phone's serve so a fresh `users` invocation can use the
-// PHONE_HOME keyring without a peerId conflict. Storage on disk now
-// reflects the synced revocation.
-await killAndWait(phoneServer);
+// Stop the phone's serve so a fresh `users` invocation reads from
+// the same on-disk storage phone-serve was writing to. Use a 12-s
+// SIGTERM-to-exit budget: chat serve's shutdown does
+// `flushOutgoing(2000)` and then a two-pass `repo.flush()` via
+// `closeMesh`, which together can run past the default 3-s wait.
+// Returning before the flush completes was the durability race
+// behind one of the user-revocation flake modes — the on-disk
+// mesh:users file lagged the in-memory doc by the unflushed
+// window. See issue #26.
+await killAndWait(phoneServer, 12_000);
 
 try {
   const adminList = await runCli(['users'], ADMIN_HOME);
-  const phoneList = await runCli(['users'], PHONE_HOME);
-  const adminSeesRevoked = adminList.stdout.includes('[revoked]');
-  const phoneSeesRevoked = phoneList.stdout.includes('[revoked]');
-
-  if (!adminSeesRevoked) {
+  if (!adminList.stdout.includes('[revoked]')) {
     fail(`admin's users list does not show Phone as revoked:\n${adminList.stdout}`);
   }
-  if (!phoneSeesRevoked) {
+
+  // Phone's fresh `users` invocation opens its own polly Repo and
+  // reads from on-disk storage. `usersList()` budgets 3 s for
+  // `mesh:users.loaded`, which is sometimes tight after a cold
+  // mesh open against many docs on disk — the index doc resolves
+  // `mesh:users → docId` and the named doc itself both need to
+  // hydrate. Retry up to 30 s so a slow first hydration doesn't
+  // race the assertion. See issue #26.
+  const phoneDeadline = Date.now() + 30_000;
+  let phoneList = await runCli(['users'], PHONE_HOME);
+  while (!phoneList.stdout.includes('[revoked]') && Date.now() < phoneDeadline) {
+    await new Promise((r) => setTimeout(r, 2000));
+    phoneList = await runCli(['users'], PHONE_HOME);
+  }
+  if (!phoneList.stdout.includes('[revoked]')) {
     fail(
       `phone's users list does not show its own user as revoked (sync didn't propagate):\n${phoneList.stdout}`
     );

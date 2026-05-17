@@ -1137,6 +1137,11 @@ export async function chatServe(): Promise<number> {
   noteDoc(chatSignal.handle, 'chat:main');
   noteDoc(healthSignal.handle, 'chat:health');
   noteDoc(leaseSignal.handle, 'daemon:leader');
+  noteDoc(usersState.handle, 'mesh:users');
+  noteDoc(devicesState.handle, 'mesh:devices');
+  noteDoc(todoProjects().handle, 'todo:projects');
+  noteDoc(todoTasks().handle, 'todo:tasks');
+  noteDoc(agendaMain().handle, 'agenda:main');
   client.repo.on('doc-metrics', (m) => {
     const now = new Date().toISOString();
     if (m.type === 'receive-sync-message') {

@@ -107,13 +107,13 @@ export function spawnCli(
   return { proc, stdout, stderr };
 }
 
-export async function killAndWait(h: SubprocessHandle): Promise<void> {
+export async function killAndWait(h: SubprocessHandle, timeoutMs = 3000): Promise<void> {
   if (h.proc.exitCode !== null) {
     return;
   }
   h.proc.kill('SIGTERM');
   await new Promise<void>((res) => {
-    const t = setTimeout(() => res(), 3000);
+    const t = setTimeout(() => res(), timeoutMs);
     h.proc.once('exit', () => {
       clearTimeout(t);
       res();
