@@ -18,7 +18,7 @@ import { devicesState } from '@fairfox/shared/devices-state';
 import { createInvite } from '@fairfox/shared/invite';
 import { awaitLoadedBudget } from '@fairfox/shared/loaded-budget';
 import { permissionsForEntry } from '@fairfox/shared/policy';
-import { generateSigningKeyPair, revokePeerLocally } from '@fairfox/shared/polly';
+import { generateSigningKeyPair, type MeshClient, revokePeerLocally } from '@fairfox/shared/polly';
 import {
   createBootstrapUser,
   type Role,
@@ -36,6 +36,7 @@ import {
   openMeshClientReadOnly,
   waitForPeer,
 } from '#src/mesh.ts';
+import { queuePendingRevocation } from '#src/pending-revocations.ts';
 import {
   createUserIdentityFile,
   exportRecoveryBlob,
@@ -51,6 +52,61 @@ async function loadOwnPeerId(): Promise<string> {
     throw new Error('no keyring — run `fairfox pair <token>` first');
   }
   return derivePeerId(keyring.identity.publicKey);
+}
+
+/**
+ * Polly#112 helper. Polls `client.getPeerStateSnapshot()` until the
+ * snapshot confirms the target peer has converged on `mesh:users`
+ * with a sync exchange that started AFTER `issuedAtIso`. Returns
+ * `true` on convergence, `false` on timeout.
+ *
+ * Two conditions stand in for "the peer has received the revocation
+ * row":
+ *
+ *   - `peerDocumentStatus === 'has'` — the local docSynchronizer
+ *     sent heads to this peer at least once for mesh:users.
+ *   - `lastSyncMessageInAt` carries a `performance.now()` reading
+ *     newer than `revokeStartedAt` — the local adapter has
+ *     dispatched at least one inbound sync message from this peer
+ *     for mesh:users since the row was written, which means the
+ *     peer responded to our handshake. Without the inbound check,
+ *     `"has"` is set optimistically the moment we *send* heads,
+ *     before the peer has had a chance to receive them.
+ *
+ * `performance.now()` is monotonic and process-local, so the
+ * comparison floor `revokeStartedAt` is captured at the same scale
+ * the snapshot stamps. The `issuedAtIso` is carried into the
+ * pending marker for cross-process resume; it's not used by this
+ * inline path.
+ */
+async function waitForMeshUsersConvergence(
+  client: MeshClient,
+  targetDevicePeerId: string,
+  _issuedAtIso: string,
+  timeoutMs: number
+): Promise<boolean> {
+  const revokeStartedAt = performance.now();
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const snap = client.getPeerStateSnapshot();
+    const meshUsersDocId = snap.meshStateModule.lazyWrappers.find(
+      (w) => w.key === 'mesh:users'
+    )?.docId;
+    if (meshUsersDocId) {
+      const peer = snap.peers.find((p) => p.peerId === targetDevicePeerId);
+      const entry = peer?.slot?.handles?.[meshUsersDocId];
+      if (
+        entry &&
+        entry.peerDocumentStatus === 'has' &&
+        entry.lastSyncMessageInAt !== undefined &&
+        entry.lastSyncMessageInAt > revokeStartedAt
+      ) {
+        return true;
+      }
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return false;
 }
 
 function formatEntry(entry: UserEntry): string {
@@ -346,6 +402,7 @@ export function usersRevoke(targetUserId: string): Promise<number> {
         revokerUserId: identity.userId,
         revokerUserKey: identity.keypair,
       });
+      const issuedAt = new Date().toISOString();
       // Visibility (above) writes the `[revoked]` row into mesh:users
       // so every peer's UI reflects the revocation. Enforcement (below)
       // populates polly's `revokedPeers` set on this device's keyring
@@ -355,42 +412,78 @@ export function usersRevoke(targetUserId: string): Promise<number> {
       // mutation testing rounds 1, 2 and 3 surfaced the gap and
       // `scripts/e2e-revoke-then-write.ts` is the regression guard.
       //
+      // The catch (polly#112 / fairfox#26): closing the receive gate
+      // BEFORE the row has replicated to the target peer makes the
+      // row un-replicable — polly's MeshNetworkAdapter drops every
+      // inbound message from the about-to-be-revoked peer, the
+      // mesh:users docSynchronizer never advances past the opening
+      // handshake on the admin's side, no ops are returned in
+      // response to the peer's request, and the row never lands on
+      // the peer. So we defer: write the row, flush, wait briefly
+      // for the target peer to converge using polly's per-(docId,
+      // peerId) `peerDocumentStatus` diagnostic, and only THEN close
+      // the gate. If the wait times out (peer offline, or present
+      // but not converged), queue the revocation for chat serve to
+      // apply once convergence is observed.
+      //
       // Look up every peerId whose endorsements include the target
       // user. Devices with multiple owner users are NOT revoked here
       // — kicking a peerId would also block the device's other
       // legitimate users; that case wants a separate device-level
       // revocation flow we don't have yet.
       await devicesState.loaded;
-      const storage = keyringStorage();
-      const keyring = await storage.load();
-      if (keyring) {
-        let revokedAny = false;
-        for (const [devicePeerId, entry] of Object.entries(devicesState.value.devices)) {
-          if (devicePeerId === peerId) {
-            continue;
-          }
-          const owners = entry.ownerUserIds ?? [];
-          if (!owners.includes(targetUserId)) {
-            continue;
-          }
-          if (owners.length > 1) {
-            continue;
-          }
-          // Use polly's local-only revocation primitive plus the
-          // CLI's file-backed keyring storage. The pairing module's
-          // higher-level revokeDevice helper calls saveKeyring,
-          // which only knows IndexedDB and throws in Node.
-          revokePeerLocally(devicePeerId, keyring);
-          revokedAny = true;
+      const targetDevicePeerIds: string[] = [];
+      for (const [devicePeerId, entry] of Object.entries(devicesState.value.devices)) {
+        if (devicePeerId === peerId) {
+          continue;
         }
-        if (revokedAny) {
-          await storage.save(keyring);
+        const owners = entry.ownerUserIds ?? [];
+        if (!owners.includes(targetUserId)) {
+          continue;
         }
+        if (owners.length > 1) {
+          continue;
+        }
+        targetDevicePeerIds.push(devicePeerId);
       }
       if (peered) {
         await flushOutgoing(2000);
       }
+      // `client.keyring` returns the same in-memory instance polly's
+      // adapter is reading on every send/receive (see
+      // `resolveKeyringSource` in polly's mesh-client.ts). Mutating
+      // it via `revokePeerLocally` takes effect for the running
+      // process; `storage.save` afterwards persists it across
+      // restarts. Loading a fresh copy from disk would NOT update
+      // polly's adapter — it'd keep the closure over the original
+      // load — so the receive gate would only close on the next
+      // process start.
+      const keyring = client.keyring;
+      const storage = keyringStorage();
+      let appliedAny = false;
+      let queuedAny = false;
+      for (const devicePeerId of targetDevicePeerIds) {
+        const converged = peered
+          ? await waitForMeshUsersConvergence(client, devicePeerId, issuedAt, 5000)
+          : false;
+        if (converged) {
+          revokePeerLocally(devicePeerId, keyring);
+          appliedAny = true;
+        } else {
+          queuePendingRevocation({ devicePeerId, revokedUserId: targetUserId, issuedAt });
+          queuedAny = true;
+        }
+      }
+      if (appliedAny) {
+        await storage.save(keyring);
+      }
       process.stdout.write(`revoked ${targetUserId}\n`);
+      if (queuedAny) {
+        process.stdout.write(
+          'transport-level revocation deferred: target peer is offline or has not yet acknowledged the revocation row. ' +
+            'It will be applied automatically on the next `chat serve` heartbeat after convergence.\n'
+        );
+      }
       return 0;
     } finally {
       await closeMesh(client);
