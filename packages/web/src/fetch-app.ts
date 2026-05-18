@@ -66,11 +66,10 @@ ${cssLink}  </head>
     <div id="app"></div>
     <script type="module" src="/home${entryJs}"></script>
     <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function () {
-          navigator.serviceWorker.register('/sw.js').catch(function () {});
-        });
-      }
+      // Service worker registration is paused while the kill-switch
+      // sw.js (which unregisters itself and reloads clients) is in
+      // rotation. Re-enable here once the next worker generation is
+      // ready and the old caches have rolled out everywhere.
     </script>
   </body>
 </html>
