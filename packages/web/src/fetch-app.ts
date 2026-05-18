@@ -40,6 +40,9 @@ function contentTypeFor(name: string): string {
   if (name.endsWith('.json')) {
     return 'application/json; charset=utf-8';
   }
+  if (name.endsWith('.wasm')) {
+    return 'application/wasm';
+  }
   return 'application/octet-stream';
 }
 
