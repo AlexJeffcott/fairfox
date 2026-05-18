@@ -176,6 +176,7 @@ export async function loadKeyring(): Promise<MeshKeyring | null> {
 }
 
 export async function saveKeyring(keyring: MeshKeyring): Promise<void> {
+  cachedKeyring = keyring;
   const db = await openDb();
   try {
     await idbPut(db, KEY, serialise(keyring));
@@ -184,14 +185,56 @@ export async function saveKeyring(keyring: MeshKeyring): Promise<void> {
   }
 }
 
-export async function loadOrCreateKeyring(): Promise<MeshKeyring> {
-  const existing = await loadKeyring();
-  if (existing) {
-    return existing;
+// This device is the only writer to its own keyring, so once we
+// have loaded it we can keep the single instance in memory and hand
+// it back to every subsequent caller. Without this cache every
+// reactive effect that touches the keyring (MeshGate's harvest /
+// self-heal, RequirePaired, the chat send path) opens the
+// `fairfox-keyring` IDB on every tick — a flood of unresolved
+// opens piled up behind a 38-second main-thread freeze in one
+// observed session and made the page appear permanently hung.
+//
+// `inFlight` is a single-flight guard: concurrent callers during
+// the first load share the same Promise rather than each starting
+// their own IDB open. `saveKeyring` also updates the cache, so a
+// caller that mutates and persists the keyring leaves the in-memory
+// copy authoritative for the next reader.
+let cachedKeyring: MeshKeyring | null = null;
+let inFlight: Promise<MeshKeyring> | null = null;
+
+export function loadOrCreateKeyring(): Promise<MeshKeyring> {
+  if (cachedKeyring) {
+    return Promise.resolve(cachedKeyring);
   }
-  const fresh = createKeyring();
-  await saveKeyring(fresh);
-  return fresh;
+  if (inFlight) {
+    return inFlight;
+  }
+  inFlight = (async (): Promise<MeshKeyring> => {
+    try {
+      const existing = await loadKeyring();
+      if (existing) {
+        cachedKeyring = existing;
+        return existing;
+      }
+      const fresh = createKeyring();
+      await saveKeyring(fresh);
+      cachedKeyring = fresh;
+      return fresh;
+    } finally {
+      inFlight = null;
+    }
+  })();
+  return inFlight;
+}
+
+/** Drop the in-memory keyring so the next `loadOrCreateKeyring`
+ * call re-reads from disk. Intended for tests and for the rare
+ * runtime path that wipes the keyring (`fairfox mesh init --force`
+ * via CLI talks to the same IDB but the browser cache won't see
+ * the change without a reload — this is here for completeness). */
+export function resetKeyringCache(): void {
+  cachedKeyring = null;
+  inFlight = null;
 }
 
 /** Stop syncing with a peer on THIS device. Removes the peer from the
