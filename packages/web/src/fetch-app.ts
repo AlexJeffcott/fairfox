@@ -211,6 +211,51 @@ ${cssLink}  </head>
         }
       }
       window.__mark('A4: sync wasm wrappers installed');
+
+      // WebSocket tracer. ensure-mesh.ts opens a top-level mesh
+      // connection during module init; that connection includes a
+      // signaling WebSocket whose .connect() the bundle awaits.
+      // Capture the upgrade, open event, first message, and close so
+      // we can see whether the socket ever becomes usable.
+      if (typeof window.WebSocket === 'function') {
+        var OrigWS = window.WebSocket;
+        function TracedWS(url, protocols) {
+          var ws =
+            protocols === undefined
+              ? new OrigWS(url)
+              : new OrigWS(url, protocols);
+          var shortUrl = String(url).slice(-60);
+          window.__mark('ws  -> open ' + shortUrl);
+          var t0 = Date.now();
+          ws.addEventListener('open', function () {
+            window.__mark('ws OK ' + (Date.now() - t0) + 'ms ' + shortUrl);
+          });
+          ws.addEventListener('error', function () {
+            window.__mark('ws !! error after ' + (Date.now() - t0) + 'ms ' + shortUrl);
+          });
+          ws.addEventListener('close', function (e) {
+            window.__mark(
+              'ws .. close ' + e.code + ' after ' + (Date.now() - t0) + 'ms ' + shortUrl
+            );
+          });
+          ws.addEventListener('message', function (e) {
+            var d = e.data;
+            var preview =
+              typeof d === 'string'
+                ? d.slice(0, 60)
+                : '[binary ' + (d && d.byteLength) + 'b]';
+            window.__mark('ws <- msg ' + preview);
+          });
+          return ws;
+        }
+        TracedWS.prototype = OrigWS.prototype;
+        TracedWS.CONNECTING = OrigWS.CONNECTING;
+        TracedWS.OPEN = OrigWS.OPEN;
+        TracedWS.CLOSING = OrigWS.CLOSING;
+        TracedWS.CLOSED = OrigWS.CLOSED;
+        window.WebSocket = TracedWS;
+      }
+      window.__mark('A5: WebSocket tracer installed');
     </script>
     <script type="module" src="/home${entryJs}"></script>
     <script>
