@@ -36,7 +36,7 @@ import {
   LEADER_LEASE_DOC_ID,
   parseModelId,
 } from '@fairfox/shared/assistant-state';
-import { meshDocChangeCount, snapshotMeshDoc } from '@fairfox/shared/compact-mesh-doc';
+import { snapshotMeshDoc } from '@fairfox/shared/compact-mesh-doc';
 import { devicesState } from '@fairfox/shared/devices-state';
 import { documentIndexState } from '@fairfox/shared/document-index-state';
 import { $meshState, type MeshClient, revokePeerLocally } from '@fairfox/shared/polly';
@@ -1267,7 +1267,7 @@ export async function chatServe(): Promise<number> {
   const HEARTBEAT_COMPACTION_COOLDOWN_MS = 5 * 60 * 1000;
   const heartbeatLastCompactionAt = new Map<string, number>();
   async function maybeAutoCompactHeartbeats(): Promise<void> {
-    const leaderCount = meshDocChangeCount(leaseSignal);
+    const leaderCount = leaseSignal.changeCount ?? 0;
     if (
       leaderCount >= HEARTBEAT_COMPACTION_HISTORY_THRESHOLD &&
       Date.now() - (heartbeatLastCompactionAt.get('daemon:leader') ?? 0) >=
@@ -1289,7 +1289,7 @@ export async function chatServe(): Promise<number> {
         );
       }
     }
-    const healthCount = meshDocChangeCount(healthSignal);
+    const healthCount = healthSignal.changeCount ?? 0;
     if (
       healthCount >= HEARTBEAT_COMPACTION_HISTORY_THRESHOLD &&
       Date.now() - (heartbeatLastCompactionAt.get('chat:health') ?? 0) >=

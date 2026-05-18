@@ -303,36 +303,6 @@ export async function snapshotMeshDoc<TDoc extends MeshDoc>(
   };
 }
 
-/** Count of Automerge changes in the wrapper's current document.
- * Each change is one increment of the doc's history, and polly's
- * NodeFS storage adapter writes ~one file per change to the
- * `incremental/` dir, so this count is a faithful proxy for "how
- * many incremental chunks does this doc carry on disk." Use it to
- * decide when a heartbeat-style doc has accumulated enough history
- * to be worth compacting (no historical value, only the current
- * state matters; the per-tick changes pile up unbounded).
- *
- * Returns 0 if the wrapper's handle hasn't bridged yet (caller
- * should await `wrapper.loaded` before reading). */
-export function meshDocChangeCount<TDoc extends MeshDoc>(wrapper: {
-  readonly handle: DocHandle<TDoc> | undefined;
-}): number {
-  const handle = wrapper.handle;
-  if (!handle) {
-    return 0;
-  }
-  let doc: TDoc | undefined;
-  try {
-    doc = handle.doc();
-  } catch {
-    return 0;
-  }
-  if (!doc) {
-    return 0;
-  }
-  return Automerge.getAllChanges(doc as unknown as Automerge.Doc<TDoc>).length;
-}
-
 /** Result of a {@link reconcileMeshDoc} run. */
 export interface ReconcileResult {
   /** The logical key reconciled. */
