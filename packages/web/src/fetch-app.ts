@@ -91,6 +91,40 @@ ${cssLink}  </head>
         }
       };
       window.__mark('A: shell inline script ran');
+
+      // Inline fetch tracer. The bundle is hanging in
+      // polly's top-level `await initializeWasm(...)` before any
+      // bundle-side code runs, so the only place we can see what
+      // network calls precede the freeze is from a wrapper installed
+      // before the bundle script. Each call appends a line to the
+      // banner with the URL and how it resolved.
+      var origFetch = window.fetch.bind(window);
+      window.fetch = function (input, init) {
+        var url =
+          typeof input === 'string'
+            ? input
+            : input && input.url
+              ? input.url
+              : String(input);
+        var short = url.length > 80 ? url.slice(0, 77) + '...' : url;
+        window.__mark('fetch  -> ' + short);
+        var started = Date.now();
+        return origFetch(input, init).then(
+          function (res) {
+            window.__mark(
+              'fetch ' + res.status + ' ' + (Date.now() - started) + 'ms ' + short
+            );
+            return res;
+          },
+          function (err) {
+            window.__mark(
+              'fetch !! ' + (Date.now() - started) + 'ms ' + short + ' :: ' + err
+            );
+            throw err;
+          }
+        );
+      };
+      window.__mark('A2: fetch tracer installed');
     </script>
     <script type="module" src="/home${entryJs}"></script>
     <script>
