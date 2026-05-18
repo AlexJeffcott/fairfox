@@ -12,7 +12,15 @@ import { registerDocIdResolver, registerRedirectDetector } from '@fairfox/polly/
 import { currentDocIdForKey, DOCUMENT_INDEX_KEY } from '#src/document-index-state.ts';
 import { loadOrCreateKeyring } from '#src/keyring.ts';
 import { createMeshConnection, type MeshConnection } from '#src/mesh.ts';
+import { configureMeshState, Repo } from '#src/polly-reexport.ts';
 import { getSealedSentinel } from '#src/sealed-sentinel.ts';
+
+const mark = (label: string): void => {
+  const fn = (globalThis as unknown as { __mark?: (s: string) => void }).__mark;
+  if (typeof fn === 'function') {
+    fn(label);
+  }
+};
 
 async function setup(): Promise<MeshConnection | undefined> {
   if (typeof window === 'undefined') {
@@ -22,7 +30,9 @@ async function setup(): Promise<MeshConnection | undefined> {
     return undefined;
   }
 
+  mark('ensure-mesh: setup start');
   const keyring = await loadOrCreateKeyring();
+  mark('ensure-mesh: keyring loaded');
   const peerId = Array.from(keyring.identity.publicKey.slice(0, 8))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
@@ -30,7 +40,32 @@ async function setup(): Promise<MeshConnection | undefined> {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const signalingUrl = `${proto}//${window.location.host}/polly/signaling`;
 
-  return await createMeshConnection({ keyring, peerId, signalingUrl });
+  const conn = await createMeshConnection({ keyring, peerId, signalingUrl });
+  mark('ensure-mesh: mesh connection ready');
+  return conn;
+}
+
+/** Stand up an empty, network-less, storage-less Repo and register it
+ * with polly's `$meshState` module so wrapper construction succeeds.
+ * Used only when {@link setup} rejects: every sub-app's state module
+ * calls `$meshState(...)` at the top level, and polly throws
+ * synchronously when no Repo is configured — without this fallback,
+ * a transient keyring hiccup (e.g. another fairfox tab holding the
+ * IDB open) escalates from "no mesh, show recovery UI" to "uncaught
+ * throw in module init, white screen of death".
+ *
+ * Wrappers attached to this stub Repo are inert: they don't persist,
+ * they don't sync, they hold the initial value handed to the
+ * `$meshState(key, initial)` call. That is the *correct* shape for
+ * the failure path: the App boots, MeshGate sees no peers and no
+ * paired state, the user gets the LoginPage / recovery affordance. */
+function installStubRepoForFailedSetup(): void {
+  try {
+    configureMeshState(new Repo({ network: [] }));
+    mark('ensure-mesh: stub Repo installed');
+  } catch (err) {
+    console.error('[ensure-mesh] stub Repo configure failed:', err);
+  }
 }
 
 // Never reject the top-level await. ensure-mesh is imported (directly
@@ -41,8 +76,9 @@ async function setup(): Promise<MeshConnection | undefined> {
 // render; MeshGate then surfaces the unpaired/unconfigured state to
 // the user with a recovery affordance.
 export const mesh: MeshConnection | undefined = await setup().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error('[ensure-mesh] setup() failed; continuing without mesh:', err);
+  mark(`ensure-mesh: setup rejected: ${err instanceof Error ? err.message : String(err)}`);
+  installStubRepoForFailedSetup();
   return undefined;
 });
 
