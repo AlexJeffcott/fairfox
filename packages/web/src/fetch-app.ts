@@ -83,7 +83,9 @@ ${cssLink}  </head>
             (document.body || document.documentElement).appendChild(log);
           }
           var t = new Date().toISOString().slice(11, 23);
-          log.appendChild(document.createTextNode(t + ' ' + label + '\n'));
+          var line = document.createElement('div');
+          line.textContent = t + ' ' + label;
+          log.appendChild(line);
         } catch (e) {
           // best-effort tracer; never throw out of mark
         }
