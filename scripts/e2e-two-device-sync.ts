@@ -58,7 +58,19 @@ async function clickByText(page: Page, text: string): Promise<void> {
   await element.click();
 }
 
-async function launch(label: string): Promise<{ browser: Browser; page: Page }> {
+// Browser console messages we have triaged as benign and accept on
+// purpose. Anything not matched here at warning or error level fails
+// the run — the wasm-MIME regression shipped silently because nothing
+// was looking at the console.
+const CONSOLE_NOISE_ALLOWLIST: RegExp[] = [];
+
+interface DeviceHandle {
+  browser: Browser;
+  page: Page;
+  consoleProblems: { level: 'warning' | 'error'; text: string }[];
+}
+
+async function launch(label: string): Promise<DeviceHandle> {
   const browser = await puppeteer.launch({
     headless: HEADLESS,
     userDataDir: resolve(PROFILES, label),
@@ -66,14 +78,24 @@ async function launch(label: string): Promise<{ browser: Browser; page: Page }> 
   });
   const page = await browser.newPage();
   await page.setViewport({ width: 900, height: 900 });
-  page.on('pageerror', (err) => TRACE(`${label}-pageerror`, err.message));
+  const consoleProblems: DeviceHandle['consoleProblems'] = [];
+  page.on('pageerror', (err) => {
+    TRACE(`${label}-pageerror`, err.message);
+    consoleProblems.push({ level: 'error', text: err.message });
+  });
   page.on('console', (m) => {
     const text = m.text();
-    if (/\[policy\]/.test(text)) {
+    const type = m.type();
+    if (type === 'error' || type === 'warning') {
+      if (!CONSOLE_NOISE_ALLOWLIST.some((re) => re.test(text))) {
+        TRACE(`${label}-console-${type}`, text);
+        consoleProblems.push({ level: type, text });
+      }
+    } else if (/\[policy\]/.test(text)) {
       TRACE(`${label}-console`, text);
     }
   });
-  return { browser, page };
+  return { browser, page, consoleProblems };
 }
 
 const desktop = await launch('desktop');
@@ -253,6 +275,19 @@ try {
   if (!ok) {
     throw new Error(`chore "${chore}" did not appear on phone within 20s`);
   }
+
+  const consoleProblems = [
+    ...desktop.consoleProblems.map((p) => ({ ...p, label: 'desktop' })),
+    ...phone.consoleProblems.map((p) => ({ ...p, label: 'phone' })),
+  ];
+  if (consoleProblems.length > 0) {
+    ok = false;
+    const summary = consoleProblems.map((p) => `  [${p.label} ${p.level}] ${p.text}`).join('\n');
+    throw new Error(
+      `chore synced but ${consoleProblems.length} unexpected console message(s) appeared — extend CONSOLE_NOISE_ALLOWLIST in this script if a match is genuinely benign:\n${summary}`
+    );
+  }
+
   TRACE('result', `SUCCESS — "${chore}" synced`);
   TRACE(
     'result',

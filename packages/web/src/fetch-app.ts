@@ -27,7 +27,9 @@ const TAG_PREFIX = 'web-';
 const LATEST_ASSET_URL = `https://github.com/${OWNER}/${REPO}/releases/latest/download/fairfox-web.zip`;
 const RELEASES_API = `https://api.github.com/repos/${OWNER}/${REPO}/releases`;
 
-function contentTypeFor(name: string): string {
+export const OCTET_STREAM_FALLBACK = 'application/octet-stream';
+
+export function contentTypeFor(name: string): string {
   if (name.endsWith('.js')) {
     return 'application/javascript; charset=utf-8';
   }
@@ -43,7 +45,7 @@ function contentTypeFor(name: string): string {
   if (name.endsWith('.wasm')) {
     return 'application/wasm';
   }
-  return 'application/octet-stream';
+  return OCTET_STREAM_FALLBACK;
 }
 
 function htmlShell(entryJs: string, entryCss: string | null, buildHash: string): string {
