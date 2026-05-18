@@ -42,6 +42,7 @@ import { exportCmd } from '#src/commands/export.ts';
 import {
   meshAddDevice,
   meshAddUser,
+  meshCleanupSealed,
   meshCompact,
   meshFingerprintCmd,
   meshInit,
@@ -234,8 +235,11 @@ function main(): Promise<number> {
     if (verb === 'reconcile') {
       return meshReconcile(verbArgs);
     }
+    if (verb === 'cleanup-sealed') {
+      return meshCleanupSealed(verbArgs);
+    }
     process.stderr.write(
-      'fairfox mesh: expected `compact` or `reconcile`. Try `fairfox mesh compact <key>`.\n'
+      'fairfox mesh: expected `compact`, `reconcile`, or `cleanup-sealed`. Try `fairfox mesh compact <key>`.\n'
     );
     return Promise.resolve(1);
   }

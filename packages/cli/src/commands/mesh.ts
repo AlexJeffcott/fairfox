@@ -11,6 +11,7 @@
 
 import { existsSync, unlinkSync } from 'node:fs';
 import { hostname } from 'node:os';
+import { interpretAsDocumentId, isValidDocumentId } from '@automerge/automerge-repo/slim';
 import type { ChatHealth, LeaderLease } from '@fairfox/shared/assistant-state';
 import type { DevicesDoc } from '@fairfox/shared/devices-state';
 import {
@@ -1148,6 +1149,105 @@ export async function meshReconcile(rest: readonly string[]): Promise<number> {
   }
 }
 
+/** `fairfox mesh cleanup-sealed [--dry-run]` — ADR 0008.
+ *
+ * Reads `mesh:document-index` and deletes the on-disk storage for
+ * every sealed docId. Each compaction archives the previous docId
+ * onto `index[key].sealedDocIds` and keeps its snapshots /
+ * incrementals in REPO_STORAGE_PATH so the in-band redirect
+ * sentinel can rebind any peer that hasn't synced the index yet.
+ * Once every paired peer holds the new index entry, the sealed
+ * bytes are pure local residue — and on a heartbeat-style doc
+ * they can be the majority of the storage budget.
+ *
+ * `--dry-run` lists what would be removed without touching disk.
+ * Without it, polly's storage subsystem unlinks the three subdirs
+ * (snapshot / incremental / sync-state) under each sealed docId
+ * and drops the in-memory cache; every other doc is untouched.
+ *
+ * Confirm via `fairfox doctor` that this device's index has the
+ * post-compaction entry, and via the Help tab Sync diagnostics on
+ * each paired browser that they all show the same index, before
+ * running without `--dry-run`. The redirect on the sealed doc is
+ * the only thing that bridges stragglers; deleting it locally is
+ * a one-way move.
+ *
+ * Requires `mesh.compact` (admin role).
+ */
+export async function meshCleanupSealed(rest: readonly string[]): Promise<number> {
+  const dryRun = rest.includes('--dry-run');
+  const unknown = rest.filter((a) => a !== '--dry-run');
+  if (unknown.length > 0) {
+    process.stderr.write(
+      `fairfox mesh cleanup-sealed: unknown argument(s): ${unknown.join(', ')}\n`
+    );
+    return 1;
+  }
+
+  const peerId = await loadPeerId();
+  const client = await openMeshClient({ peerId });
+  try {
+    await waitForPeer(client, 8000);
+
+    const { documentIndexState } = await import('@fairfox/shared/document-index-state');
+    const { userIdentity } = await import('@fairfox/shared/user-identity-state');
+    const { devicesState } = await import('@fairfox/shared/devices-state');
+    const { usersState } = await import('@fairfox/shared/users-state');
+    const { canDo } = await import('@fairfox/shared/policy');
+
+    userIdentity.value = loadUserIdentityFile() ?? null;
+    await Promise.all([devicesState.loaded, usersState.loaded, documentIndexState.loaded]);
+
+    if (!canDo('mesh.compact')) {
+      process.stderr.write(
+        'fairfox mesh cleanup-sealed: requires `mesh.compact` permission (admin role).\n'
+      );
+      return 1;
+    }
+
+    const index = documentIndexState.value.index;
+    const sealed: Array<{ key: string; docId: string }> = [];
+    for (const [key, entry] of Object.entries(index)) {
+      for (const sealedDocId of entry.sealedDocIds) {
+        sealed.push({ key, docId: sealedDocId });
+      }
+    }
+
+    if (sealed.length === 0) {
+      process.stdout.write('fairfox mesh cleanup-sealed: no sealed docs in the index.\n');
+      return 0;
+    }
+
+    const storage = client.repo.storageSubsystem;
+    if (!storage) {
+      process.stderr.write(
+        'fairfox mesh cleanup-sealed: repo has no storage subsystem (in-memory mode?).\n'
+      );
+      return 1;
+    }
+
+    process.stdout.write(`${dryRun ? 'would remove' : 'removed'} ${sealed.length} sealed docs:\n`);
+    for (const { key, docId } of sealed) {
+      if (!isValidDocumentId(docId)) {
+        process.stdout.write(`  ${key}  ${docId.slice(0, 16)}… (skipped: malformed docId)\n`);
+        continue;
+      }
+      if (!dryRun) {
+        await storage.removeDoc(interpretAsDocumentId(docId));
+      }
+      process.stdout.write(`  ${key}  ${docId.slice(0, 16)}…\n`);
+    }
+    if (dryRun) {
+      process.stdout.write(
+        '\nDry run — nothing was deleted. Re-run without --dry-run to remove.\n'
+      );
+    }
+    return 0;
+  } finally {
+    await closeMesh(client);
+  }
+}
+
 export function meshUsage(stream: NodeJS.WriteStream = process.stderr): void {
   stream.write(
     [
@@ -1188,6 +1288,14 @@ export function meshUsage(stream: NodeJS.WriteStream = process.stderr): void {
       '                                     Run during the grace window if you',
       '                                     suspect offline peers wrote to the',
       '                                     old doc after compaction.',
+      '  fairfox mesh cleanup-sealed [--dry-run]',
+      '                                     Delete the on-disk residue of every',
+      '                                     sealed doc in mesh:document-index.',
+      '                                     Run once every paired peer has synced',
+      '                                     the post-compaction index entry; the',
+      '                                     redirect sentinel on the sealed doc',
+      '                                     is the only thing that bridges',
+      '                                     stragglers, so this is one-way.',
       '',
       "Only this machine's state is affected. Other paired devices stay on",
       'the old mesh until they wipe their own state.',
@@ -1228,6 +1336,9 @@ export function mesh(rest: readonly string[]): Promise<number> {
   }
   if (verb === 'reconcile') {
     return meshReconcile(args);
+  }
+  if (verb === 'cleanup-sealed') {
+    return meshCleanupSealed(args);
   }
   meshUsage();
   return Promise.resolve(1);
