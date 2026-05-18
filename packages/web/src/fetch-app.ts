@@ -256,6 +256,48 @@ ${cssLink}  </head>
         window.WebSocket = TracedWS;
       }
       window.__mark('A5: WebSocket tracer installed');
+
+      // IndexedDB tracer. We never reach the signaling WebSocket, so
+      // the hang is upstream — most likely in loadOrCreateKeyring()
+      // or in the mesh storage adapter opening fairfox-mesh. Each IDB
+      // request gets a mark on issue and on success/error/blocked, so
+      // an open that goes 'blocked' (e.g. waiting on an older
+      // connection that never closes) shows up as a one-sided trace.
+      try {
+        var origOpen = indexedDB.open.bind(indexedDB);
+        indexedDB.open = function (name, version) {
+          var label = name + (version === undefined ? '' : '@v' + version);
+          window.__mark('idb  -> open ' + label);
+          var t0 = Date.now();
+          var req =
+            version === undefined ? origOpen(name) : origOpen(name, version);
+          req.addEventListener('success', function () {
+            window.__mark('idb OK ' + (Date.now() - t0) + 'ms ' + label);
+          });
+          req.addEventListener('error', function () {
+            window.__mark(
+              'idb !! ' +
+                (Date.now() - t0) +
+                'ms ' +
+                label +
+                ' :: ' +
+                (req.error && req.error.message)
+            );
+          });
+          req.addEventListener('blocked', function () {
+            window.__mark('idb .. blocked ' + label);
+          });
+          req.addEventListener('upgradeneeded', function (e) {
+            window.__mark(
+              'idb .. upgrade ' + label + ' v' + e.oldVersion + ' -> v' + e.newVersion
+            );
+          });
+          return req;
+        };
+      } catch (e) {
+        window.__mark('idb wrap failed: ' + e);
+      }
+      window.__mark('A6: IDB tracer installed');
     </script>
     <script type="module" src="/home${entryJs}"></script>
     <script>
