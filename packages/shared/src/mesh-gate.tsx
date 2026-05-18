@@ -41,7 +41,7 @@ import { signEndorsement } from '#src/user-identity.ts';
 import { hydrateUserIdentity, userIdentity } from '#src/user-identity-state.ts';
 import { createBootstrapUser, upsertUser, usersState } from '#src/users-state.ts';
 
-async function refreshKeyringState(): Promise<void> {
+async function refreshKeyringStateInner(): Promise<void> {
   try {
     const keyring = await loadOrCreateKeyring();
     knownPeerCount.value = keyring.knownPeers.size;
@@ -64,7 +64,7 @@ async function refreshKeyringState(): Promise<void> {
  * MeshClient's adapter picks up the new trust set. Runs every time
  * the devices doc changes — a fresh row landing in sync fans out
  * to all browsers that see it. */
-async function harvestAndMaybeReload(): Promise<void> {
+async function harvestAndMaybeReloadInner(): Promise<void> {
   try {
     const keyring = await loadOrCreateKeyring();
     const added = harvestPeerKeys(keyring);
@@ -84,6 +84,54 @@ async function harvestAndMaybeReload(): Promise<void> {
   }
 }
 
+// In-flight dirty-bit guards. When devicesState ticks rapidly —
+// e.g. a peer connects and polly applies hundreds of buffered
+// operations, one signal write each — preact effects re-tick once
+// per write. Without guards, every tick fires a fresh async run
+// of refreshKeyringState / harvestAndMaybeReload / selfHealIdentity;
+// the runs pile up concurrently, each touching the keyring and the
+// devices doc, and the burst is what produced the IDB open storm
+// observed at 16:24:51 in the captured trace.
+//
+// The dirty-bit pattern collapses a flurry of re-ticks into "one
+// run now, one run at the end if anything changed during the run."
+// That gives every state change a chance to be observed without
+// running the body more than twice for any size of burst.
+function withInFlightGuard<T>(
+  state: { inFlight: boolean; dirty: boolean },
+  body: () => Promise<T>
+): Promise<T | undefined> {
+  if (state.inFlight) {
+    state.dirty = true;
+    return Promise.resolve(undefined);
+  }
+  state.inFlight = true;
+  return (async (): Promise<T | undefined> => {
+    let last: T | undefined;
+    try {
+      do {
+        state.dirty = false;
+        last = await body();
+      } while (state.dirty);
+    } finally {
+      state.inFlight = false;
+    }
+    return last;
+  })();
+}
+
+const refreshKeyringStateGuard = { inFlight: false, dirty: false };
+function refreshKeyringState(): Promise<void> {
+  return withInFlightGuard(refreshKeyringStateGuard, refreshKeyringStateInner).then(
+    () => undefined
+  );
+}
+
+const harvestGuard = { inFlight: false, dirty: false };
+function harvestAndMaybeReload(): Promise<void> {
+  return withInFlightGuard(harvestGuard, harvestAndMaybeReloadInner).then(() => undefined);
+}
+
 interface MeshGateProps {
   children: ComponentChildren;
 }
@@ -96,7 +144,7 @@ interface MeshGateProps {
  * false on everything because `liveUser()` can't find the id. The
  * repair is idempotent — if someone else's copy of the entry shows
  * up later via sync, CRDT merge handles the duplicate. */
-async function selfHealIdentity(): Promise<boolean> {
+async function selfHealIdentityInner(): Promise<boolean> {
   const identity = userIdentity.value;
   if (!identity) {
     return false;
@@ -165,9 +213,17 @@ async function bumpSelfLastSeen(): Promise<void> {
  * without our self-endorsement and only a re-run lands the row in
  * memory. The retry guard tracks whether we've successfully healed
  * (signedByMe == true seen at least once) so subsequent re-ticks
- * skip the work. */
+ * skip the work. The in-flight guard collapses concurrent calls
+ * during a single async run — the burst that triggers it is a
+ * peer-sync flood writing devicesState faster than the heal body
+ * can return. */
 let bumpFired = false;
 let selfHealCompletedForUserId: string | null = null;
+const selfHealGuard = { inFlight: false, dirty: false };
+
+function selfHealIdentity(): Promise<boolean> {
+  return withInFlightGuard(selfHealGuard, selfHealIdentityInner).then((v) => v ?? false);
+}
 
 let meshGateEffectsInstalled = false;
 
