@@ -92,12 +92,12 @@ ${cssLink}  </head>
       };
       window.__mark('A: shell inline script ran');
 
-      // Inline fetch tracer. The bundle is hanging in
-      // polly's top-level `await initializeWasm(...)` before any
-      // bundle-side code runs, so the only place we can see what
-      // network calls precede the freeze is from a wrapper installed
-      // before the bundle script. Each call appends a line to the
-      // banner with the URL and how it resolved.
+      // Inline fetch tracer. The bundle is hanging on polly's
+      // top-level await of initializeWasm before any bundle-side code
+      // runs, so the only place we can see what network calls precede
+      // the freeze is from a wrapper installed before the bundle
+      // script. Each call appends a line to the banner with the URL
+      // and how it resolved.
       var origFetch = window.fetch.bind(window);
       window.fetch = function (input, init) {
         var url =
