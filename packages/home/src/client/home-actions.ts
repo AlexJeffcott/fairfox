@@ -110,6 +110,20 @@ export const homeActions: Record<string, (ctx: HandlerContext) => void> = {
   'help.refresh-doc-sizes': () => {
     void import('#src/client/doc-sizes.ts').then(({ refreshDocSizes }) => refreshDocSizes());
   },
+  'help.cleanup-sealed-docs': () => {
+    void import('#src/client/doc-sizes.ts').then(async ({ cleanupSealedAndRefresh }) => {
+      const summary = await cleanupSealedAndRefresh();
+      if (summary.deleted.length === 0) {
+        console.log('[doc-sizes] no sealed docs found to clean up');
+        return;
+      }
+      const kb = (summary.bytesFreed / 1024).toFixed(1);
+      console.log(`[doc-sizes] freed ${kb}KB across ${summary.deleted.length} sealed docs:`);
+      for (const row of summary.deleted) {
+        console.log(`  ${row.key} ${row.docId} (${(row.bytes / 1024).toFixed(1)}KB)`);
+      }
+    });
+  },
   'peers.rename-self': (ctx) => {
     const name = ctx.data.value?.trim();
     if (!name) {

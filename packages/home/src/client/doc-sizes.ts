@@ -19,7 +19,7 @@ import { docsState } from '@fairfox/docs/state';
 import { directoryState } from '@fairfox/family-phone-admin/state';
 import { libraryState } from '@fairfox/library/state';
 import { devicesState } from '@fairfox/shared/devices-state';
-import { documentIndexState } from '@fairfox/shared/document-index-state';
+import { type DocumentIndexEntry, documentIndexState } from '@fairfox/shared/document-index-state';
 import { meshMetaState } from '@fairfox/shared/mesh-meta-state';
 import { usersState } from '@fairfox/shared/users-state';
 import { sessionsState as speakwellSessions } from '@fairfox/speakwell/state';
@@ -67,10 +67,18 @@ export interface DocSizeRow {
   key: string;
   /** Stringified Automerge DocumentId, abbreviated for display. */
   docId: string;
+  /** Full Automerge DocumentId — used by the cleanup path to scope
+   * a removeRange to a single sealed doc. */
+  fullDocId: string;
   /** Sum of `binary.byteLength` across every row for this docId. */
   bytes: number;
   /** Number of rows in the store for this docId — snapshots + incrementals. */
   rows: number;
+  /** True when this docId appears in `mesh:document-index`'s
+   * sealedDocIds for some key — i.e. it was compacted, the current
+   * wrapper now binds to a fresh docId, and the bytes here are
+   * pure historical residue safe to delete once peers have caught up. */
+  sealed: boolean;
 }
 
 const DB_NAME = 'fairfox-mesh';
@@ -122,6 +130,23 @@ async function readRawSizes(): Promise<Map<string, RawRow>> {
   }
 }
 
+/** Build a lookup of sealed docId → logical key from the running
+ * `mesh:document-index`. Used to label compacted-doc residue in the
+ * size table and to drive the cleanup action. Returns an empty Map
+ * when the index hasn't hydrated or has no entries; both states are
+ * indistinguishable from the on-disk byte view, and a sealed row
+ * whose key we can't determine falls back to "(unknown sealed)". */
+function readSealedDocIndex(): Map<string, string> {
+  const sealedToKey = new Map<string, string>();
+  const index: Record<string, DocumentIndexEntry> = documentIndexState.value.index;
+  for (const [key, entry] of Object.entries(index)) {
+    for (const sealedDocId of entry.sealedDocIds) {
+      sealedToKey.set(sealedDocId, key);
+    }
+  }
+  return sealedToKey;
+}
+
 export async function collectDocSizes(): Promise<DocSizeRow[]> {
   const raw = await readRawSizes();
   const docIdToKey = new Map<string, string>();
@@ -131,17 +156,78 @@ export async function collectDocSizes(): Promise<DocSizeRow[]> {
       docIdToKey.set(docId, key);
     }
   }
+  const sealedToKey = readSealedDocIndex();
   const rows: DocSizeRow[] = [];
   for (const [docId, raw_] of raw) {
+    const sealed = sealedToKey.has(docId);
+    const liveKey = docIdToKey.get(docId);
+    const sealedFor = sealedToKey.get(docId);
+    const label = liveKey ?? (sealedFor ? `(sealed: ${sealedFor})` : '(unknown)');
     rows.push({
-      key: docIdToKey.get(docId) ?? '(unknown)',
+      key: label,
       docId: `${docId.slice(0, 12)}…`,
+      fullDocId: docId,
       bytes: raw_.bytes,
       rows: raw_.rows,
+      sealed,
     });
   }
   rows.sort((a, b) => b.bytes - a.bytes);
   return rows;
+}
+
+/** Drop every snapshot + incremental row whose key starts with the
+ * supplied docId from the `fairfox-mesh` IDB. Polly's storage adapter
+ * stores rows under `[docId, ...]` keys, so the range
+ * `[docId] … [docId, '￿']` is exactly this doc's bytes and
+ * nothing else. Does NOT tear down polly's mesh adapter — the running
+ * app keeps using its open connection on other docs while this write
+ * transaction is queued. Returns the number of rows the delete
+ * touched (best-effort: the IDB delete-by-range op doesn't surface
+ * a count, so we re-read the doc after to confirm zero bytes). */
+async function deleteDocRange(docId: string): Promise<void> {
+  const db = await openMeshStore();
+  try {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const range = IDBKeyRange.bound([docId], [docId, '￿']);
+    store.delete(range);
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export interface CleanupSummary {
+  /** Sealed docIds that were deleted, with the logical key they came from. */
+  deleted: Array<{ key: string; docId: string; bytes: number }>;
+  /** Sum of bytes freed across every deleted sealed doc. */
+  bytesFreed: number;
+}
+
+/** Delete every sealed doc the index knows about that is still
+ * present on disk in `fairfox-mesh`. The redirect sentinel that
+ * lives on the sealed doc itself is what helps peers who haven't
+ * synced the index yet bind to the cleaned doc — once the index
+ * has synced to a device, that device's sealed-doc bytes are pure
+ * residue and can be removed locally. Run after you've confirmed
+ * (via the Sync diagnostics) that every paired peer has the new
+ * `mesh:document-index` entry. */
+export async function deleteAllSealedDocs(): Promise<CleanupSummary> {
+  const rows = await collectDocSizes();
+  const sealedRows = rows.filter((r) => r.sealed);
+  let bytesFreed = 0;
+  const deleted: CleanupSummary['deleted'] = [];
+  for (const row of sealedRows) {
+    await deleteDocRange(row.fullDocId);
+    bytesFreed += row.bytes;
+    deleted.push({ key: row.key, docId: row.docId, bytes: row.bytes });
+  }
+  return { deleted, bytesFreed };
 }
 
 export function formatDocSizesTable(rows: DocSizeRow[]): string {
@@ -168,14 +254,23 @@ export function formatDocSizesTable(rows: DocSizeRow[]): string {
 }
 
 export const docSizesText = signal<string>('(loading…)');
+export const docSizesHasSealed = signal<boolean>(false);
 
 export async function refreshDocSizes(): Promise<void> {
   try {
     const rows = await collectDocSizes();
     docSizesText.value = formatDocSizesTable(rows);
+    docSizesHasSealed.value = rows.some((r) => r.sealed);
   } catch (err) {
     docSizesText.value = `(error: ${err instanceof Error ? err.message : String(err)})`;
+    docSizesHasSealed.value = false;
   }
+}
+
+export async function cleanupSealedAndRefresh(): Promise<CleanupSummary> {
+  const summary = await deleteAllSealedDocs();
+  await refreshDocSizes();
+  return summary;
 }
 
 function formatBytes(n: number): string {

@@ -21,7 +21,7 @@ import {
   usersState,
 } from '@fairfox/shared/users-state';
 import { signal } from '@preact/signals';
-import { docSizesText, refreshDocSizes } from '#src/client/doc-sizes.ts';
+import { docSizesHasSealed, docSizesText, refreshDocSizes } from '#src/client/doc-sizes.ts';
 import { selfPeerId } from '#src/client/self-peer.ts';
 
 // HelpView's own view of the polly mesh-state module id. Compared
@@ -532,13 +532,22 @@ function DocSizes(): preact.JSX.Element {
         snapshots and incremental chunks. A doc much larger than a few KB is a candidate for
         compaction — the heavy automerge replay on first peer sync scales with this number.
       </p>
-      <div style={{ justifySelf: 'start' }}>
+      <div style={{ display: 'flex', gap: 'var(--polly-space-sm)', justifySelf: 'start' }}>
         <Button
           data-action="help.refresh-doc-sizes"
           tier="secondary"
           size="small"
           label="Refresh"
         />
+        {docSizesHasSealed.value ? (
+          <Button
+            data-action="help.cleanup-sealed-docs"
+            tier="secondary"
+            color="danger"
+            size="small"
+            label="Delete sealed docs"
+          />
+        ) : null}
       </div>
       <textarea
         readOnly={true}
