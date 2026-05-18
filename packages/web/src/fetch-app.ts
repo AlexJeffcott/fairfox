@@ -125,6 +125,49 @@ ${cssLink}  </head>
         );
       };
       window.__mark('A2: fetch tracer installed');
+
+      // WebAssembly tracer. The wasm fetch resolves fine but the
+      // bundle still never reaches its first boot.tsx mark, so the
+      // freeze is downstream of fetch in WebAssembly instantiate.
+      // Wrap both entry points to see when (or whether) they settle.
+      if (window.WebAssembly) {
+        var W = window.WebAssembly;
+        if (typeof W.instantiateStreaming === 'function') {
+          var origStreaming = W.instantiateStreaming.bind(W);
+          W.instantiateStreaming = function (source, importObject) {
+            window.__mark('wasm  -> instantiateStreaming');
+            var t0 = Date.now();
+            return Promise.resolve(origStreaming(source, importObject)).then(
+              function (r) {
+                window.__mark('wasm OK instantiateStreaming ' + (Date.now() - t0) + 'ms');
+                return r;
+              },
+              function (err) {
+                window.__mark('wasm !! instantiateStreaming ' + (Date.now() - t0) + 'ms :: ' + err);
+                throw err;
+              }
+            );
+          };
+        }
+        if (typeof W.instantiate === 'function') {
+          var origInstantiate = W.instantiate.bind(W);
+          W.instantiate = function (bytes, importObject) {
+            window.__mark('wasm  -> instantiate (bytes=' + (bytes && bytes.byteLength) + ')');
+            var t0 = Date.now();
+            return Promise.resolve(origInstantiate(bytes, importObject)).then(
+              function (r) {
+                window.__mark('wasm OK instantiate ' + (Date.now() - t0) + 'ms');
+                return r;
+              },
+              function (err) {
+                window.__mark('wasm !! instantiate ' + (Date.now() - t0) + 'ms :: ' + err);
+                throw err;
+              }
+            );
+          };
+        }
+      }
+      window.__mark('A3: wasm tracer installed');
     </script>
     <script type="module" src="/home${entryJs}"></script>
     <script>
