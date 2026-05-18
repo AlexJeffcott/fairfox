@@ -107,6 +107,9 @@ export const homeActions: Record<string, (ctx: HandlerContext) => void> = {
       ctx.element.select();
     }
   },
+  'help.refresh-doc-sizes': () => {
+    void import('#src/client/doc-sizes.ts').then(({ refreshDocSizes }) => refreshDocSizes());
+  },
   'peers.rename-self': (ctx) => {
     const name = ctx.data.value?.trim();
     if (!name) {

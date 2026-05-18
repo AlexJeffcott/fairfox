@@ -6,7 +6,7 @@
 
 import { OBSERVED_MESH_STATE_MODULE_ID_FROM_AGENDA } from '@fairfox/agenda/state';
 import { MESH_STATE_MODULE_ID } from '@fairfox/polly/mesh';
-import { Layout } from '@fairfox/polly/ui';
+import { Button, Layout } from '@fairfox/polly/ui';
 import { devicesState } from '@fairfox/shared/devices-state';
 import { mesh } from '@fairfox/shared/ensure-mesh';
 import {
@@ -21,6 +21,7 @@ import {
   usersState,
 } from '@fairfox/shared/users-state';
 import { signal } from '@preact/signals';
+import { docSizesText, refreshDocSizes } from '#src/client/doc-sizes.ts';
 import { selfPeerId } from '#src/client/self-peer.ts';
 
 // HelpView's own view of the polly mesh-state module id. Compared
@@ -518,6 +519,51 @@ function formatAgo(at: unknown): string {
 
 startSyncDiagnosticsPolling();
 
+void refreshDocSizes();
+
+function DocSizes(): preact.JSX.Element {
+  const text = docSizesText.value;
+  const lineCount = Math.max(3, text.split('\n').length);
+  return (
+    <Layout rows="auto auto auto auto" gap="var(--polly-space-sm)">
+      <h2 style={{ margin: 0, fontSize: 'var(--polly-text-lg)' }}>Document sizes</h2>
+      <p style={{ color: 'var(--polly-text-muted)', margin: 0 }}>
+        On-disk size of every $meshState document in this device's polly store, summed across
+        snapshots and incremental chunks. A doc much larger than a few KB is a candidate for
+        compaction — the heavy automerge replay on first peer sync scales with this number.
+      </p>
+      <div style={{ justifySelf: 'start' }}>
+        <Button
+          data-action="help.refresh-doc-sizes"
+          tier="secondary"
+          size="small"
+          label="Refresh"
+        />
+      </div>
+      <textarea
+        readOnly={true}
+        rows={lineCount}
+        value={text}
+        data-action="help.select-all-textarea"
+        data-help-snapshot="true"
+        style={{
+          width: '100%',
+          fontFamily: 'var(--polly-font-mono)',
+          fontSize: 'var(--polly-text-sm)',
+          padding: 'var(--polly-space-sm) var(--polly-space-md)',
+          background: 'var(--polly-surface-sunken)',
+          borderRadius: 'var(--polly-radius-md)',
+          border: '1px solid var(--polly-border)',
+          color: 'var(--polly-text)',
+          resize: 'none',
+          whiteSpace: 'pre',
+          overflow: 'auto',
+        }}
+      />
+    </Layout>
+  );
+}
+
 function SyncDiagnostics(): preact.JSX.Element {
   const text = peerSnapshot.value;
   const lineCount = Math.max(3, text.split('\n').length);
@@ -557,6 +603,7 @@ export function HelpView(): preact.JSX.Element {
   return (
     <Layout rows="auto" gap="var(--polly-space-xl)">
       <Diagnostics />
+      <DocSizes />
       <SyncDiagnostics />
       <p style={{ margin: 0 }}>
         fairfox is a small household mesh. Every paired device shares the same CRDT state — todos,
