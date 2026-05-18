@@ -298,6 +298,20 @@ ${cssLink}  </head>
         window.__mark('idb wrap failed: ' + e);
       }
       window.__mark('A6: IDB tracer installed');
+
+      // Sanity watchdog. The bundle's keyring open has its own
+      // 8s setTimeout-based rejection now, but a real user saw
+      // heartbeats keep ticking past the deadline with no further
+      // bundle progress and no rejection mark. If the timer below
+      // fires on schedule the runtime is honouring setTimeout; if
+      // it does not, something is throttling timers in this
+      // execution context and that is itself the bug.
+      setTimeout(function () {
+        window.__mark('watchdog 12s tick — setTimeout fires');
+      }, 12000);
+      setTimeout(function () {
+        window.__mark('watchdog 20s tick — setTimeout still firing');
+      }, 20000);
     </script>
     <script type="module" src="/home${entryJs}"></script>
     <script>
