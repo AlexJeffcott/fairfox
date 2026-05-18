@@ -28,34 +28,61 @@ interface PersistedKeyring {
   revocationAuthority: string[];
 }
 
+const OPEN_TIMEOUT_MS = 8000;
+
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    // Open without specifying a version. Pinning version 1 here used
+    // to rely on the spec firing VersionError when the on-disk DB
+    // had already been bumped past 1 by a prior self-heal — but some
+    // browsers silently stall the open instead, and one stalled
+    // open here blocks the whole bundle through ensure-mesh.ts's
+    // top-level await. Adopting whatever version is on disk
+    // side-steps the issue; the store-missing self-heal below still
+    // bumps the version when it has to.
+    const req = indexedDB.open(DB_NAME);
+    const timeout = setTimeout(() => {
+      reject(
+        new Error(
+          `keyring DB '${DB_NAME}' open did not resolve within ${OPEN_TIMEOUT_MS}ms — close any other fairfox tabs and reload`
+        )
+      );
+    }, OPEN_TIMEOUT_MS);
     req.onupgradeneeded = () => {
       if (!req.result.objectStoreNames.contains(STORE_NAME)) {
         req.result.createObjectStore(STORE_NAME);
       }
     };
     req.onsuccess = () => {
+      clearTimeout(timeout);
       const db = req.result;
-      // Self-heal: if the DB is at our version but the store is
+      // Self-heal: the DB exists at some version but the store is
       // missing (another process raced the upgrade and created the
-      // DB without our handler), close it, bump the version, and
+      // DB without our handler). Close it, bump the version, and
       // re-open to force onupgradeneeded on us. Otherwise the next
       // transaction() crashes with NotFoundError.
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         const currentVersion = db.version;
         db.close();
         const bump = indexedDB.open(DB_NAME, currentVersion + 1);
+        const bumpTimeout = setTimeout(() => {
+          reject(
+            new Error(
+              `keyring DB '${DB_NAME}' version bump did not resolve within ${OPEN_TIMEOUT_MS}ms`
+            )
+          );
+        }, OPEN_TIMEOUT_MS);
         bump.onupgradeneeded = () => {
           if (!bump.result.objectStoreNames.contains(STORE_NAME)) {
             bump.result.createObjectStore(STORE_NAME);
           }
         };
         bump.onsuccess = () => {
+          clearTimeout(bumpTimeout);
           resolve(bump.result);
         };
         bump.onerror = () => {
+          clearTimeout(bumpTimeout);
           reject(bump.error);
         };
         return;
@@ -63,6 +90,7 @@ function openDb(): Promise<IDBDatabase> {
       resolve(db);
     };
     req.onerror = () => {
+      clearTimeout(timeout);
       reject(req.error);
     };
   });

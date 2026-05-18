@@ -33,7 +33,18 @@ async function setup(): Promise<MeshConnection | undefined> {
   return await createMeshConnection({ keyring, peerId, signalingUrl });
 }
 
-export const mesh: MeshConnection | undefined = await setup();
+// Never reject the top-level await. ensure-mesh is imported (directly
+// or transitively) by every sub-app's state module, so a rejection
+// here cascades into the bundle's import graph and the entire SPA
+// fails to evaluate — the page goes blank with no actionable signal.
+// Returning `undefined` lets the bundle finish loading and the App
+// render; MeshGate then surfaces the unpaired/unconfigured state to
+// the user with a recovery affordance.
+export const mesh: MeshConnection | undefined = await setup().catch((err) => {
+  // eslint-disable-next-line no-console
+  console.error('[ensure-mesh] setup() failed; continuing without mesh:', err);
+  return undefined;
+});
 
 // ADR 0008: register a polly docId resolver that consults
 // `mesh:document-index` for the currently-live docId per logical
