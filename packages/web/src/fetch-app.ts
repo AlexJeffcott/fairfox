@@ -64,6 +64,32 @@ function htmlShell(entryJs: string, entryCss: string | null, buildHash: string):
 ${cssLink}  </head>
   <body>
     <div id="app"></div>
+    <script>
+      // Boot-phase tracer. Installed inline so it survives even when
+      // the bundle's module imports hang before any boot.tsx code
+      // runs. Each call appends one line to a fixed banner that stays
+      // visible through the App's first render. When the page goes
+      // blank in production we can ask a user "what's the last line in
+      // the green banner?" and translate that straight into the
+      // boot-phase that hung.
+      window.__mark = function (label) {
+        try {
+          var log = document.getElementById('__boot_log');
+          if (!log) {
+            log = document.createElement('div');
+            log.id = '__boot_log';
+            log.style.cssText =
+              'position:fixed;top:0;left:0;right:0;background:#000;color:#0f0;font:14px/1.4 ui-monospace,monospace;padding:6px 10px;z-index:2147483647;max-height:40vh;overflow:auto;white-space:pre-wrap;';
+            (document.body || document.documentElement).appendChild(log);
+          }
+          var t = new Date().toISOString().slice(11, 23);
+          log.appendChild(document.createTextNode(t + ' ' + label + '\n'));
+        } catch (e) {
+          // best-effort tracer; never throw out of mark
+        }
+      };
+      window.__mark('A: shell inline script ran');
+    </script>
     <script type="module" src="/home${entryJs}"></script>
     <script>
       // Service worker registration is paused while the kill-switch

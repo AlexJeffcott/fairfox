@@ -67,6 +67,15 @@ import { installHomeEffects } from '#src/client/Home.tsx';
 import { dispatch } from '#src/client/registry.ts';
 import { setSelfPeerId } from '#src/client/self-peer.ts';
 
+const mark = (label: string): void => {
+  const fn = (globalThis as unknown as { __mark?: (s: string) => void }).__mark;
+  if (typeof fn === 'function') {
+    fn(label);
+  }
+};
+
+mark('B: bundle imports resolved');
+
 function derivePeerId(publicKey: Uint8Array): string {
   return Array.from(publicKey.slice(0, 8))
     .map((b) => b.toString(16).padStart(2, '0'))
@@ -92,58 +101,98 @@ function derivePeerId(publicKey: Uint8Array): string {
 // the wrappers' initial empty payload (until the bridge fires on the
 // next microtask), which is irrelevant. The side effect of `.value`
 // reaching into the singleton accessor is the point.
+mark('C0: pre-warm start');
 void usersState.value;
+mark('C1: usersState');
 void devicesState.value;
+mark('C2: devicesState');
 void meshMetaState.value;
+mark('C3: meshMetaState');
 void projectsState.value;
+mark('C4: projectsState');
 void tasksState.value;
+mark('C5: tasksState');
 void capturesState.value;
+mark('C6: capturesState');
 void agenda.value;
+mark('C7: agenda');
 void libraryState.value;
+mark('C8: libraryState');
 void docsState.value;
+mark('C9: docsState');
 void chatState.value;
+mark('C10: chatState');
 void storyState.value;
+mark('C11: storyState');
 void progressState.value;
+mark('C12: progressState');
 void sessionsState.value;
+mark('C13: sessionsState');
 void directoryState.value;
+mark('C14: directoryState (pre-warm done)');
 
 installEventDelegation(dispatch);
+mark('D1: installEventDelegation');
 installBuildFreshnessPoll();
+mark('D2: installBuildFreshnessPoll');
 installStorageHealthPoll();
+mark('D3: installStorageHealthPoll');
 installPairingHashListener();
+mark('D4: installPairingHashListener');
 installQrCameraLifecycle();
+mark('D5: installQrCameraLifecycle');
 installQrPasteListener();
+mark('D6: installQrPasteListener');
 installMeshGateEffects();
+mark('D7: installMeshGateEffects');
 installConnectionRecovery();
+mark('D8: installConnectionRecovery');
 installRequirePairedEffects();
+mark('D9: installRequirePairedEffects');
 installPwaInstallListeners();
+mark('D10: installPwaInstallListeners');
 installHomeEffects();
+mark('D11: installHomeEffects');
 installTodoEffects();
+mark('D12: installTodoEffects');
 installAgendaEffects();
+mark('D13: installAgendaEffects');
 installLibraryEffects();
+mark('D14: installLibraryEffects');
 installDocsEffects();
+mark('D15: installDocsEffects');
 installChatHistoryEffects();
+mark('D16: installChatHistoryEffects');
 installTheStruggleEffects();
+mark('D17: installTheStruggleEffects (effects done)');
 
 // Populate the self-peer id as soon as the keyring resolves so
 // PeersView can flag this device's own row. Independent of
 // MeshGate's own load path — both end up reading the same keyring
 // blob, and the keyring load is idempotent.
+mark('E0: keyring load scheduled');
 void (async () => {
   try {
     const keyring = await loadOrCreateKeyring();
+    mark('E1: keyring resolved');
     const peerId = derivePeerId(keyring.identity.publicKey);
     setSelfPeerId(peerId);
     if (keyring.knownPeers.size > 0) {
       touchSelfDeviceEntry(peerId, { agent: 'browser' });
     }
-  } catch {
+    mark('E2: keyring effects applied');
+  } catch (err) {
+    mark(`E!: keyring failed: ${err instanceof Error ? err.message : String(err)}`);
     // Best-effort. If the keyring load fails the gate will surface
     // the error through its own path.
   }
 })();
 
+mark('F0: about to render <App>');
 const root = document.getElementById('app');
 if (root) {
   render(<App />, root);
+  mark('F1: render returned');
+} else {
+  mark('F!: no #app element');
 }
