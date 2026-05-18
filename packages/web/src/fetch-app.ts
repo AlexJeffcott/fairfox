@@ -168,6 +168,49 @@ ${cssLink}  </head>
         }
       }
       window.__mark('A3: wasm tracer installed');
+
+      // Heartbeat. If it keeps firing past the last wasm mark, the
+      // event loop is still pumping and we're stalled on an unresolved
+      // promise. If it stops at the same moment, the main thread is
+      // locked in a sync call (most likely wasm.__wbindgen_start).
+      var heartbeats = 0;
+      setInterval(function () {
+        heartbeats++;
+        window.__mark('heartbeat ' + heartbeats);
+      }, 250);
+
+      // Sync wasm constructors. instantiateStreaming hit OK so the
+      // streaming compile finished, but the bundle still never marks
+      // B — the only sync work left before B is wasm.__wbindgen_start
+      // and the rest of polly's mesh module evaluation. Wrap the
+      // synchronous Instance/Module paths to verify the start path
+      // isn't taken (it shouldn't be, but rule it out).
+      if (window.WebAssembly) {
+        var W2 = window.WebAssembly;
+        if (typeof W2.Instance === 'function') {
+          var origInst = W2.Instance;
+          W2.Instance = new Proxy(origInst, {
+            construct: function (target, args) {
+              window.__mark('wasm  -> new Instance');
+              var inst = Reflect.construct(target, args);
+              window.__mark('wasm OK new Instance');
+              return inst;
+            },
+          });
+        }
+        if (typeof W2.Module === 'function') {
+          var origMod = W2.Module;
+          W2.Module = new Proxy(origMod, {
+            construct: function (target, args) {
+              window.__mark('wasm  -> new Module');
+              var mod = Reflect.construct(target, args);
+              window.__mark('wasm OK new Module');
+              return mod;
+            },
+          });
+        }
+      }
+      window.__mark('A4: sync wasm wrappers installed');
     </script>
     <script type="module" src="/home${entryJs}"></script>
     <script>
