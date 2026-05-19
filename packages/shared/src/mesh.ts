@@ -25,6 +25,22 @@ export interface MeshConnection {
    * every active peer via `RTCPeerConnection.getStats()`. Must be
    * awaited before `getPeerStateSnapshot()` returns transport data. */
   refreshTransportStats: MeshClient['refreshTransportStats'];
+  /** polly 0.71.0 / RFC-043. Sign a revocation against `targetPeerId`,
+   * apply it to the local keyring, and broadcast the encoded record to
+   * every currently-connected peer. Peers offline at issue time pick the
+   * blob up through summary gossip the next time they reconnect to any
+   * peer that already holds it. Fairfox's keyring-level revocation
+   * (`shared/pairing.ts:revokeDevice`) is still needed for the
+   * sign-and-store step on devices the wire never reached; this is the
+   * propagation channel layered on top. */
+  revokePeer: MeshClient['revokePeer'];
+  /** polly 0.71.0 / RFC-043. Populated when a remote peer has issued a
+   * revocation naming the local peer as its target. The mesh keeps
+   * receiving other peers' messages so the application can surface
+   * detail; only this device's outbound writes are suppressed. UI
+   * should observe this and render a "this device has been revoked"
+   * state. `undefined` until a self-targeted revocation arrives. */
+  readonly selfRevocation: MeshClient['selfRevocation'];
   disconnect(): void;
 }
 
@@ -114,6 +130,10 @@ export async function createMeshConnection(
     signaling: client.signaling,
     getPeerStateSnapshot: () => client.getPeerStateSnapshot(),
     refreshTransportStats: () => client.refreshTransportStats(),
+    revokePeer: (targetPeerId, reason) => client.revokePeer(targetPeerId, reason),
+    get selfRevocation() {
+      return client.selfRevocation;
+    },
     disconnect: () => {
       clearInterval(poll);
       resetPeersPresent();
