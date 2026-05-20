@@ -28,6 +28,7 @@ import {
   touchSelfDeviceEntry,
 } from '#src/devices-state.ts';
 import { loadOrCreateKeyring, saveKeyring } from '#src/keyring.ts';
+import { awaitLoadedBudget } from '#src/loaded-budget.ts';
 import { LoginPage } from '#src/login-page.tsx';
 import { consumePairingHash } from '#src/pairing-actions.ts';
 import {
@@ -51,8 +52,20 @@ async function refreshKeyringStateInner(): Promise<void> {
         .join('');
       // Publish our own pubkey in mesh:devices so other peers can
       // harvest it into their keyring without a direct pair-token
-      // exchange.
-      touchSelfDeviceEntry(peerId, { agent: 'browser', publicKey: keyring.identity.publicKey });
+      // exchange. `touchSelfDeviceEntry` writes the devices doc and
+      // throws "handle not bridged" when the $meshState wrapper has
+      // not hydrated yet. That throw would land in the catch below,
+      // which resets knownPeerCount to null — the exact condition the
+      // MeshGate effect re-arms on — so the effect immediately calls
+      // refreshKeyringState again: an unbounded retry storm that only
+      // appears once the device is paired (the size>0 gate). Fence on
+      // devicesState.loaded the same way selfEndorseDevice does, and
+      // skip the publish if the doc has not hydrated; a later effect
+      // tick re-attempts it.
+      const devicesReady = await awaitLoadedBudget(devicesState.loaded, 3000);
+      if (devicesReady) {
+        touchSelfDeviceEntry(peerId, { agent: 'browser', publicKey: keyring.identity.publicKey });
+      }
     }
   } catch {
     knownPeerCount.value = null;

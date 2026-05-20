@@ -17,8 +17,9 @@
 import { effect } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { BuildFreshnessBanner } from '#src/build-freshness.tsx';
-import { touchSelfDeviceEntry } from '#src/devices-state.ts';
+import { devicesState, touchSelfDeviceEntry } from '#src/devices-state.ts';
 import { loadOrCreateKeyring } from '#src/keyring.ts';
+import { awaitLoadedBudget } from '#src/loaded-budget.ts';
 import { LoginPage } from '#src/login-page.tsx';
 import {
   hydrateSoloDeviceMode,
@@ -36,7 +37,16 @@ async function refreshKeyringState(): Promise<void> {
       const peerId = Array.from(keyring.identity.publicKey.slice(0, 8))
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
-      touchSelfDeviceEntry(peerId, { agent: 'browser' });
+      // `touchSelfDeviceEntry` throws "handle not bridged" if the
+      // devices $meshState wrapper has not hydrated yet. The catch
+      // below would then reset knownPeerCount to null, which is the
+      // condition this effect re-arms on — an unbounded retry storm.
+      // Fence on devicesState.loaded; skip the heartbeat write if the
+      // doc has not hydrated. See mesh-gate.tsx for the full account.
+      const devicesReady = await awaitLoadedBudget(devicesState.loaded, 3000);
+      if (devicesReady) {
+        touchSelfDeviceEntry(peerId, { agent: 'browser' });
+      }
     }
   } catch {
     knownPeerCount.value = null;
