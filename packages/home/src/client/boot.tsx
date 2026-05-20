@@ -48,6 +48,7 @@ import { installBuildFreshnessPoll } from '@fairfox/shared/build-freshness';
 import { installConnectionRecovery } from '@fairfox/shared/connection-recovery';
 import { devicesState, touchSelfDeviceEntry } from '@fairfox/shared/devices-state';
 import { loadOrCreateKeyring } from '@fairfox/shared/keyring';
+import { awaitLoadedBudget } from '@fairfox/shared/loaded-budget';
 import { installMeshGateEffects } from '@fairfox/shared/mesh-gate';
 import { meshMetaState } from '@fairfox/shared/mesh-meta-state';
 import { installPairingHashListener } from '@fairfox/shared/pairing-actions';
@@ -135,7 +136,12 @@ void (async () => {
     const peerId = derivePeerId(keyring.identity.publicKey);
     setSelfPeerId(peerId);
     if (keyring.knownPeers.size > 0) {
-      touchSelfDeviceEntry(peerId, { agent: 'browser' });
+      // touchSelfDeviceEntry throws if the devices $meshState wrapper
+      // has not bridged yet; fence on it so this best-effort heartbeat
+      // never throws into the boot path.
+      if (await awaitLoadedBudget(devicesState.loaded, 3000)) {
+        touchSelfDeviceEntry(peerId, { agent: 'browser' });
+      }
     }
   } catch {
     // Best-effort. If the keyring load fails the gate will surface

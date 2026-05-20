@@ -17,6 +17,7 @@ import QRCode from 'qrcode';
 import { type CustomFrame, subscribeCustomFrames } from '#src/custom-frames.ts';
 import {
   addEndorsementToDevice,
+  devicesState,
   touchSelfDeviceEntry,
   upsertDeviceEntry,
 } from '#src/devices-state.ts';
@@ -144,7 +145,7 @@ function subscribeToPairReturn(sessionId: string): void {
     (async () => {
       try {
         await applyScannedToken(token);
-        writeScannerDeviceRow(token, agentHint, nameHint);
+        await writeScannerDeviceRow(token, agentHint, nameHint);
         mesh?.signaling.sendCustom('pair-ack', { sessionId });
         drainStep('issue');
         advanceAfter('scan');
@@ -282,11 +283,11 @@ async function generateIssueArtefacts(): Promise<void> {
  * window where the scanner could close before any sync completes.
  * CRDT merge resolves any later self-writes the scanner makes
  * cleanly. */
-function writeScannerDeviceRow(
+async function writeScannerDeviceRow(
   returnToken: string,
   agentHint: string | null,
   nameHint: string | null
-): void {
+): Promise<void> {
   let decoded: ReturnType<typeof decodePairingToken>;
   try {
     decoded = decodePairingToken(returnToken);
@@ -303,7 +304,13 @@ function writeScannerDeviceRow(
   if (nameHint) {
     patch.name = nameHint;
   }
-  upsertDeviceEntry(peerId, patch);
+  // upsertDeviceEntry throws "handle not bridged" if the devices
+  // $meshState wrapper has not hydrated yet; fence on it the same way
+  // selfEndorseDevice does. Skipping the row when the doc is not ready
+  // is safe — WebRTC sync delivers the scanner's own row shortly after.
+  if (await awaitLoadedBudget(devicesState.loaded, 3000)) {
+    upsertDeviceEntry(peerId, patch);
+  }
 }
 
 async function applyScannedToken(token: string): Promise<boolean> {
@@ -313,7 +320,14 @@ async function applyScannedToken(token: string): Promise<boolean> {
   const peerId = Array.from(keyring.identity.publicKey.slice(0, 8))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
-  touchSelfDeviceEntry(peerId, { agent: 'browser' });
+  // touchSelfDeviceEntry writes mesh:devices; fence on the wrapper's
+  // handle being bridged. Without this, a fresh-profile scanner whose
+  // devices doc has not hydrated throws "handle not bridged", which
+  // consumePairingHash surfaces as a fatal pairingError and the
+  // ceremony stalls on the scan screen.
+  if (await awaitLoadedBudget(devicesState.loaded, 3000)) {
+    touchSelfDeviceEntry(peerId, { agent: 'browser' });
+  }
   return true;
 }
 
