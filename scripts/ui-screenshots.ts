@@ -358,6 +358,12 @@ async function captureAgendaForm(page: Page, reports: OverflowReport[]): Promise
   await clickByText(page, 'weekdays');
   await sleep(600);
   await capture(page, 'agenda-create-weekdays', reports);
+
+  // Fairness tab — window buttons + per-person score rows.
+  if (await clickByText(page, 'Fairness')) {
+    await sleep(700);
+    await capture(page, 'agenda-fairness', reports);
+  }
 }
 
 /** Focus an ActionInput (a click promotes it to an editable field)
