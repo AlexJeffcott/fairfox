@@ -38,9 +38,9 @@ function Section({
   children: preact.ComponentChildren;
 }): preact.JSX.Element {
   return (
-    <Layout rows="auto auto" gap="var(--polly-space-sm)">
+    <Layout rows="auto auto" columns="minmax(0, 1fr)" gap="var(--polly-space-sm)">
       <h2 style={{ margin: 0, fontSize: 'var(--polly-text-lg)' }}>{heading}</h2>
-      <div style={{ color: 'var(--polly-text-muted)' }}>{children}</div>
+      <div style={{ minWidth: 0, color: 'var(--polly-text-muted)' }}>{children}</div>
     </Layout>
   );
 }
@@ -127,7 +127,7 @@ function Diagnostics(): preact.JSX.Element {
   const text = buildDiagnosticsText();
   const lineCount = text.split('\n').length;
   return (
-    <Layout rows="auto auto" gap="var(--polly-space-sm)">
+    <Layout rows="auto auto" columns="minmax(0, 1fr)" gap="var(--polly-space-sm)">
       <h2 style={{ margin: 0, fontSize: 'var(--polly-text-lg)' }}>Diagnostics</h2>
       <p style={{ color: 'var(--polly-text-muted)', margin: 0 }}>
         Tap the box to select everything for copy. Compare with another paired device's Help tab to
@@ -141,6 +141,7 @@ function Diagnostics(): preact.JSX.Element {
         data-help-snapshot="true"
         style={{
           width: '100%',
+          boxSizing: 'border-box',
           fontFamily: 'var(--polly-font-mono)',
           fontSize: 'var(--polly-text-sm)',
           padding: 'var(--polly-space-sm) var(--polly-space-md)',
@@ -525,7 +526,7 @@ function DocSizes(): preact.JSX.Element {
   const text = docSizesText.value;
   const lineCount = Math.max(3, text.split('\n').length);
   return (
-    <Layout rows="auto auto auto auto" gap="var(--polly-space-sm)">
+    <Layout rows="auto auto auto auto" columns="minmax(0, 1fr)" gap="var(--polly-space-sm)">
       <h2 style={{ margin: 0, fontSize: 'var(--polly-text-lg)' }}>Document sizes</h2>
       <p style={{ color: 'var(--polly-text-muted)', margin: 0 }}>
         On-disk size of every $meshState document in this device's polly store, summed across
@@ -557,6 +558,7 @@ function DocSizes(): preact.JSX.Element {
         data-help-snapshot="true"
         style={{
           width: '100%',
+          boxSizing: 'border-box',
           fontFamily: 'var(--polly-font-mono)',
           fontSize: 'var(--polly-text-sm)',
           padding: 'var(--polly-space-sm) var(--polly-space-md)',
@@ -577,7 +579,7 @@ function SyncDiagnostics(): preact.JSX.Element {
   const text = peerSnapshot.value;
   const lineCount = Math.max(3, text.split('\n').length);
   return (
-    <Layout rows="auto auto auto" gap="var(--polly-space-sm)">
+    <Layout rows="auto auto auto" columns="minmax(0, 1fr)" gap="var(--polly-space-sm)">
       <h2 style={{ margin: 0, fontSize: 'var(--polly-text-lg)' }}>Sync diagnostics</h2>
       <p style={{ color: 'var(--polly-text-muted)', margin: 0 }}>
         Per-peer ICE / data-channel / sync state, polled every 2s from polly's getPeerStateSnapshot
@@ -592,6 +594,7 @@ function SyncDiagnostics(): preact.JSX.Element {
         data-help-snapshot="true"
         style={{
           width: '100%',
+          boxSizing: 'border-box',
           fontFamily: 'var(--polly-font-mono)',
           fontSize: 'var(--polly-text-sm)',
           padding: 'var(--polly-space-sm) var(--polly-space-md)',
@@ -610,7 +613,7 @@ function SyncDiagnostics(): preact.JSX.Element {
 
 export function HelpView(): preact.JSX.Element {
   return (
-    <Layout rows="auto" gap="var(--polly-space-xl)">
+    <Layout rows="auto" columns="minmax(0, 1fr)" gap="var(--polly-space-xl)">
       <Diagnostics />
       <DocSizes />
       <SyncDiagnostics />

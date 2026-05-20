@@ -407,6 +407,10 @@ async function main(): Promise<void> {
       await sleep(900);
       await capture(page, 'hub-users', reports);
     }
+    if (await clickByText(page, 'Help')) {
+      await sleep(900);
+      await capture(page, 'hub-help', reports);
+    }
 
     // Drive the agenda create-item form + seed a content row.
     await captureAgendaForm(page, reports);
