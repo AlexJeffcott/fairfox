@@ -181,6 +181,17 @@ async function selfHealIdentityInner(): Promise<boolean> {
     // device. Without this, a device that stays endorsed forever
     // never updates its own row, and its Peers-tab entry reads as
     // stale "last seen 16h ago" for as long as the PWA is open.
+    //
+    // Mark the heal complete BEFORE the write. `touchSelfDeviceEntry`
+    // mutates `devicesState`, which re-ticks the MeshGate effect that
+    // drives this function. If the guard isn't set first, that
+    // re-tick re-enters `withInFlightGuard` while it is still
+    // in-flight, flips its dirty bit, and its `do-while` re-runs the
+    // body — forever, because every run writes `devicesState` again.
+    // Setting the guard synchronously here means the self-triggered
+    // re-tick sees `selfHealCompletedForUserId === identity.userId`
+    // and returns without re-entering the guard, so the loop ends.
+    selfHealCompletedForUserId = identity.userId;
     touchSelfDeviceEntry(peerId, { agent: 'browser' });
     return true;
   }
@@ -190,7 +201,15 @@ async function selfHealIdentityInner(): Promise<boolean> {
   // upsertDeviceEntry is synchronous over the signal, so the row is
   // present immediately after addEndorsementToDevice returns.
   const after = devicesState.value.devices[peerId];
-  return (after?.endorsements ?? []).some((e) => e.userId === identity.userId);
+  const settled = (after?.endorsements ?? []).some((e) => e.userId === identity.userId);
+  if (settled) {
+    // Same loop-breaker as the `signedByMe` path. The writes above
+    // have already re-ticked the effect; setting the guard now means
+    // the at-most-one bounded re-run lands on the `signedByMe` branch
+    // (the device is endorsed now) and terminates there.
+    selfHealCompletedForUserId = identity.userId;
+  }
+  return settled;
 }
 
 /** Minimal "I'm still here" heartbeat for a device with no user
