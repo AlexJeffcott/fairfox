@@ -3,15 +3,16 @@
  * can pair against a browser device and exchange $meshState mutations
  * through the real WebRTC data channel.
  *
- *   1. Starts a browser profile, runs the standard pairing flow to
- *      produce a share URL carrying a pairing token.
- *   2. Invokes `bun packages/cli/src/bin.ts pair "<token>"`, which
- *      creates a keyring under a test-scoped TMP_HOME and prints the
- *      CLI's own share URL back on stdout.
- *   3. Navigates the browser to that return URL so the mesh-gate hash
- *      consumer applies the CLI's token. The ceremony drains and the
- *      page reloads into a state where the browser's keyring holds the
- *      CLI as a known peer.
+ *   1. Starts a browser profile, clears the WhoAreYou wizard, and runs
+ *      the standard pairing flow to produce a share URL carrying a
+ *      pairing token and a signalling session id.
+ *   2. Invokes `bun packages/cli/src/bin.ts pair "<shareUrl>"`, which
+ *      creates a keyring under a test-scoped TMP_HOME, applies the
+ *      issuer's token, and sends a pair-return frame back through the
+ *      signalling relay.
+ *   3. The browser's pair-return handler receives that frame, applies
+ *      the CLI's token, and reloads into the paired home — no manual
+ *      step. The harness just waits for the agenda to appear.
  *   4. Invokes `bun … agenda add "<chore>"` against the same TMP_HOME.
  *      The CLI opens a mesh client, waits for the browser peer, writes
  *      to the agenda document, and exits.
@@ -113,16 +114,6 @@ async function cli(...args: string[]): Promise<string> {
   return out;
 }
 
-function extractReturnShareUrl(cliOut: string, origin: string): string {
-  // The pair command prints the URL fragment `#pair=<encoded>`; combine
-  // with the origin so the browser can navigate to it.
-  const match = cliOut.match(/#pair=([A-Za-z0-9%._~-]+)/);
-  if (!match) {
-    throw new Error('no #pair= token in CLI output');
-  }
-  return `${origin}/agenda#pair=${match[1]}`;
-}
-
 const { browser, page } = await launch('desktop');
 let ok = false;
 
@@ -139,22 +130,14 @@ try {
   await clickByText(page, 'Share a pairing link');
   const desktopShare = await readShareUrl(page);
 
-  // Hand the share URL to the CLI and capture its return token.
-  const pairOut = await cli('pair', desktopShare);
-  const cliReturnShareUrl = extractReturnShareUrl(pairOut, fairfoxOrigin);
+  // Hand the share URL to the CLI. `pair` applies the issuer's token
+  // and sends a pair-return frame through the signalling relay; the
+  // browser's pair-return handler applies it and reloads into the
+  // paired home with no manual step on either side.
+  await cli('pair', desktopShare);
 
-  TRACE('desktop', 'advance to scan and consume CLI return link');
-  await clickByText(page, 'Continue — paste their link');
-  const postConsumeNav = page.waitForNavigation({ waitUntil: 'domcontentloaded' });
-  await page.goto(cliReturnShareUrl, { waitUntil: 'domcontentloaded' });
-  await waitForText(page, 'Show the raw token', 20000);
-
-  TRACE('desktop', 'drain the browser issue leg');
-  const ceremonyNav = page.waitForNavigation({ waitUntil: 'domcontentloaded' });
-  await clickByText(page, "They accepted — we're done");
-  await ceremonyNav;
-  await postConsumeNav.catch(() => undefined);
-  await waitForText(page, 'Agenda', 20000);
+  TRACE('desktop', 'wait for the CLI pair-return to complete the ceremony');
+  await waitForText(page, 'Agenda', 30000);
   TRACE('desktop', 'agenda visible — browser is paired with CLI');
 
   // Pairing finished on the browser side; give the signalling server a
