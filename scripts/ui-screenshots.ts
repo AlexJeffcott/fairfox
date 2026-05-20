@@ -380,6 +380,25 @@ async function captureStruggleSpeakwell(page: Page, reports: OverflowReport[]): 
     await capture(page, 'the-struggle-memory', reports);
   }
 
+  // the-struggle story editor — chapter list, chapter editor, and
+  // passage editor (with a choice), each driven through the real
+  // create flow.
+  trace('route', 'the-struggle Edit tab');
+  if (await clickByText(page, 'Edit')) {
+    await sleep(700);
+    await capture(page, 'struggle-edit-chapters', reports);
+    if (await clickByText(page, '+ New chapter')) {
+      await sleep(800);
+      await capture(page, 'struggle-edit-chapter', reports);
+      if (await clickByText(page, '+ New passage')) {
+        await sleep(800);
+        await clickByText(page, '+ New choice');
+        await sleep(700);
+        await capture(page, 'struggle-edit-passage', reports);
+      }
+    }
+  }
+
   trace('route', 'speakwell — start a session, capture History');
   await page.goto(`${TARGET}/speakwell`, { waitUntil: 'domcontentloaded' });
   await sleep(1000);

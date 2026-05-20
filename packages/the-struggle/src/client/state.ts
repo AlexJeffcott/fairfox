@@ -6,9 +6,14 @@ import '@fairfox/shared/ensure-mesh';
 import { $state } from '@fairfox/polly';
 import { $meshState } from '@fairfox/polly/mesh';
 
-export type TheStruggleTabId = 'story' | 'memory';
+export type TheStruggleTabId = 'story' | 'memory' | 'edit';
 
 export const theStruggleActiveTab = $state<TheStruggleTabId>('story');
+
+// Editor navigation. The Edit tab drills chapter → passage; these
+// hold the current focus. `null` at a level means "show the list".
+export const editChapterId = $state<string | null>(null);
+export const editPassageId = $state<string | null>(null);
 
 export interface PassageContent {
   [key: string]: unknown;
