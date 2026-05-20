@@ -104,10 +104,9 @@ function ProjectsView() {
             return (
               <Layout
                 key={p.pid}
-                columns="1fr auto auto"
+                columns="minmax(0, 1fr) auto auto"
                 gap="var(--polly-space-sm)"
                 alignItems="center"
-                stackOnMobile={true}
               >
                 <div
                   data-action="project.open"
@@ -157,10 +156,9 @@ function ProjectsView() {
           {pausedProjects.map((p) => (
             <Layout
               key={p.pid}
-              columns="1fr auto"
+              columns="minmax(0, 1fr) auto"
               gap="var(--polly-space-sm)"
               alignItems="center"
-              stackOnMobile={true}
             >
               <span
                 data-action="project.open"
@@ -316,10 +314,9 @@ function TasksView() {
             {group.map((t) => (
               <Layout
                 key={t.tid}
-                columns="auto 1fr auto auto"
+                columns="auto minmax(0, 1fr) auto auto"
                 gap="var(--polly-space-sm)"
                 alignItems="center"
-                stackOnMobile={true}
               >
                 <span data-action="task.toggle-done" data-action-tid={t.tid}>
                   <Checkbox checked={t.done} />
@@ -363,10 +360,9 @@ function TasksView() {
           {byPriority.done.map((t) => (
             <Layout
               key={t.tid}
-              columns="auto 1fr auto"
+              columns="auto minmax(0, 1fr) auto"
               gap="var(--polly-space-sm)"
               alignItems="center"
-              stackOnMobile={true}
             >
               <Checkbox checked={t.done} data-action="task.toggle-done" data-action-tid={t.tid} />
               <span
@@ -411,12 +407,7 @@ function TaskDetail({ tid }: { tid: string }) {
   const projects = projectsState.value.projects;
   return (
     <Layout rows="auto" gap="var(--polly-space-md)">
-      <Layout
-        columns="auto 1fr auto"
-        gap="var(--polly-space-sm)"
-        alignItems="center"
-        stackOnMobile={true}
-      >
+      <Layout columns="auto minmax(0, 1fr) auto" gap="var(--polly-space-sm)" alignItems="center">
         <Button label="← Back" tier="tertiary" size="small" data-action="task.close" />
         <span style={{ color: 'var(--polly-text-muted)', fontFamily: 'var(--polly-font-mono)' }}>
           {task.tid}
@@ -562,12 +553,7 @@ function ProjectDetail({ pid }: { pid: string }) {
 
   return (
     <Layout rows="auto" gap="var(--polly-space-md)">
-      <Layout
-        columns="auto 1fr auto"
-        gap="var(--polly-space-sm)"
-        alignItems="center"
-        stackOnMobile={true}
-      >
+      <Layout columns="auto minmax(0, 1fr) auto" gap="var(--polly-space-sm)" alignItems="center">
         <Button label="← Back" tier="tertiary" size="small" data-action="project.close" />
         <span style={{ color: 'var(--polly-text-muted)', fontFamily: 'var(--polly-font-mono)' }}>
           {project.pid} · {projectTaskCount} task{projectTaskCount === 1 ? '' : 's'}
@@ -782,10 +768,9 @@ function ProjectTasks({ projectName }: { projectName: string }) {
       {open.map((t) => (
         <Layout
           key={t.tid}
-          columns="auto 1fr auto auto"
+          columns="auto minmax(0, 1fr) auto auto"
           gap="var(--polly-space-sm)"
           alignItems="center"
-          stackOnMobile={true}
         >
           <Checkbox checked={t.done} data-action="task.toggle-done" data-action-tid={t.tid} />
           <span
@@ -822,10 +807,9 @@ function ProjectTasks({ projectName }: { projectName: string }) {
             {done.map((t) => (
               <Layout
                 key={t.tid}
-                columns="auto 1fr auto"
+                columns="auto minmax(0, 1fr) auto"
                 gap="var(--polly-space-sm)"
                 alignItems="center"
-                stackOnMobile={true}
               >
                 <span data-action="task.toggle-done" data-action-tid={t.tid}>
                   <Checkbox checked={t.done} />
@@ -876,7 +860,6 @@ function CaptureView() {
           columns="minmax(0, 1fr) auto auto"
           gap="var(--polly-space-sm)"
           alignItems="start"
-          stackOnMobile={true}
         >
           <Layout rows="auto auto" gap="var(--polly-space-xs)">
             <ActionInput

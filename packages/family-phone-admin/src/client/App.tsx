@@ -30,10 +30,9 @@ function HumansView() {
         return (
           <Layout
             key={h.id}
-            columns="1fr auto auto"
+            columns="minmax(0, 1fr) auto auto"
             gap="var(--polly-space-sm)"
             alignItems="center"
-            stackOnMobile={true}
           >
             <strong
               style={{
@@ -80,7 +79,6 @@ function DevicesView() {
               columns="auto minmax(0, 1fr) auto auto"
               gap="var(--polly-space-sm)"
               alignItems="center"
-              stackOnMobile={true}
             >
               <Badge variant="info">{d.kind}</Badge>
               <Layout rows="auto auto" gap="0">

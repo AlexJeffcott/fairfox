@@ -104,10 +104,9 @@ function HistoryView() {
       {sessions.map((s) => (
         <Layout
           key={s.id}
-          columns="auto 1fr auto auto"
+          columns="auto minmax(0, 1fr) auto auto"
           gap="var(--polly-space-sm)"
           alignItems="center"
-          stackOnMobile={true}
         >
           <Badge variant="info">{FORMAT_LABELS[s.format]}</Badge>
           <Layout rows="auto" gap="0">

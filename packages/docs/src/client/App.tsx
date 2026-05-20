@@ -124,11 +124,10 @@ function ListView() {
           {docs.map((doc) => (
             <Layout
               key={doc.id}
-              columns="1fr auto auto auto"
+              columns="minmax(0, 1fr) auto auto auto"
               gap="var(--polly-space-sm)"
               alignItems="center"
               padding="var(--polly-space-sm) var(--polly-space-md)"
-              stackOnMobile={true}
             >
               <button
                 type="button"
@@ -192,12 +191,7 @@ function EditView() {
   }
   return (
     <Layout rows="auto auto auto 1fr" gap="var(--polly-space-md)">
-      <Layout
-        columns="auto 1fr auto"
-        gap="var(--polly-space-sm)"
-        alignItems="center"
-        stackOnMobile={true}
-      >
+      <Layout columns="auto minmax(0, 1fr) auto" gap="var(--polly-space-sm)" alignItems="center">
         <Button label="← Back" tier="tertiary" size="small" data-action="docs.back-to-list" />
         <span style={{ fontSize: 'var(--polly-text-sm)', color: 'var(--polly-text-muted)' }}>
           Updated {formatDate(doc.updatedAt)}

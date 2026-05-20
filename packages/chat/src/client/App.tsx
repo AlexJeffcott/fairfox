@@ -79,11 +79,10 @@ function ChatRow({ chat }: { chat: Chat }) {
   const msgCount = chatMessages(chat.id).length;
   return (
     <Layout
-      columns="1fr auto auto"
+      columns="minmax(0, 1fr) auto auto"
       gap="var(--polly-space-sm)"
       alignItems="center"
       padding="var(--polly-space-sm) var(--polly-space-md)"
-      stackOnMobile={true}
     >
       <div>
         <Layout columns="auto 1fr" gap="0.5rem" alignItems="center">

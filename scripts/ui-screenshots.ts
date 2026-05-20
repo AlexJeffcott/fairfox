@@ -360,6 +360,117 @@ async function captureAgendaForm(page: Page, reports: OverflowReport[]): Promise
   await capture(page, 'agenda-create-weekdays', reports);
 }
 
+/** Focus an ActionInput (a click promotes it to an editable field)
+ * and type into it. */
+async function fillActionInput(page: Page, selector: string, text: string): Promise<void> {
+  await page.waitForSelector(selector, { timeout: SHORT_TIMEOUT_MS });
+  await page.click(selector);
+  await sleep(250);
+  await page.keyboard.type(text);
+}
+
+/** Seed each sub-app with a few realistic rows through its real
+ * in-app create flow, so the screenshot pass exercises populated
+ * list rows rather than empty states — the gap that let a
+ * list-row layout regression ship. Idempotent: a sub-app that
+ * already has content is skipped. Best-effort: a failure in one
+ * sub-app is logged and the rest continue. */
+async function seedContent(page: Page): Promise<void> {
+  // todo-v2 tasks — task.new opens the detail editor; fill the
+  // description, then task.close returns to the list.
+  try {
+    await page.goto(`${TARGET}/todo-v2`, { waitUntil: 'domcontentloaded' });
+    await sleep(1000);
+    await clickByText(page, 'Tasks');
+    await sleep(600);
+    if ((await page.$$('[data-action="task.open"]')).length === 0) {
+      const tasks = [
+        'Buy splashback tiles and grout for the kitchen renovation before the weekend',
+        'Call the plumber about the leak',
+        'Review the quarterly budget',
+      ];
+      for (const desc of tasks) {
+        await page.click('[data-action="task.new"]');
+        await sleep(700);
+        await fillActionInput(page, '[data-polly-action-input][aria-label="Description"]', desc);
+        await page.keyboard.press('Tab');
+        await sleep(400);
+        await page.click('[data-action="task.close"]');
+        await sleep(600);
+      }
+      trace('seed', 'todo: 3 tasks');
+    }
+  } catch (err) {
+    trace('seed', `todo tasks skipped: ${err instanceof Error ? err.message : err}`);
+  }
+
+  // todo-v2 projects.
+  try {
+    await page.goto(`${TARGET}/todo-v2`, { waitUntil: 'domcontentloaded' });
+    await sleep(800);
+    await clickByText(page, 'Projects');
+    await sleep(600);
+    if ((await page.$$('[data-action="project.open"]')).length === 0) {
+      for (const name of ['Kitchen renovation', 'Tax return 2026']) {
+        await page.click('[data-action="project.new"]');
+        await sleep(700);
+        await fillActionInput(page, '[data-polly-action-input][aria-label="Name"]', name);
+        await page.keyboard.press('Tab');
+        await sleep(400);
+        await page.click('[data-action="project.close"]');
+        await sleep(600);
+      }
+      trace('seed', 'todo: 2 projects');
+    }
+  } catch (err) {
+    trace('seed', `todo projects skipped: ${err instanceof Error ? err.message : err}`);
+  }
+
+  // library refs — the create ActionInput commits on Enter.
+  try {
+    await page.goto(`${TARGET}/library`, { waitUntil: 'domcontentloaded' });
+    await sleep(1000);
+    if ((await page.$$('[data-action="ref.open"]')).length === 0) {
+      const titles = [
+        'The Pragmatic Programmer',
+        'A reference with a deliberately long title to check truncation on a narrow phone',
+        'Dune',
+      ];
+      for (const title of titles) {
+        await fillActionInput(page, '[data-polly-action-input]', title);
+        await page.keyboard.press('Enter');
+        await sleep(600);
+      }
+      trace('seed', 'library: 3 refs');
+    }
+  } catch (err) {
+    trace('seed', `library skipped: ${err instanceof Error ? err.message : err}`);
+  }
+
+  // agenda items — type a name into the create form, pick daily so
+  // it lands on Today, then Add.
+  try {
+    await page.goto(`${TARGET}/agenda`, { waitUntil: 'domcontentloaded' });
+    await sleep(1000);
+    await clickByText(page, 'Items');
+    await sleep(600);
+    if ((await page.$$('[data-action="item.toggle-active"]')).length === 0) {
+      for (const name of ['Empty the dishwasher', 'Water the balcony plants']) {
+        await fillActionInput(page, '[data-polly-action-input]', name);
+        await page.keyboard.press('Tab');
+        await sleep(300);
+        await clickByText(page, 'daily');
+        await sleep(300);
+        await clickByText(page, 'Add');
+        await sleep(900);
+      }
+      trace('seed', 'agenda: 2 items');
+    }
+  } catch (err) {
+    trace('seed', `agenda skipped: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
 // --- main ----------------------------------------------------------
 async function main(): Promise<void> {
   mkdirSync(ARTIFACTS, { recursive: true });
@@ -384,6 +495,10 @@ async function main(): Promise<void> {
       trace('pair', 'device not paired — running ceremony');
       await pairDevice(page);
     }
+
+    // Populate the sub-apps so the route captures show real list
+    // rows, not empty states.
+    await seedContent(page);
 
     for (const route of ROUTES) {
       trace('route', route.path);
@@ -412,7 +527,16 @@ async function main(): Promise<void> {
       await capture(page, 'hub-help', reports);
     }
 
-    // Drive the agenda create-item form + seed a content row.
+    // todo-v2 Projects tab (the route capture lands on Tasks).
+    trace('route', 'todo-v2 Projects tab');
+    await page.goto(`${TARGET}/todo-v2`, { waitUntil: 'domcontentloaded' });
+    await sleep(1000);
+    if (await clickByText(page, 'Projects')) {
+      await sleep(800);
+      await capture(page, 'todo-projects', reports);
+    }
+
+    // Drive the agenda create-item form.
     await captureAgendaForm(page, reports);
 
     // Chat widget with injected demo data. A hash-only change does

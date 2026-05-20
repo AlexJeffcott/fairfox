@@ -110,7 +110,7 @@ function PairActions() {
     return <ConnectIdentityPanel />;
   }
   return (
-    <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center" stackOnMobile={true}>
+    <Layout columns="minmax(0, 1fr) auto" gap="var(--polly-space-sm)" alignItems="center">
       <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
         Bring another device, CLI, or browser extension into this mesh.
       </span>
@@ -228,11 +228,10 @@ export function PeersView() {
           return (
             <Layout
               key={entry.peerId}
-              columns="auto 1fr auto"
+              columns="auto minmax(0, 1fr) auto"
               gap="var(--polly-space-md)"
               alignItems="center"
               padding="var(--polly-space-md) var(--polly-space-lg)"
-              stackOnMobile={true}
             >
               <span
                 style={{

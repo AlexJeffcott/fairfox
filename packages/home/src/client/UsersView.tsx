@@ -81,19 +81,13 @@ export function UsersView(): preact.JSX.Element {
             gap="var(--polly-space-sm)"
             padding="var(--polly-space-md) var(--polly-space-lg)"
           >
-            <Layout
-              columns="1fr auto"
-              gap="var(--polly-space-md)"
-              alignItems="center"
-              stackOnMobile={true}
-            >
+            <Layout columns="minmax(0, 1fr) auto" gap="var(--polly-space-md)" alignItems="center">
               <Layout rows="auto auto" gap="0">
                 <Layout
                   columns="auto auto auto"
                   gap="var(--polly-space-sm)"
                   alignItems="center"
                   justifyContent="start"
-                  stackOnMobile={true}
                 >
                   <strong style={isRevoked ? { textDecoration: 'line-through' } : undefined}>
                     {user.displayName}

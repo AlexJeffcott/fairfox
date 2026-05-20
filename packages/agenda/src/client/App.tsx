@@ -433,10 +433,9 @@ function ItemsView() {
         {items.map((item) => (
           <Layout
             key={item.id}
-            columns="auto 1fr auto auto"
+            columns="auto minmax(0, 1fr) auto auto"
             gap="var(--polly-space-sm)"
             alignItems="center"
-            stackOnMobile={true}
           >
             <Badge variant={item.kind === 'event' ? 'info' : 'default'}>{item.kind}</Badge>
             <div>
@@ -541,10 +540,9 @@ function FairnessView() {
           return (
             <Layout
               key={person}
-              columns="6rem 1fr auto auto"
+              columns="6rem minmax(0, 1fr) auto auto"
               gap="var(--polly-space-sm)"
               alignItems="center"
-              stackOnMobile={true}
             >
               <strong>{person}</strong>
               <span>
