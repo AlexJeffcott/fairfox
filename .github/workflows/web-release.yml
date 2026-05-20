@@ -43,6 +43,33 @@ jobs:
           generate_release_notes: true
           tag_name: ${{ github.ref_name }}
 
+      # Wait until GitHub actually surfaces this release before
+      # nudging the server. `action-gh-release` returns as soon as
+      # the release is created, but the releases list API lags a few
+      # seconds behind. The server's fetchApp() reads that same list
+      # (newest `web-v*` entry), so a refresh fired too early pulls
+      # the *previous* release and the deploy silently serves stale
+      # code — observed on two consecutive releases. Poll the list
+      # the server reads until its newest `web-v*` entry is this tag.
+      - name: Wait for the release to surface on GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_TAG: ${{ github.ref_name }}
+        run: |
+          for i in $(seq 1 30); do
+            latest=$(gh api "repos/${{ github.repository }}/releases" \
+              --jq 'map(select(.tag_name | startswith("web-v"))) | .[0].tag_name' \
+              2>/dev/null || true)
+            echo "attempt $i: newest web-v release = ${latest:-<none>} (want $EXPECTED_TAG)"
+            if [ "$latest" = "$EXPECTED_TAG" ]; then
+              echo "release $EXPECTED_TAG is live on GitHub"
+              exit 0
+            fi
+            sleep 4
+          done
+          echo "::error::release $EXPECTED_TAG did not surface on GitHub within ~2min"
+          exit 1
+
       # Nudge the running Fly server to re-fetch the new bundle
       # without a `fly machine restart`. If the GH Actions secret is
       # absent the step warns and continues — that's the only path
@@ -55,15 +82,28 @@ jobs:
       # undetected for ~10 web releases because the step swallowed
       # the curl exit status. Fail the workflow loudly so the next
       # such drift gets caught at the tag that introduced it.
+      #
+      # The refresh response carries the tag the server settled on.
+      # Assert it matches this release: if propagation still raced
+      # the wait step above, fail loudly here rather than leave the
+      # deploy quietly serving the previous bundle.
       - name: Refresh deployed server bundle
         env:
           FAIRFOX_REFRESH_TOKEN: ${{ secrets.FAIRFOX_REFRESH_TOKEN }}
           FAIRFOX_SERVER_URL: ${{ vars.FAIRFOX_SERVER_URL || 'https://fairfox.fly.dev' }}
+          EXPECTED_TAG: ${{ github.ref_name }}
         run: |
           if [ -z "$FAIRFOX_REFRESH_TOKEN" ]; then
             echo "::warning::FAIRFOX_REFRESH_TOKEN secret not set — skipping server refresh"
             exit 0
           fi
-          curl -fsS -X POST \
+          response=$(curl -fsS -X POST \
             -H "Authorization: Bearer $FAIRFOX_REFRESH_TOKEN" \
-            "$FAIRFOX_SERVER_URL/admin/refresh-web-bundle"
+            "$FAIRFOX_SERVER_URL/admin/refresh-web-bundle")
+          echo "refresh response: $response"
+          served=$(printf '%s' "$response" | jq -r '.tag')
+          if [ "$served" != "$EXPECTED_TAG" ]; then
+            echo "::error::server refreshed to '$served', expected '$EXPECTED_TAG' — GitHub release propagation raced the refresh"
+            exit 1
+          fi
+          echo "server is now serving $served"
