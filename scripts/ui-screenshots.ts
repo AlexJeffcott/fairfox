@@ -366,6 +366,44 @@ async function captureAgendaForm(page: Page, reports: OverflowReport[]): Promise
   }
 }
 
+/** Capture the-struggle Memory tab and the speakwell History tab —
+ * surfaces the route loop only sees in their empty default tab. A
+ * speakwell session is created first so History has a real row.
+ * (the-struggle's Story view needs authored `struggle:story`
+ * content, which a fresh test mesh has none of.) */
+async function captureStruggleSpeakwell(page: Page, reports: OverflowReport[]): Promise<void> {
+  trace('route', 'the-struggle Memory tab');
+  await page.goto(`${TARGET}/the-struggle`, { waitUntil: 'domcontentloaded' });
+  await sleep(1000);
+  if (await clickByText(page, 'Memory')) {
+    await sleep(600);
+    await capture(page, 'the-struggle-memory', reports);
+  }
+
+  trace('route', 'speakwell — start a session, capture History');
+  await page.goto(`${TARGET}/speakwell`, { waitUntil: 'domcontentloaded' });
+  await sleep(1000);
+  if ((await page.$$('[data-action="speakwell.tab"]')).length > 0) {
+    try {
+      await fillActionInput(
+        page,
+        '[data-polly-action-input]',
+        'Pitching the kitchen renovation idea to the family'
+      );
+      await page.keyboard.press('Tab');
+      await sleep(300);
+    } catch {
+      // topic is optional — proceed without it
+    }
+    await clickByText(page, 'Begin');
+    await sleep(900);
+    if (await clickByText(page, 'History')) {
+      await sleep(700);
+      await capture(page, 'speakwell-history', reports);
+    }
+  }
+}
+
 /** Focus an ActionInput (a click promotes it to an editable field)
  * and type into it. */
 async function fillActionInput(page: Page, selector: string, text: string): Promise<void> {
@@ -544,6 +582,9 @@ async function main(): Promise<void> {
 
     // Drive the agenda create-item form.
     await captureAgendaForm(page, reports);
+
+    // the-struggle Memory + speakwell History.
+    await captureStruggleSpeakwell(page, reports);
 
     // Chat widget with injected demo data. A hash-only change does
     // not reload the document, so applyUrlHooks (module-load only)
