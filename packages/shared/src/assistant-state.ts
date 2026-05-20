@@ -157,6 +157,14 @@ export interface ChatExtras {
   totalCostUsd?: number;
   pinnedModel?: ModelId;
   scopeOverrideKey?: string;
+  /** Claude Code session UUID backing this chat. The relay sets it
+   * on the first turn (from the SDK `result` message) and resumes
+   * it on every later turn, so the conversation has real session
+   * continuity instead of a 30-minute history window re-rendered
+   * into each prompt. Replaced automatically if a resume fails —
+   * the session file was pruned, or the leader relay moved to a
+   * machine that never held it — and the relay cold-starts. */
+  claudeSessionId?: string;
 }
 
 // --- mesh doc ids ----------------------------------------------

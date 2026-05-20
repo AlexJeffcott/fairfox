@@ -291,7 +291,14 @@ Subcommands:
   fairfox chat serve     Long-lived relay; replies to chat:main
                          pendings via the Anthropic Agent SDK.
   fairfox chat send <t>  Write a pending user message to chat:main.
+                         Starts a new chat unless --chat <id> is
+                         given, which appends to that chat (and
+                         resumes its Claude session).
   fairfox chat dump      Print the chat:main JSON document.
+
+Each chat is backed by one Claude Code session: the relay records
+its id on the chat and resumes it for every later message, so the
+assistant keeps context instead of re-reading a history window.
 
 The relay binary is the local \`claude\` if FAIRFOX_CLAUDE_PATH is
 unset; install Claude Code so the SDK has a binary to invoke.`,

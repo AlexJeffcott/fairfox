@@ -288,12 +288,25 @@ function main(): Promise<number> {
       return chatServe();
     }
     if (verb === 'send') {
-      const text = rest.slice(1).join(' ').trim();
+      const sendArgs = rest.slice(1);
+      let targetChatId: string | undefined;
+      const textParts: string[] = [];
+      for (let i = 0; i < sendArgs.length; i += 1) {
+        const arg = sendArgs[i];
+        const next = sendArgs[i + 1];
+        if (arg === '--chat' && next !== undefined) {
+          targetChatId = next;
+          i += 1;
+        } else if (arg !== undefined) {
+          textParts.push(arg);
+        }
+      }
+      const text = textParts.join(' ').trim();
       if (!text) {
         process.stderr.write('fairfox chat send: expected message text.\n');
         return Promise.resolve(1);
       }
-      return chatSend(text);
+      return chatSend(text, targetChatId);
     }
     if (verb === 'dump') {
       return chatDump();

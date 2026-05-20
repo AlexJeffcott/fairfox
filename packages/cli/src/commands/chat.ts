@@ -423,12 +423,40 @@ function buildPrompt(doc: ChatDoc, target: Message): string {
   ].join('\n');
 }
 
+/** Prompt for a resumed turn. The Claude session already carries
+ * the system framing, the chat-wide context, and every prior
+ * message — so a resumed turn sends only what is new: the latest
+ * user message and any context ref attached to that specific
+ * message. Chat-wide context is deliberately NOT re-sent (it was
+ * resolved into the first turn's prompt and lives in the session);
+ * a turn that needs fresh task/agenda state attaches its own
+ * message-specific ref, which is always re-resolved here. */
+function buildResumePrompt(target: Message): string {
+  const msgContext = target.contextRef
+    ? `\n\nContext for this message — ${target.contextRef.kind}${target.contextRef.id ? ` ${target.contextRef.id}` : ''}:\n${resolveContext(target.contextRef)}`
+    : '';
+  return [
+    `New message in this chat (from ${target.senderUserId.slice(0, 8)}): ${target.text}`,
+    msgContext,
+    '\nRespond. If asked to do something on the laptop, do it and report back briefly.',
+  ].join('\n');
+}
+
 interface AgentResult {
   readonly text: string;
   readonly extras: AssistantMessageExtras;
+  /** The Claude Code session this turn ran in — `result.session_id`
+   * from the SDK, or the resumed id echoed back. `processOne`
+   * persists it onto the chat so the next turn can resume. */
+  readonly sessionId?: string;
 }
 
-async function runAgent(prompt: string, model: ModelId, startedAt: string): Promise<AgentResult> {
+async function runAgent(
+  prompt: string,
+  model: ModelId,
+  startedAt: string,
+  resumeSessionId?: string
+): Promise<AgentResult> {
   // Test hook — when FAIRFOX_CLAUDE_STUB is set the relay
   // short-circuits and returns the env value (or a default echo)
   // instead of calling the Agent SDK. This lets
@@ -456,6 +484,12 @@ async function runAgent(prompt: string, model: ModelId, startedAt: string): Prom
         startedAt,
         finishedAt: new Date().toISOString(),
       },
+      // Stub session continuity: a resumed call echoes the id back
+      // unchanged; a fresh call mints a unique stub id. This lets
+      // scripts/e2e-chat-relay.ts tell a real resume from an
+      // accidental cold-start by watching whether the chat's
+      // claudeSessionId stays stable across turns.
+      sessionId: resumeSessionId ?? `stub-session-${randomId()}`,
     };
   }
 
@@ -471,6 +505,10 @@ async function runAgent(prompt: string, model: ModelId, startedAt: string): Prom
 
   let text = '';
   let extras: AssistantMessageExtras = { model, startedAt };
+  // Seed with the id we asked to resume; the `result` message
+  // overwrites it with the authoritative id (identical on a
+  // successful resume, fresh on a cold start).
+  let sessionId: string | undefined = resumeSessionId;
   const toolsUsed: string[] = [];
   try {
     for await (const msg of query({
@@ -479,6 +517,7 @@ async function runAgent(prompt: string, model: ModelId, startedAt: string): Prom
         model,
         cwd: RELAY_CWD,
         abortController: abort,
+        ...(resumeSessionId ? { resume: resumeSessionId } : {}),
         ...(CLAUDE_BINARY ? { pathToClaudeCodeExecutable: CLAUDE_BINARY } : {}),
         systemPrompt: [
           'You are the fairfox household assistant running on the laptop.',
@@ -497,6 +536,7 @@ async function runAgent(prompt: string, model: ModelId, startedAt: string): Prom
         }
       }
       if (msg.type === 'result') {
+        sessionId = msg.session_id;
         const finishedAt = new Date().toISOString();
         if (msg.subtype === 'success') {
           text = msg.result;
@@ -545,7 +585,7 @@ async function runAgent(prompt: string, model: ModelId, startedAt: string): Prom
       clearTimeout(idleTimer);
     }
   }
-  return { text, extras };
+  return { text, extras, sessionId };
 }
 
 function randomId(): string {
@@ -749,14 +789,41 @@ async function processOne(
   selfUserId: string,
   selfPeerId: string
 ): Promise<ProcessResult> {
-  const prompt = buildPrompt(chatSignal.value, target);
-  const model = pickModel(findChat(chatSignal.value, target.chatId), target);
-  const startedAt = new Date().toISOString();
+  const chat = findChat(chatSignal.value, target.chatId);
+  const model = pickModel(chat, target);
   const startedMs = Date.now();
-  process.stdout.write(
-    `[chat serve] processing ${target.id} via ${model} (${target.text.slice(0, 60).replace(/\n/g, ' ')}…)\n`
-  );
-  const { text: replyText, extras } = await runAgent(prompt, model, startedAt);
+  const resumeId = chat?.claudeSessionId;
+  const preview = target.text.slice(0, 60).replace(/\n/g, ' ');
+
+  // A chat with a session id resumes it: the prompt is only the new
+  // message, the session supplies the rest. If the resume fails —
+  // the session file was pruned, or this relay never held it — fall
+  // back to a cold start with the full history-window prompt so the
+  // turn still gets answered and the chat re-homes on a fresh
+  // session id.
+  let result: AgentResult;
+  if (resumeId) {
+    process.stdout.write(
+      `[chat serve] processing ${target.id} via ${model} — resuming session ${resumeId} (${preview}…)\n`
+    );
+    result = await runAgent(buildResumePrompt(target), model, new Date().toISOString(), resumeId);
+    if (result.extras.error) {
+      process.stdout.write(
+        `[chat serve] resume of session ${resumeId} failed (${result.extras.error.kind}) — cold-starting a fresh session\n`
+      );
+      result = await runAgent(
+        buildPrompt(chatSignal.value, target),
+        model,
+        new Date().toISOString()
+      );
+    }
+  } else {
+    process.stdout.write(
+      `[chat serve] processing ${target.id} via ${model} — new session (${preview}…)\n`
+    );
+    result = await runAgent(buildPrompt(chatSignal.value, target), model, new Date().toISOString());
+  }
+  const { text: replyText, extras } = result;
   const finalCost =
     extras.costUsd ??
     computeCostUsd({
@@ -780,11 +847,18 @@ async function processOne(
     daemonId: selfPeerId,
   };
   chatSignal.handle?.change((doc) => {
-    const chat = doc.chats.find((c) => c.id === target.chatId);
-    if (chat) {
-      chat.updatedAt = reply.createdAt;
-      chat.totalCostUsd = Math.round(((chat.totalCostUsd ?? 0) + finalCost) * 10_000) / 10_000;
-      chat.typing = false;
+    const liveChat = doc.chats.find((c) => c.id === target.chatId);
+    if (liveChat) {
+      liveChat.updatedAt = reply.createdAt;
+      liveChat.totalCostUsd =
+        Math.round(((liveChat.totalCostUsd ?? 0) + finalCost) * 10_000) / 10_000;
+      liveChat.typing = false;
+      // Persist the session this turn ran in so the next message in
+      // the chat resumes it. On a successful resume this is the same
+      // id; after a cold-start fallback it is the fresh one.
+      if (result.sessionId) {
+        liveChat.claudeSessionId = result.sessionId;
+      }
     }
     const parent = doc.messages.find((m) => m.id === target.id);
     if (parent) {
@@ -879,7 +953,7 @@ async function openChatDoc(): Promise<ReturnType<typeof $meshState<ChatDoc>>> {
  * every invocation starts a new one). Primarily for
  * scripts/e2e-chat-relay.ts, but a useful standalone way to drop a
  * message into the assistant thread from a shell. */
-export async function chatSend(text: string): Promise<number> {
+export async function chatSend(text: string, targetChatId?: string): Promise<number> {
   const storage = keyringStorage();
   const keyring = await storage.load();
   if (!keyring) {
@@ -896,6 +970,14 @@ export async function chatSend(text: string): Promise<number> {
   try {
     await waitForPeer(client, 8000);
     const chatSignal = await openChatDoc();
+    const existingChat =
+      targetChatId === undefined
+        ? undefined
+        : chatSignal.value.chats.find((c) => c.id === targetChatId);
+    if (targetChatId !== undefined && existingChat === undefined) {
+      process.stderr.write(`fairfox chat send: no chat with id "${targetChatId}".\n`);
+      return 1;
+    }
     // Test hook: FAIRFOX_CHAT_SEND_CREATED_AT lets the e2e sweep
     // test backdate a fresh pending past STALE_TURN_MS so the
     // restart sweep should mark it daemon-restarted. Never used
@@ -915,7 +997,11 @@ export async function chatSend(text: string): Promise<number> {
         // Invalid; ignore.
       }
     }
-    const chat: Chat = {
+    // Reuse the targeted chat, or mint a fresh one. The relay homes
+    // claudeSessionId on whichever chat the message lands in, so a
+    // message sent with --chat resumes that chat's Claude session.
+    const isNewChat = existingChat === undefined;
+    const targetChat: Chat = existingChat ?? {
       id: randomId(),
       title: text.slice(0, 60),
       createdAt: now,
@@ -932,7 +1018,7 @@ export async function chatSend(text: string): Promise<number> {
     const taskCtxLabel = process.env.FAIRFOX_CHAT_SEND_CONTEXT_TASK_LABEL;
     const message: Message = {
       id: randomId(),
-      chatId: chat.id,
+      chatId: targetChat.id,
       sender: 'user',
       senderUserId: identity.userId,
       senderDeviceId: peerId,
@@ -950,11 +1036,13 @@ export async function chatSend(text: string): Promise<number> {
         : {}),
     };
     chatSignal.handle?.change((doc) => {
-      doc.chats.push(chat);
+      if (isNewChat) {
+        doc.chats.push(targetChat);
+      }
       doc.messages.push(message);
     });
     await flushOutgoing(2500);
-    process.stdout.write(`wrote message ${message.id} in chat ${chat.id}\n`);
+    process.stdout.write(`wrote message ${message.id} in chat ${targetChat.id}\n`);
     return 0;
   } finally {
     try {
