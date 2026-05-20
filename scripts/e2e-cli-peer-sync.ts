@@ -27,6 +27,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { $ } from 'bun';
 import puppeteer, { type Browser, type Page } from 'puppeteer';
+import { createIdentity } from './e2e-identity.ts';
 
 const URL = process.env.TARGET_URL ?? 'http://localhost:3000/agenda';
 const HEADLESS = process.env.HEADLESS !== 'false';
@@ -128,6 +129,10 @@ let ok = false;
 try {
   TRACE('desktop', `navigate ${URL}`);
   await page.goto(URL, { waitUntil: 'domcontentloaded' });
+  // A fresh profile lands on the WhoAreYou identity wizard; clear it so
+  // the pairing screen renders. Without an identity there is nothing to
+  // sign a pairing endorsement with.
+  await createIdentity(page, 'Desktop', (m) => TRACE('desktop', m));
   await waitForText(page, "This device isn't connected to your mesh yet.");
 
   TRACE('desktop', 'share a pairing link');
