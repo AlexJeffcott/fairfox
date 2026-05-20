@@ -107,13 +107,23 @@ function ProjectsView() {
                 columns="1fr auto auto"
                 gap="var(--polly-space-sm)"
                 alignItems="center"
+                stackOnMobile={true}
               >
                 <div
                   data-action="project.open"
                   data-action-pid={p.pid}
-                  style={{ cursor: 'pointer', display: 'grid', gap: 0 }}
+                  style={{ cursor: 'pointer', display: 'grid', gap: 0, minWidth: 0 }}
                 >
-                  <strong>{p.name || '(untitled)'}</strong>
+                  <strong
+                    style={{
+                      minWidth: 0,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {p.name || '(untitled)'}
+                  </strong>
                   {p.notes && (
                     <span
                       data-polly-clamp={true}
@@ -145,11 +155,24 @@ function ProjectsView() {
         <Layout rows="auto" gap="var(--polly-space-sm)">
           <h3>Paused ({pausedProjects.length})</h3>
           {pausedProjects.map((p) => (
-            <Layout key={p.pid} columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
+            <Layout
+              key={p.pid}
+              columns="1fr auto"
+              gap="var(--polly-space-sm)"
+              alignItems="center"
+              stackOnMobile={true}
+            >
               <span
                 data-action="project.open"
                 data-action-pid={p.pid}
-                style={{ color: 'var(--polly-text-muted)', cursor: 'pointer' }}
+                style={{
+                  color: 'var(--polly-text-muted)',
+                  cursor: 'pointer',
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
               >
                 {p.name || '(untitled)'}
               </span>
@@ -185,6 +208,7 @@ function TaskFilters({ projectNames }: { projectNames: string[] }) {
       gap="var(--polly-space-sm)"
       alignItems="center"
       justifyContent="start"
+      stackOnMobile={true}
     >
       <Layout columns="auto auto" gap="var(--polly-space-xs)" alignItems="center">
         <label
@@ -295,6 +319,7 @@ function TasksView() {
                 columns="auto 1fr auto auto"
                 gap="var(--polly-space-sm)"
                 alignItems="center"
+                stackOnMobile={true}
               >
                 <span data-action="task.toggle-done" data-action-tid={t.tid}>
                   <Checkbox checked={t.done} />
@@ -303,7 +328,7 @@ function TasksView() {
                   data-polly-truncate={true}
                   data-action="task.open"
                   data-action-tid={t.tid}
-                  style={{ cursor: 'pointer' }}
+                  style={{ cursor: 'pointer', minWidth: 0 }}
                 >
                   {t.description || '(untitled)'}
                 </span>
@@ -341,6 +366,7 @@ function TasksView() {
               columns="auto 1fr auto"
               gap="var(--polly-space-sm)"
               alignItems="center"
+              stackOnMobile={true}
             >
               <Checkbox checked={t.done} data-action="task.toggle-done" data-action-tid={t.tid} />
               <span
@@ -351,6 +377,7 @@ function TasksView() {
                   textDecoration: 'line-through',
                   color: 'var(--polly-text-muted)',
                   cursor: 'pointer',
+                  minWidth: 0,
                 }}
               >
                 {t.description || '(untitled)'}
@@ -384,7 +411,12 @@ function TaskDetail({ tid }: { tid: string }) {
   const projects = projectsState.value.projects;
   return (
     <Layout rows="auto" gap="var(--polly-space-md)">
-      <Layout columns="auto 1fr auto" gap="var(--polly-space-sm)" alignItems="center">
+      <Layout
+        columns="auto 1fr auto"
+        gap="var(--polly-space-sm)"
+        alignItems="center"
+        stackOnMobile={true}
+      >
         <Button label="← Back" tier="tertiary" size="small" data-action="task.close" />
         <span style={{ color: 'var(--polly-text-muted)', fontFamily: 'var(--polly-font-mono)' }}>
           {task.tid}
@@ -414,7 +446,7 @@ function TaskDetail({ tid }: { tid: string }) {
         />
       </Layout>
 
-      <Layout columns="1fr 1fr" gap="var(--polly-space-md)">
+      <Layout columns="1fr 1fr" gap="var(--polly-space-md)" stackOnMobile={true}>
         <Layout rows="auto" gap="var(--polly-space-xs)">
           <label
             for={`project-${task.tid}`}
@@ -530,7 +562,12 @@ function ProjectDetail({ pid }: { pid: string }) {
 
   return (
     <Layout rows="auto" gap="var(--polly-space-md)">
-      <Layout columns="auto 1fr auto" gap="var(--polly-space-sm)" alignItems="center">
+      <Layout
+        columns="auto 1fr auto"
+        gap="var(--polly-space-sm)"
+        alignItems="center"
+        stackOnMobile={true}
+      >
         <Button label="← Back" tier="tertiary" size="small" data-action="project.close" />
         <span style={{ color: 'var(--polly-text-muted)', fontFamily: 'var(--polly-font-mono)' }}>
           {project.pid} · {projectTaskCount} task{projectTaskCount === 1 ? '' : 's'}
@@ -560,7 +597,7 @@ function ProjectDetail({ pid }: { pid: string }) {
         />
       </Layout>
 
-      <Layout columns="1fr 1fr 1fr" gap="var(--polly-space-md)">
+      <Layout columns="1fr 1fr 1fr" gap="var(--polly-space-md)" stackOnMobile={true}>
         <Layout rows="auto" gap="var(--polly-space-xs)">
           <label
             for={`category-${project.pid}`}
@@ -679,7 +716,7 @@ function ProjectDetail({ pid }: { pid: string }) {
         />
       </Layout>
 
-      <Layout columns="1fr 1fr" gap="var(--polly-space-md)">
+      <Layout columns="1fr 1fr" gap="var(--polly-space-md)" stackOnMobile={true}>
         <Layout rows="auto" gap="var(--polly-space-xs)">
           <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
             Dirs
@@ -748,13 +785,14 @@ function ProjectTasks({ projectName }: { projectName: string }) {
           columns="auto 1fr auto auto"
           gap="var(--polly-space-sm)"
           alignItems="center"
+          stackOnMobile={true}
         >
           <Checkbox checked={t.done} data-action="task.toggle-done" data-action-tid={t.tid} />
           <span
             data-polly-truncate={true}
             data-action="task.open"
             data-action-tid={t.tid}
-            style={{ cursor: 'pointer' }}
+            style={{ cursor: 'pointer', minWidth: 0 }}
           >
             {t.description || '(untitled)'}
           </span>
@@ -787,6 +825,7 @@ function ProjectTasks({ projectName }: { projectName: string }) {
                 columns="auto 1fr auto"
                 gap="var(--polly-space-sm)"
                 alignItems="center"
+                stackOnMobile={true}
               >
                 <span data-action="task.toggle-done" data-action-tid={t.tid}>
                   <Checkbox checked={t.done} />
@@ -799,6 +838,7 @@ function ProjectTasks({ projectName }: { projectName: string }) {
                     textDecoration: 'line-through',
                     color: 'var(--polly-text-muted)',
                     cursor: 'pointer',
+                    minWidth: 0,
                   }}
                 >
                   {t.description || '(untitled)'}
@@ -831,7 +871,13 @@ function CaptureView() {
         placeholder="Quick thought..."
       />
       {capturesState.value.captures.map((c) => (
-        <Layout key={c.id} columns="1fr auto auto" gap="var(--polly-space-sm)" alignItems="start">
+        <Layout
+          key={c.id}
+          columns="minmax(0, 1fr) auto auto"
+          gap="var(--polly-space-sm)"
+          alignItems="start"
+          stackOnMobile={true}
+        >
           <Layout rows="auto auto" gap="var(--polly-space-xs)">
             <ActionInput
               value={c.text}

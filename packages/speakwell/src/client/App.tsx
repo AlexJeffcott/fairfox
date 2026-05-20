@@ -42,7 +42,7 @@ function StartView() {
       <h2>New session</h2>
       <Layout rows="auto" gap="var(--polly-space-sm)">
         <strong>Format</strong>
-        <Layout columns="auto auto auto" gap="var(--polly-space-sm)">
+        <Layout columns="auto auto auto" gap="var(--polly-space-sm)" stackOnMobile={true}>
           {(['yarn', 'pitch', 'summary'] as const).map((f) => (
             <Button
               key={f}
@@ -57,7 +57,7 @@ function StartView() {
       </Layout>
       <Layout rows="auto" gap="var(--polly-space-sm)">
         <strong>Language</strong>
-        <Layout columns="auto auto auto" gap="var(--polly-space-sm)">
+        <Layout columns="auto auto auto" gap="var(--polly-space-sm)" stackOnMobile={true}>
           {(['en-GB', 'it-IT', 'de-DE'] as const).map((l) => (
             <Button
               key={l}
@@ -107,6 +107,7 @@ function HistoryView() {
           columns="auto 1fr auto auto"
           gap="var(--polly-space-sm)"
           alignItems="center"
+          stackOnMobile={true}
         >
           <Badge variant="info">{FORMAT_LABELS[s.format]}</Badge>
           <Layout rows="auto" gap="0">

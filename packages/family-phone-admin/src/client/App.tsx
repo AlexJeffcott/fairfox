@@ -33,8 +33,18 @@ function HumansView() {
             columns="1fr auto auto"
             gap="var(--polly-space-sm)"
             alignItems="center"
+            stackOnMobile={true}
           >
-            <strong>{h.name}</strong>
+            <strong
+              style={{
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {h.name}
+            </strong>
             <Badge variant="default">{deviceCount} devices</Badge>
             <Button
               label="Remove"
@@ -67,13 +77,14 @@ function DevicesView() {
           {active.map((d) => (
             <Layout
               key={d.id}
-              columns="auto 1fr auto auto"
+              columns="auto minmax(0, 1fr) auto auto"
               gap="var(--polly-space-sm)"
               alignItems="center"
+              stackOnMobile={true}
             >
               <Badge variant="info">{d.kind}</Badge>
-              <Layout rows="auto" gap="0">
-                <strong>{d.name}</strong>
+              <Layout rows="auto auto" gap="0">
+                <strong style={{ wordBreak: 'break-word' }}>{d.name}</strong>
                 <span
                   style={{ fontSize: 'var(--polly-text-xs)', color: 'var(--polly-text-muted)' }}
                 >
@@ -98,7 +109,13 @@ function DevicesView() {
           <h3>Revoked ({revoked.length})</h3>
           {revoked.map((d) => (
             <Layout key={d.id} columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
-              <span style={{ color: 'var(--polly-text-muted)' }}>
+              <span
+                style={{
+                  color: 'var(--polly-text-muted)',
+                  minWidth: 0,
+                  wordBreak: 'break-word',
+                }}
+              >
                 {d.name} · {humansById.get(d.humanId) ?? 'unknown'}
               </span>
               <Badge variant="danger">revoked</Badge>
@@ -120,7 +137,7 @@ export function App() {
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout rows="auto" gap="var(--polly-space-md)">
         <Layout columns="1fr auto" gap="var(--polly-space-sm)">
-          <h1 style={{ margin: 0 }}>Family Phone — Admin</h1>
+          <h1 style={{ margin: 0, minWidth: 0, wordBreak: 'break-word' }}>Family Phone — Admin</h1>
           <HubBack />
         </Layout>
         <Tabs tabs={TAB_LIST} activeTab={activeTab} action="directory.tab" />

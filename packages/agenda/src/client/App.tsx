@@ -190,7 +190,16 @@ function TodayView() {
               alignItems="center"
             >
               {item.time && <Badge variant="info">{item.time}</Badge>}
-              <span>{item.name}</span>
+              <span
+                style={{
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {item.name}
+              </span>
             </Layout>
           ))}
         </Layout>
@@ -211,7 +220,7 @@ function ChoreRow({ item, daysOverdue }: { item: AgendaItem; daysOverdue: number
   return (
     <Layout rows="auto auto" gap="var(--polly-space-xs)" padding="var(--polly-space-sm) 0">
       <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
-        <div>
+        <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
           <strong>{item.name}</strong>
           {item.room && (
             <span
@@ -227,7 +236,11 @@ function ChoreRow({ item, daysOverdue }: { item: AgendaItem; daysOverdue: number
         </div>
         <Badge variant={overdueBadgeVariant(daysOverdue)}>{overdueLabel(daysOverdue)}</Badge>
       </Layout>
-      <Layout columns="auto auto auto auto auto auto" gap="var(--polly-space-xs)">
+      <Layout
+        columns="repeat(auto-fill, minmax(3rem, 1fr))"
+        gap="var(--polly-space-xs)"
+        alignItems="center"
+      >
         {PEOPLE.map((person) => (
           <Button
             key={`${item.id}-done-${person}`}
@@ -277,21 +290,23 @@ function CreateItemForm() {
   const draft = itemDraft.value;
   return (
     <Layout rows="auto auto auto auto" gap="var(--polly-space-sm)" padding="var(--polly-space-md)">
-      <Layout columns="auto auto 1fr" gap="var(--polly-space-sm)" alignItems="center">
-        <Button
-          label="Chore"
-          size="small"
-          tier={draft.kind === 'chore' ? 'primary' : 'tertiary'}
-          data-action="draft.kind"
-          data-action-kind="chore"
-        />
-        <Button
-          label="Event"
-          size="small"
-          tier={draft.kind === 'event' ? 'primary' : 'tertiary'}
-          data-action="draft.kind"
-          data-action-kind="event"
-        />
+      <Layout rows="auto auto" gap="var(--polly-space-sm)">
+        <Layout columns="1fr 1fr" gap="var(--polly-space-xs)" alignItems="center">
+          <Button
+            label="Chore"
+            size="small"
+            tier={draft.kind === 'chore' ? 'primary' : 'tertiary'}
+            data-action="draft.kind"
+            data-action-kind="chore"
+          />
+          <Button
+            label="Event"
+            size="small"
+            tier={draft.kind === 'event' ? 'primary' : 'tertiary'}
+            data-action="draft.kind"
+            data-action-kind="event"
+          />
+        </Layout>
         <ActionInput
           value={draft.name}
           variant="single"
@@ -300,7 +315,11 @@ function CreateItemForm() {
           placeholder={draft.kind === 'event' ? 'Event name' : 'Chore name'}
         />
       </Layout>
-      <Layout columns="auto auto auto auto" gap="var(--polly-space-xs)" alignItems="center">
+      <Layout
+        columns="repeat(auto-fill, minmax(4.75rem, 1fr))"
+        gap="var(--polly-space-xs)"
+        alignItems="center"
+      >
         {RECURRENCE_OPTIONS.map((r) => (
           <Button
             key={r}
@@ -313,7 +332,7 @@ function CreateItemForm() {
         ))}
       </Layout>
       {draft.recurrence === 'weekdays' && (
-        <Layout columns="auto auto auto auto auto auto auto" gap="var(--polly-space-xs)">
+        <Layout columns="repeat(auto-fill, minmax(2.75rem, 1fr))" gap="var(--polly-space-xs)">
           {WEEKDAY_LABELS.map((label, i) => (
             <Button
               key={label}
@@ -349,7 +368,12 @@ function CreateItemForm() {
           ariaLabel="Date"
         />
       )}
-      <Layout columns="1fr 1fr 1fr auto" gap="var(--polly-space-xs)" alignItems="center">
+      <Layout
+        columns="1fr 1fr 1fr auto"
+        gap="var(--polly-space-xs)"
+        alignItems="center"
+        stackOnMobile={true}
+      >
         <ActionInput
           value={draft.time}
           variant="single"
@@ -412,6 +436,7 @@ function ItemsView() {
             columns="auto 1fr auto auto"
             gap="var(--polly-space-sm)"
             alignItems="center"
+            stackOnMobile={true}
           >
             <Badge variant={item.kind === 'event' ? 'info' : 'default'}>{item.kind}</Badge>
             <div>
@@ -519,6 +544,7 @@ function FairnessView() {
               columns="6rem 1fr auto auto"
               gap="var(--polly-space-sm)"
               alignItems="center"
+              stackOnMobile={true}
             >
               <strong>{person}</strong>
               <span>

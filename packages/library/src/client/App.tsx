@@ -67,9 +67,24 @@ function RefsView() {
   if (selected) {
     return (
       <Layout rows="auto" gap="var(--polly-space-md)">
-        <Layout columns="auto 1fr auto" gap="var(--polly-space-sm)" alignItems="center">
+        <Layout
+          columns="auto 1fr auto"
+          gap="var(--polly-space-sm)"
+          alignItems="center"
+          stackOnMobile={true}
+        >
           <Button label="← Back" tier="tertiary" size="small" data-action="ref.close" />
-          <h3 style={{ margin: 0 }}>{selected.title}</h3>
+          <h3
+            style={{
+              margin: 0,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {selected.title}
+          </h3>
           <Button
             label="Delete"
             size="small"
@@ -113,12 +128,13 @@ function RefsView() {
       {refs.map((ref) => (
         <Layout
           key={ref.id}
-          columns="1fr auto auto auto"
+          columns="minmax(0, 1fr) auto auto auto"
           gap="var(--polly-space-sm)"
           alignItems="center"
+          stackOnMobile={true}
         >
-          <Layout rows="auto" gap="0">
-            <strong>{ref.title}</strong>
+          <Layout rows="auto auto" gap="0">
+            <strong style={{ wordBreak: 'break-word' }}>{ref.title}</strong>
             {ref.author && (
               <span style={{ fontSize: 'var(--polly-text-sm)', color: 'var(--polly-text-muted)' }}>
                 {ref.author}
@@ -155,9 +171,24 @@ function DocsView() {
   if (selected) {
     return (
       <Layout rows="auto" gap="var(--polly-space-md)">
-        <Layout columns="auto 1fr auto" gap="var(--polly-space-sm)" alignItems="center">
+        <Layout
+          columns="auto 1fr auto"
+          gap="var(--polly-space-sm)"
+          alignItems="center"
+          stackOnMobile={true}
+        >
           <Button label="← Back" tier="tertiary" size="small" data-action="doc.close" />
-          <h3 style={{ margin: 0 }}>{selected.title}</h3>
+          <h3
+            style={{
+              margin: 0,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {selected.title}
+          </h3>
           <Button
             label="Delete"
             size="small"
@@ -206,8 +237,18 @@ function DocsView() {
                 columns="1fr auto auto"
                 gap="var(--polly-space-sm)"
                 alignItems="center"
+                stackOnMobile={true}
               >
-                <span>{doc.title}</span>
+                <span
+                  style={{
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {doc.title}
+                </span>
                 <Button
                   label="View"
                   size="small"

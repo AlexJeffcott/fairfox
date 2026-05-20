@@ -76,7 +76,12 @@ function ListView() {
 
   return (
     <Layout rows="auto auto auto" gap="var(--polly-space-md)">
-      <Layout columns="auto 1fr 1fr auto" gap="var(--polly-space-sm)" alignItems="center">
+      <Layout
+        columns="auto 1fr 1fr auto"
+        gap="var(--polly-space-sm)"
+        alignItems="center"
+        stackOnMobile={true}
+      >
         <label
           for="docs-filter-project"
           style={{ fontSize: 'var(--polly-text-sm)', color: 'var(--polly-text-muted)' }}
@@ -123,6 +128,7 @@ function ListView() {
               gap="var(--polly-space-sm)"
               alignItems="center"
               padding="var(--polly-space-sm) var(--polly-space-md)"
+              stackOnMobile={true}
             >
               <button
                 type="button"
@@ -186,7 +192,12 @@ function EditView() {
   }
   return (
     <Layout rows="auto auto auto 1fr" gap="var(--polly-space-md)">
-      <Layout columns="auto 1fr auto" gap="var(--polly-space-sm)" alignItems="center">
+      <Layout
+        columns="auto 1fr auto"
+        gap="var(--polly-space-sm)"
+        alignItems="center"
+        stackOnMobile={true}
+      >
         <Button label="← Back" tier="tertiary" size="small" data-action="docs.back-to-list" />
         <span style={{ fontSize: 'var(--polly-text-sm)', color: 'var(--polly-text-muted)' }}>
           Updated {formatDate(doc.updatedAt)}
@@ -200,7 +211,12 @@ function EditView() {
           data-action-id={doc.id}
         />
       </Layout>
-      <Layout columns="1fr 1fr 1fr" gap="var(--polly-space-sm)" alignItems="center">
+      <Layout
+        columns="1fr 1fr 1fr"
+        gap="var(--polly-space-sm)"
+        alignItems="center"
+        stackOnMobile={true}
+      >
         <ActionInput
           value={doc.title}
           variant="single"

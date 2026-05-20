@@ -110,7 +110,7 @@ function PairActions() {
     return <ConnectIdentityPanel />;
   }
   return (
-    <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
+    <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center" stackOnMobile={true}>
       <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
         Bring another device, CLI, or browser extension into this mesh.
       </span>
@@ -232,6 +232,7 @@ export function PeersView() {
               gap="var(--polly-space-md)"
               alignItems="center"
               padding="var(--polly-space-md) var(--polly-space-lg)"
+              stackOnMobile={true}
             >
               <span
                 style={{
@@ -249,6 +250,7 @@ export function PeersView() {
                   gap="var(--polly-space-sm)"
                   alignItems="center"
                   justifyContent="start"
+                  stackOnMobile={true}
                 >
                   {isSelf ? (
                     <ActionInput
@@ -278,10 +280,10 @@ export function PeersView() {
                 </span>
                 {ownerUserIds.length > 0 && (
                   <Layout
-                    columns="repeat(auto-fit, minmax(0, auto))"
+                    columns="repeat(auto-fill, minmax(8rem, 1fr))"
                     gap="var(--polly-space-xs)"
                     alignItems="center"
-                    justifyContent="start"
+                    justifyItems="start"
                   >
                     {ownerUserIds.map((userId) => (
                       <Badge key={userId} variant="info">
@@ -321,7 +323,12 @@ export function PeersView() {
               {isSelf ? (
                 <span />
               ) : (
-                <Layout columns="auto auto auto" gap="var(--polly-space-xs)" alignItems="center">
+                <Layout
+                  columns="auto auto auto"
+                  gap="var(--polly-space-xs)"
+                  alignItems="center"
+                  stackOnMobile={true}
+                >
                   {/* Shared-device add-me: show only when the local
                    * user isn't already endorsed on this device and
                    * holds device.pair. Leaving is self-service; an

@@ -115,10 +115,20 @@ function ContextChip({ ctx, onDetachAction }: { ctx: PageContext; onDetachAction
         gap: '0.35rem',
         color: 'var(--polly-status-info-text)',
         fontSize: '0.78rem',
+        maxWidth: '100%',
       }}
     >
-      <span style={{ fontFamily: 'var(--polly-font-mono)' }}>{ctx.kind}</span>
-      <span>{ctx.label}</span>
+      <span style={{ fontFamily: 'var(--polly-font-mono)', flexShrink: 0 }}>{ctx.kind}</span>
+      <span
+        style={{
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          minWidth: 0,
+        }}
+      >
+        {ctx.label}
+      </span>
       {onDetachAction && (
         <button
           type="button"
@@ -134,6 +144,7 @@ function ContextChip({ ctx, onDetachAction }: { ctx: PageContext; onDetachAction
             lineHeight: 1,
             padding: 0,
             color: 'var(--polly-text-muted)',
+            flexShrink: 0,
           }}
           aria-label={`Remove ${ctx.label}`}
         >
@@ -345,7 +356,7 @@ function Composer({ selfPeerId }: { selfPeerId: string | null }) {
   return (
     <Layout rows="auto auto" gap="0.35rem">
       <Layout columns="1fr auto" gap="0.35rem" alignItems="center">
-        <Layout columns="auto auto" gap="0.35rem" alignItems="center">
+        <Layout columns="auto 1fr" gap="0.35rem" alignItems="center">
           <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
             {pinned ? 'Pinned:' : 'Context:'}
           </span>
@@ -534,48 +545,53 @@ function RelayBadge() {
 
 function ChatHeader({ chat }: { chat: Chat | undefined }) {
   const title = chat?.title ?? 'New chat';
-  // Show the archive button only when there is an active chat to
-  // archive — the empty "New chat" placeholder has nothing to act
-  // on. Calls the existing `chat.archive` action which sets
-  // archivedAt and hides the chat from the main thread; full
-  // history is still reachable via /chat for now (rename if/when
-  // a hard-delete affordance lands).
-  // The Repair button targets only chat:main in IndexedDB — the
-  // failure mode where polly's wrapper handle never bridges
-  // (pendings stick forever, reload doesn't help). Other docs and
-  // the keyring are untouched, so it's safe to surface as a small
-  // always-visible affordance rather than buried in a settings
-  // menu the user can't find when chat is the broken thing.
-  const cols = chat ? '1fr auto auto auto auto auto' : '1fr auto auto auto auto';
+  // Two rows so the header survives a 350px phone: the title (which
+  // truncates rather than pushing the panel wider) sits beside the
+  // Close button, and the relay badge plus the chat-action buttons
+  // sit on a wrap-capable strip below. The archive button only
+  // appears when there is an active chat to archive — the empty
+  // "New chat" placeholder has nothing to act on.
   return (
-    <Layout columns={cols} gap="0.35rem" alignItems="center">
-      <strong style={{ fontSize: '0.95rem' }}>{title}</strong>
-      <RelayBadge />
-      {chat ? (
+    <Layout rows="auto auto" gap="0.4rem">
+      <Layout columns="1fr auto" gap="0.5rem" alignItems="center">
+        <strong
+          style={{
+            fontSize: '0.95rem',
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {title}
+        </strong>
+        <Button label="Close" tier="tertiary" size="small" data-action="chat.close-widget" />
+      </Layout>
+      <Layout
+        columns={chat ? 'auto auto auto' : 'auto auto'}
+        gap="0.35rem"
+        alignItems="center"
+        justifyContent="start"
+      >
+        <RelayBadge />
+        {chat ? (
+          <Button
+            label="Archive"
+            tier="tertiary"
+            size="small"
+            data-action="chat.archive"
+            data-action-id={chat.id}
+            title="Archive this chat. It stays in /chat history but moves out of the widget."
+          />
+        ) : null}
         <Button
-          label="Archive"
+          label="New"
           tier="tertiary"
           size="small"
-          data-action="chat.archive"
-          data-action-id={chat.id}
-          title="Archive this chat. It stays in /chat history but moves out of the widget."
+          data-action="chat.new"
+          title="Start a fresh chat — current one stays in history"
         />
-      ) : null}
-      <Button
-        label="New"
-        tier="tertiary"
-        size="small"
-        data-action="chat.new"
-        title="Start a fresh chat — current one stays in history"
-      />
-      <Button
-        label="Repair"
-        tier="tertiary"
-        size="small"
-        data-action="chat.repair-storage"
-        title="Stuck pendings, no relay, can't send? Wipe just this device's chat:main copy and reload — keyring and other docs survive."
-      />
-      <Button label="Close" tier="tertiary" size="small" data-action="chat.close-widget" />
+      </Layout>
     </Layout>
   );
 }

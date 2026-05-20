@@ -83,6 +83,7 @@ function ChatRow({ chat }: { chat: Chat }) {
       gap="var(--polly-space-sm)"
       alignItems="center"
       padding="var(--polly-space-sm) var(--polly-space-md)"
+      stackOnMobile={true}
     >
       <div>
         <Layout columns="auto 1fr" gap="0.5rem" alignItems="center">
@@ -178,7 +179,12 @@ export function App() {
         <h1 style={{ margin: 0 }}>Chat history</h1>
         <HubBack />
       </Layout>
-      <Layout columns="1fr auto auto" gap="var(--polly-space-sm)" alignItems="center">
+      <Layout
+        columns="1fr auto auto"
+        gap="var(--polly-space-sm)"
+        alignItems="center"
+        stackOnMobile={true}
+      >
         <ActionInput
           value={query}
           variant="single"
