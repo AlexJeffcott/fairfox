@@ -12,12 +12,12 @@ import { resolve } from 'node:path';
 export const REPO_ROOT = resolve(import.meta.dir, '..');
 export const BUNDLE_PATH = resolve(REPO_ROOT, 'packages', 'cli', 'dist', 'fairfox.js');
 
-/** Build the CLI bundle if it's missing. Idempotent — existing
- * bundle is reused so tests don't re-build on every run. */
-export function buildBundleIfMissing(): void {
-  if (existsSync(BUNDLE_PATH)) {
-    return;
-  }
+/** Build the CLI bundle unconditionally. A standalone e2e script
+ * spawns the CLI the way users run it — the bundled `fairfox.js`,
+ * never the from-source entry point — so it must build a *fresh*
+ * bundle first rather than trust whatever is on disk (see
+ * packages/cli/CLAUDE.md). */
+export function buildBundle(): void {
   console.log('[build] building packages/cli/dist/fairfox.js');
   const r = spawnSync('bun', ['run', 'build.ts'], {
     cwd: resolve(REPO_ROOT, 'packages', 'cli'),
@@ -29,6 +29,16 @@ export function buildBundleIfMissing(): void {
   if (!existsSync(BUNDLE_PATH)) {
     throw new Error(`cli build did not produce ${BUNDLE_PATH}`);
   }
+}
+
+/** Build the CLI bundle if it's missing. Idempotent — existing
+ * bundle is reused so the multi-test `e2e-all.ts` runner doesn't
+ * re-build once per scenario. */
+export function buildBundleIfMissing(): void {
+  if (existsSync(BUNDLE_PATH)) {
+    return;
+  }
+  buildBundle();
 }
 
 export interface CliResult {
@@ -114,6 +124,28 @@ export async function killAndWait(h: SubprocessHandle, timeoutMs = 3000): Promis
   h.proc.kill('SIGTERM');
   await new Promise<void>((res) => {
     const t = setTimeout(() => res(), timeoutMs);
+    h.proc.once('exit', () => {
+      clearTimeout(t);
+      res();
+    });
+  });
+}
+
+/** Stop a long-lived CLI subprocess with SIGINT and wait for it to
+ * exit. `fairfox pair open` flushes its in-memory mesh Repo to disk
+ * only on SIGINT — a plain SIGTERM kill loses whatever the pairing
+ * ceremony synced into it. Escalates to SIGKILL if the process does
+ * not exit within the budget. */
+export async function interruptAndWait(h: SubprocessHandle, timeoutMs = 10_000): Promise<void> {
+  if (h.proc.exitCode !== null) {
+    return;
+  }
+  h.proc.kill('SIGINT');
+  await new Promise<void>((res) => {
+    const t = setTimeout(() => {
+      h.proc.kill('SIGKILL');
+      res();
+    }, timeoutMs);
     h.proc.once('exit', () => {
       clearTimeout(t);
       res();

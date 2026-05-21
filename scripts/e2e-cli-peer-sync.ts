@@ -1,194 +1,138 @@
 /**
- * CLI-peer mesh sync verification. Proves that the @fairfox/cli package
- * can pair against a browser device and exchange $meshState mutations
- * through the real WebRTC data channel.
+ * CLI → browser mesh sync verification — the redesign-era flow.
  *
- *   1. Starts a browser profile, clears the WhoAreYou wizard, and runs
- *      the standard pairing flow to produce a share URL carrying a
- *      pairing token and a signalling session id.
- *   2. Invokes `bun packages/cli/src/bin.ts pair "<shareUrl>"`, which
- *      creates a keyring under a test-scoped TMP_HOME, applies the
- *      issuer's token, and sends a pair-return frame back through the
- *      signalling relay.
- *   3. The browser's pair-return handler receives that frame, applies
- *      the CLI's token, and reloads into the paired home — no manual
- *      step. The harness just waits for the agenda to appear.
- *   4. Invokes `bun … agenda add "<chore>"` against the same TMP_HOME.
- *      The CLI opens a mesh client, waits for the browser peer, writes
- *      to the agenda document, and exits.
- *   5. Asserts the chore appears in the browser window within a few
- *      seconds through the actual WebRTC data channel. Screenshot of
- *      the browser lands in scripts/artifacts/.
+ * @covers: agenda:main, mesh:devices
  *
- * Runs against localhost by default; override TARGET_URL for prod. The
- * CLI always talks to the same origin (via FAIRFOX_URL).
+ * The complement of e2e-two-device-sync.ts: that script proves a
+ * browser write reaches the CLI; this one proves a CLI write reaches
+ * the browser, over the real WebRTC data channel.
+ *
+ *   1. `fairfox init` seeds a fresh mesh + admin on a disposable HOME.
+ *   2. `fairfox pair open` issues a transport-only join QR; a headless
+ *      Chrome opens it, adopts the admin identity encrypted over the
+ *      relay's pair-ack, and reloads into the paired agenda.
+ *   3. `pair open` is closed — the browser stays a live mesh peer on
+ *      the relay.
+ *   4. `fairfox agenda add` writes a chore from the terminal. With no
+ *      `pair open` or daemon competing under the same HOME it is the
+ *      device's sole mesh client, so its write races no other peerId.
+ *   5. The chore reaches the browser through WebRTC; the test asserts
+ *      it renders. Screenshot lands in scripts/artifacts/.
+ *
+ * Exits non-zero on failure.
+ *
+ *   bun scripts/e2e-cli-peer-sync.ts                        # prod
+ *   TARGET_URL=http://localhost:3000/agenda bun scripts/e2e-cli-peer-sync.ts
+ *   HEADLESS=false bun scripts/e2e-cli-peer-sync.ts         # watch it run
  */
 
 import { mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { $ } from 'bun';
-import puppeteer, { type Browser, type Page } from 'puppeteer';
-import { createIdentity } from './e2e-identity.ts';
+import {
+  buildBundle,
+  killAndWait,
+  runCli,
+  spawnCli,
+  trace,
+  waitForLine,
+} from './e2e-cli-helpers.ts';
+import { SHORT_TIMEOUT_MS, waitFor } from './e2e-config.ts';
+import { joinMeshFromBrowser, launchBrowser } from './e2e-pairing.ts';
 
-const URL = process.env.TARGET_URL ?? 'http://localhost:3000/agenda';
+const TARGET_URL = process.env.TARGET_URL ?? 'https://fairfox.fly.dev/agenda';
+const ORIGIN = new URL(TARGET_URL).origin;
 const HEADLESS = process.env.HEADLESS !== 'false';
 const ARTIFACTS = resolve(import.meta.dir, 'artifacts');
-const PROFILES = resolve(ARTIFACTS, 'cli-profiles');
-const TMP_HOME = resolve(ARTIFACTS, 'cli-home');
-const CLI = resolve(import.meta.dir, '..', 'packages', 'cli', 'src', 'bin.ts');
-
-const TRACE = (label: string, msg: string): void => {
-  console.log(`[${label}] ${msg}`);
-};
+const PROFILES = resolve(ARTIFACTS, 'cli-peer-sync-profiles');
+const TEST_HOME = '/tmp/fairfox-test-cli-peer-sync';
+// A freshly-killed `pair open` leaves the browser without a CLI peer;
+// `agenda add` must form a brand-new WebRTC channel to it, so allow a
+// generous window for that handshake plus CRDT convergence.
+const SYNC_BUDGET_MS = 45_000;
 
 rmSync(PROFILES, { recursive: true, force: true });
-rmSync(TMP_HOME, { recursive: true, force: true });
+rmSync(TEST_HOME, { recursive: true, force: true });
 mkdirSync(ARTIFACTS, { recursive: true });
-mkdirSync(TMP_HOME, { recursive: true });
+mkdirSync(TEST_HOME, { recursive: true });
 
-const fairfoxOrigin = URL.replace(/\/agenda.*$/, '');
+const CLI_ENV = { FAIRFOX_URL: ORIGIN };
 
-async function waitForText(page: Page, text: string, timeoutMs = 20000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const found = await page.evaluate((t) => (document.body.innerText || '').includes(t), text);
-    if (found) {
-      return;
-    }
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  throw new Error(`text "${text}" not seen within ${timeoutMs}ms`);
+buildBundle();
+
+// 1 — fresh mesh on the disposable HOME.
+trace('cli', `init mesh (origin ${ORIGIN})`);
+const init = await runCli(['init', 'cli-peer-sync mesh', '--admin', 'Desktop'], TEST_HOME, CLI_ENV);
+if (init.status !== 0) {
+  trace('cli', init.stdout.trim());
+  trace('cli', init.stderr.trim());
+  throw new Error('fairfox init failed');
 }
+trace('cli', 'mesh created, admin "Desktop"');
 
-async function clickByText(page: Page, text: string): Promise<void> {
-  const handle = await page.evaluateHandle((t) => {
-    const candidates = Array.from(document.querySelectorAll('button, a')) as HTMLElement[];
-    return candidates.find((el) => (el.innerText || '').trim() === t) ?? null;
-  }, text);
-  const element = handle.asElement();
-  if (!element) {
-    throw new Error(`no clickable element with text "${text}"`);
-  }
-  await element.click();
-}
+// 2 — `pair open` issues the join QR and holds the signalling socket.
+trace('cli', 'pair open — holding a join QR');
+const pairOpen = spawnCli('pair-open', ['pair', 'open'], TEST_HOME, CLI_ENV);
 
-async function readShareUrl(page: Page): Promise<string> {
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline) {
-    const found = await page.evaluate(() => {
-      const links = Array.from(document.querySelectorAll('a')) as HTMLAnchorElement[];
-      const hit = links.find((el) => el.href.includes('#pair='));
-      return hit?.href;
-    });
-    if (found) {
-      return found;
-    }
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  throw new Error('share URL never appeared');
-}
-
-async function launch(label: string): Promise<{ browser: Browser; page: Page }> {
-  const browser = await puppeteer.launch({
-    headless: HEADLESS,
-    userDataDir: resolve(PROFILES, label),
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
-  const page = await browser.newPage();
-  await page.setViewport({ width: 900, height: 900 });
-  page.on('pageerror', (err) => TRACE(`${label}-pageerror`, err.message));
-  return { browser, page };
-}
-
-// Invoke the CLI, returning stdout. HOME is redirected to TMP_HOME so
-// the keyring is written under scripts/artifacts/cli-home/.fairfox/
-// rather than touching the developer's real keyring.
-async function cli(...args: string[]): Promise<string> {
-  TRACE('cli', `run: ${args.join(' ')}`);
-  const env = { ...process.env, HOME: TMP_HOME, FAIRFOX_URL: fairfoxOrigin };
-  const result = await $`bun ${CLI} ${args}`.env(env).quiet();
-  const out = result.stdout.toString();
-  if (out) {
-    TRACE('cli', out.trim().split('\n').join(' | '));
-  }
-  return out;
-}
-
-const { browser, page } = await launch('desktop');
+const browser = await launchBrowser('cli-peer', PROFILES, HEADLESS);
 let ok = false;
 
 try {
-  TRACE('desktop', `navigate ${URL}`);
-  await page.goto(URL, { waitUntil: 'domcontentloaded' });
-  // A fresh profile lands on the WhoAreYou identity wizard; clear it so
-  // the pairing screen renders. Without an identity there is nothing to
-  // sign a pairing endorsement with.
-  await createIdentity(page, 'Desktop', (m) => TRACE('desktop', m));
-  await waitForText(page, "This device isn't connected to your mesh yet.");
+  const joinMatch = await waitForLine(
+    pairOpen.stdout,
+    /(https?:\/\/\S*#pair=\S+)/,
+    SHORT_TIMEOUT_MS,
+    'join URL from `pair open`'
+  );
+  const joinUrl = (joinMatch[1] ?? '').replace(/[)\].,]+$/, '');
+  trace('cli', `join URL captured (${joinUrl.length} chars)`);
 
-  TRACE('desktop', 'share a pairing link');
-  await clickByText(page, 'Share a pairing link');
-  const desktopShare = await readShareUrl(page);
+  // 3 — the browser joins and adopts the admin identity.
+  trace('browser', 'open the join URL');
+  const identityName = await joinMeshFromBrowser(browser.page, joinUrl);
+  trace('browser', `identity applied: "${identityName}" — paired`);
 
-  // Hand the share URL to the CLI. `pair` applies the issuer's token
-  // and sends a pair-return frame through the signalling relay; the
-  // browser's pair-return handler applies it and reloads into the
-  // paired home with no manual step on either side.
-  await cli('pair', desktopShare);
+  // Close the issuer socket; the browser remains a live mesh peer.
+  trace('cli', 'closing `pair open`');
+  await killAndWait(pairOpen);
 
-  TRACE('desktop', 'wait for the CLI pair-return to complete the ceremony');
-  await waitForText(page, 'Agenda', 30000);
-  TRACE('desktop', 'agenda visible — browser is paired with CLI');
-
-  // Pairing finished on the browser side; give the signalling server a
-  // moment to register the new keyring state.
-  await new Promise((r) => setTimeout(r, 2000));
-
-  const chore = `cli-probe-${Date.now()}`;
-  TRACE('cli', `add chore "${chore}"`);
-  await cli('agenda', 'add', chore);
-
-  // Wait for the browser to see the chore via CRDT sync.
-  const deadline = Date.now() + 25000;
-  while (Date.now() < deadline) {
-    const body = await page.evaluate(() => document.body.innerText || '');
-    if (body.includes(chore)) {
-      ok = true;
-      break;
-    }
-    await new Promise((r) => setTimeout(r, 500));
+  // 4 — the CLI writes a chore. `agenda add` is now the device's only
+  // mesh client, so no concurrent peerId competes with its write.
+  const chore = `cli-peer-${Date.now()}`;
+  trace('cli', `agenda add "${chore}"`);
+  const add = await runCli(['agenda', 'add', chore], TEST_HOME, CLI_ENV);
+  if (add.status !== 0) {
+    trace('cli', add.stdout.trim());
+    trace('cli', add.stderr.trim());
+    throw new Error('fairfox agenda add failed');
   }
 
-  await page.screenshot({
-    path: resolve(ARTIFACTS, 'cli-browser.png'),
+  // 5 — wait for the chore to reach the browser over WebRTC.
+  trace('test', `waiting up to ${SYNC_BUDGET_MS / 1000}s for the chore in the browser`);
+  await waitFor(
+    async () => (await browser.page.evaluate(() => document.body.innerText || '')).includes(chore),
+    { timeoutMs: SYNC_BUDGET_MS, intervalMs: 1000, description: 'chore rendered in the browser' }
+  );
+
+  await browser.page.screenshot({
+    path: resolve(ARTIFACTS, 'cli-peer-sync.png'),
     fullPage: true,
   });
-
-  if (!ok) {
-    throw new Error(`chore "${chore}" did not appear in browser within 25s`);
-  }
-
-  // Symmetric direction: browser-initiated write the CLI should see.
-  TRACE('cli', 'read back via agenda list');
-  const list = await cli('agenda', 'list');
-  if (!list.includes(chore)) {
-    throw new Error(`CLI agenda list did not include "${chore}"`);
-  }
-
-  TRACE('result', `SUCCESS — CLI and browser share "${chore}"`);
-  TRACE('result', `screenshot at ${resolve(ARTIFACTS, 'cli-browser.png')}`);
+  ok = true;
+  trace('result', `SUCCESS — "${chore}" synced CLI → browser over WebRTC`);
+  trace('result', `screenshot at ${resolve(ARTIFACTS, 'cli-peer-sync.png')}`);
 } catch (err) {
-  TRACE('result', `FAILURE — ${err instanceof Error ? err.message : String(err)}`);
+  trace('result', `FAILURE — ${err instanceof Error ? err.message : String(err)}`);
   try {
-    await page.screenshot({
-      path: resolve(ARTIFACTS, 'cli-browser-error.png'),
+    await browser.page.screenshot({
+      path: resolve(ARTIFACTS, 'cli-peer-sync-error.png'),
       fullPage: true,
     });
   } catch {
-    // best effort on error screenshot
+    // best effort on the error screenshot
   }
 } finally {
-  await browser.close();
+  await killAndWait(pairOpen);
+  await browser.browser.close();
 }
 
 process.exit(ok ? 0 : 1);

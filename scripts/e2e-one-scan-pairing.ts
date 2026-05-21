@@ -1,257 +1,140 @@
 /**
- * One-scan pairing verification, driven by puppeteer against a live
- * fairfox deployment. Proves the signalling-relayed pair-return flow
- * end-to-end:
+ * Invite-path pairing verification — the redesign-era flow.
  *
- *   1. Two Chrome instances with separate profiles (so each has its
- *      own IndexedDB keyring) load the fairfox landing page.
- *   2. Device A ("issuer") clicks "Share a pairing link"; the wizard
- *      generates a QR plus a share URL with `#pair=<token>&s=<sessionId>`.
- *   3. Device B ("scanner") opens the share URL, which triggers
- *      `consumePairingHash` — it accepts A's token, builds its own
- *      reciprocal token, sends `pair-return` through the signalling
- *      socket, and reloads into the paired home view.
- *   4. The server's relay hands the return frame to A's waiting
- *      socket; A's wizard auto-applies the token, drains both steps,
- *      and reloads — *without the issuer ever touching the wizard
- *      after the initial share click*.
- *   5. Both devices show the Apps grid on the home sub-app, which
- *      is only visible to paired devices.
+ * @covers: mesh:users, mesh:devices
  *
- * The assertion that separates this from the existing
- * e2e-two-device-sync script is the "no clicks on the issuer after
- * the initial share" constraint: if the one-scan flow regresses,
- * the issuer's wizard will still be in wizard-issue when the script
- * gives up, and the test fails with a "issuer never reloaded"
- * message. Screenshots land in scripts/artifacts/. Exits non-zero
- * on failure.
+ * e2e-two-device-sync.ts covers `fairfox pair open` with no flag —
+ * adding another of the admin's *own* devices, which adopts the
+ * admin's recovery blob. This script covers the other half of the
+ * redesign: `fairfox pair open --user "Name:role"`, which invites a
+ * brand-new person. That device adopts an admin-signed *invite* blob,
+ * a distinct hand-off from the recovery-blob path.
  *
- *   bun scripts/e2e-one-scan-pairing.ts                 # prod
- *   TARGET_URL=http://localhost:3000/ bun scripts/e2e-one-scan-pairing.ts
- *   HEADLESS=false bun scripts/e2e-one-scan-pairing.ts  # watch it run
+ *   1. `fairfox init` seeds a fresh mesh + admin on a disposable HOME.
+ *   2. `fairfox pair open --user "Scanner:member"` mints the invite
+ *      and issues a transport-only join QR.
+ *   3. A headless Chrome opens the join URL, decrypts the invite blob
+ *      handed over the relay's pair-ack, and reloads paired — adopting
+ *      the *invitee's* identity, not the admin's.
+ *   4. The test asserts the browser adopted the "Scanner" identity and
+ *      that `fairfox users` now reports Scanner as a member alongside
+ *      the admin — proving the invite reached mesh:users.
+ *
+ * One scan of the QR completes the ceremony with no further action on
+ * the issuer; since the redesign the issuer is a CLI, so that is
+ * structurally guaranteed rather than asserted. Screenshot lands in
+ * scripts/artifacts/. Exits non-zero on failure.
+ *
+ *   bun scripts/e2e-one-scan-pairing.ts                       # prod
+ *   TARGET_URL=http://localhost:3000/agenda bun scripts/e2e-one-scan-pairing.ts
+ *   HEADLESS=false bun scripts/e2e-one-scan-pairing.ts        # watch it run
  */
 
 import { mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
-import puppeteer, { type Browser, type Page } from 'puppeteer';
 import {
-  hasKeyInObject,
-  MESH_SYNC_TIMEOUT_MS,
-  PAIR_CEREMONY_TIMEOUT_MS,
-  SETTLE_MS,
-  SHORT_TIMEOUT_MS,
-  sleep,
-  waitFor,
-  waitForText,
-} from './e2e-config.ts';
-import { createIdentity } from './e2e-identity.ts';
+  buildBundle,
+  interruptAndWait,
+  runCli,
+  spawnCli,
+  trace,
+  waitForLine,
+} from './e2e-cli-helpers.ts';
+import { SHORT_TIMEOUT_MS } from './e2e-config.ts';
+import { joinMeshFromBrowser, launchBrowser } from './e2e-pairing.ts';
 
-const URL = process.env.TARGET_URL ?? 'https://fairfox.fly.dev/';
+const TARGET_URL = process.env.TARGET_URL ?? 'https://fairfox.fly.dev/agenda';
+const ORIGIN = new URL(TARGET_URL).origin;
 const HEADLESS = process.env.HEADLESS !== 'false';
 const ARTIFACTS = resolve(import.meta.dir, 'artifacts');
-const PROFILES = resolve(import.meta.dir, 'artifacts', 'profiles-one-scan');
-
-const TRACE = (label: string, msg: string): void => {
-  console.log(`[${label}] ${msg}`);
-};
+const PROFILES = resolve(ARTIFACTS, 'one-scan-profiles');
+const TEST_HOME = '/tmp/fairfox-test-one-scan';
+const INVITEE = 'Scanner';
 
 rmSync(PROFILES, { recursive: true, force: true });
+rmSync(TEST_HOME, { recursive: true, force: true });
 mkdirSync(ARTIFACTS, { recursive: true });
+mkdirSync(TEST_HOME, { recursive: true });
 
-async function clickByText(page: Page, text: string): Promise<void> {
-  const handle = await page.evaluateHandle((t) => {
-    const candidates = Array.from(document.querySelectorAll('button, a')) as HTMLElement[];
-    return candidates.find((el) => (el.innerText || '').trim() === t) ?? null;
-  }, text);
-  const element = handle.asElement();
-  if (!element) {
-    throw new Error(`no clickable element with text "${text}"`);
-  }
-  await element.click();
+const CLI_ENV = { FAIRFOX_URL: ORIGIN };
+
+buildBundle();
+
+// 1 — fresh mesh on the disposable HOME.
+trace('cli', `init mesh (origin ${ORIGIN})`);
+const init = await runCli(['init', 'one-scan mesh', '--admin', 'Admin'], TEST_HOME, CLI_ENV);
+if (init.status !== 0) {
+  trace('cli', init.stdout.trim());
+  trace('cli', init.stderr.trim());
+  throw new Error('fairfox init failed');
 }
+trace('cli', 'mesh created, admin "Admin"');
 
-async function launch(label: string): Promise<{ browser: Browser; page: Page }> {
-  const browser = await puppeteer.launch({
-    headless: HEADLESS,
-    userDataDir: resolve(PROFILES, label),
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
-  const page = await browser.newPage();
-  await page.setViewport({ width: 900, height: 900 });
-  page.on('pageerror', (err) => TRACE(`${label}-pageerror`, err.message));
-  return { browser, page };
-}
+// 2 — `pair open --user` mints the invite and issues the join QR.
+trace('cli', `pair open --user "${INVITEE}:member" — holding a join QR`);
+const pairOpen = spawnCli(
+  'pair-open',
+  ['pair', 'open', '--user', `${INVITEE}:member`],
+  TEST_HOME,
+  CLI_ENV
+);
 
-const issuer = await launch('issuer');
-const scanner = await launch('scanner');
+const browser = await launchBrowser('scanner', PROFILES, HEADLESS);
 let ok = false;
 
 try {
-  // Only the issuer bootstraps. The scanner adopts the invite
-  // identity carried on the share URL; two fresh self-bootstraps on
-  // separate meshes don't cleanly merge their mesh:users docs. See
-  // `e2e-two-device-sync.ts` for the full rationale.
-  TRACE('issuer', `navigate ${URL}`);
-  await issuer.page.goto(URL, { waitUntil: 'networkidle2' });
-  await createIdentity(issuer.page, 'Issuer', (m) => TRACE('issuer', m));
-  await waitForText(issuer.page, "This device isn't connected to your mesh yet.");
-
-  // Give the signalling socket a moment to establish before the
-  // issuer sends its pair-issue frame.
-  await new Promise((r) => setTimeout(r, 500));
-
-  TRACE('issuer', 'share a pairing link with invite');
-  await clickByText(issuer.page, 'Share a pairing link');
-  await waitForText(issuer.page, 'Also invite a new user', SHORT_TIMEOUT_MS);
-  await issuer.page.evaluate(() => {
-    const details = Array.from(document.querySelectorAll('details')) as HTMLDetailsElement[];
-    const hit = details.find((d) => d.innerText.includes('Also invite a new user'));
-    if (hit) {
-      hit.open = true;
-    }
-  });
-  await clickByText(issuer.page, 'Invite: OFF');
-  const inviteNameHandle = await issuer.page.$(
-    '[data-polly-action-input][aria-label="Invitee display name"]'
+  const joinMatch = await waitForLine(
+    pairOpen.stdout,
+    /(https?:\/\/\S*#pair=\S+)/,
+    SHORT_TIMEOUT_MS,
+    'join URL from `pair open --user`'
   );
-  if (!inviteNameHandle) {
-    throw new Error('invite name input not found');
+  const joinUrl = (joinMatch[1] ?? '').replace(/[)\].,]+$/, '');
+  trace('cli', `join URL captured (${joinUrl.length} chars)`);
+
+  // 3 — the browser joins as the invitee, not as the admin.
+  trace('browser', 'open the join URL');
+  const identityName = await joinMeshFromBrowser(browser.page, joinUrl);
+  trace('browser', `identity applied: "${identityName}"`);
+  if (identityName !== INVITEE) {
+    throw new Error(`browser adopted "${identityName}", expected the invitee "${INVITEE}"`);
   }
-  await inviteNameHandle.click();
-  await issuer.page.waitForSelector(
-    'input[data-polly-action-input][aria-label="Invitee display name"]',
-    { timeout: SHORT_TIMEOUT_MS }
-  );
-  const inviteNameEditable = await issuer.page.$(
-    'input[data-polly-action-input][aria-label="Invitee display name"]'
-  );
-  if (!inviteNameEditable) {
-    throw new Error('invite name editable input not found');
+
+  // SIGINT so `pair open` flushes the synced mesh:users into HOME's
+  // storage before the read-only `users` process opens it.
+  trace('cli', 'closing `pair open`');
+  await interruptAndWait(pairOpen);
+
+  // 4 — the invitee must now be a member in mesh:users.
+  const users = await runCli(['users'], TEST_HOME, CLI_ENV);
+  trace('cli', `users:\n${users.stdout.trim()}`);
+  if (!users.stdout.includes('Admin')) {
+    throw new Error('mesh:users is missing the admin user');
   }
-  await inviteNameEditable.focus();
-  await new Promise((r) => setTimeout(r, 100));
-  await issuer.page.keyboard.type('Scanner');
-  await issuer.page.keyboard.press('Tab');
-  const shareUrl = await waitFor(
-    () =>
-      issuer.page.evaluate(() => {
-        const links = Array.from(document.querySelectorAll('a')) as HTMLAnchorElement[];
-        const hit = links.find((el) => el.href.includes('#pair=') && el.href.includes('invite='));
-        return hit?.href;
-      }),
-    { timeoutMs: SHORT_TIMEOUT_MS, description: 'share URL with invite fragment' }
-  );
-  if (!shareUrl.includes('&s=')) {
-    throw new Error(`share URL missing session id segment: ${shareUrl}`);
+  if (!users.stdout.includes(INVITEE)) {
+    throw new Error(`mesh:users is missing the invited user "${INVITEE}"`);
   }
-  TRACE('issuer', `share URL generated: ${shareUrl.slice(0, 80)}…`);
 
-  // Start watching for a navigation on the issuer BEFORE the scanner
-  // consumes the URL — the one-scan flow reloads the issuer through
-  // its own pair-return listener, with no click in between.
-  const issuerNav = issuer.page.waitForNavigation({
-    waitUntil: 'networkidle2',
-    timeout: PAIR_CEREMONY_TIMEOUT_MS,
-  });
-
-  TRACE('scanner', 'open share URL');
-  const scannerNav = scanner.page.waitForNavigation({
-    waitUntil: 'networkidle2',
-    timeout: PAIR_CEREMONY_TIMEOUT_MS,
-  });
-  await scanner.page.goto(shareUrl, { waitUntil: 'networkidle2' });
-
-  // The scanner reloads into home right after applyScannedToken +
-  // sendPairReturnForSession. The issuer reloads a moment later once
-  // its custom-frame listener applies the return token.
-  await scannerNav.catch(() => {
-    // Scanner may land on the paired home without firing a
-    // navigation event if the initial load already is the post-reload
-    // state; fall through to the keyring assertion below.
-  });
-  TRACE('scanner', 'reload observed');
-
-  await issuerNav;
-  TRACE('issuer', 'reload observed — one-scan flow completed');
-
-  // The definitive assertion is against IndexedDB, not the DOM: each
-  // keyring should now carry a known peer entry for the other device.
-  // The paired home render is a consequence of that; asserting on it
-  // directly would trip on transient layout changes that don't reflect
-  // the mesh state. The browser-side block returns the raw record as
-  // JSON; the Node-side caller narrows via `propArray` so the unknown
-  // shape is handled in one place across every e2e script.
-  const readKeyringRecord = (page: Page): Promise<unknown> =>
-    page.evaluate(
-      () =>
-        new Promise<unknown>((resolve, reject) => {
-          const req = indexedDB.open('fairfox-keyring', 1);
-          req.onerror = () => reject(req.error);
-          req.onsuccess = () => {
-            const db = req.result;
-            const tx = db.transaction('keyring', 'readonly');
-            const getReq = tx.objectStore('keyring').get('default');
-            getReq.onerror = () => reject(getReq.error);
-            getReq.onsuccess = () => resolve(getReq.result);
-          };
-        })
-    );
-
-  const readKnownPeerCount = async (page: Page): Promise<number> => {
-    const record = await readKeyringRecord(page);
-    if (!hasKeyInObject(record, 'knownPeers')) {
-      return 0;
-    }
-    const peers = record.knownPeers;
-    return Array.isArray(peers) ? peers.length : 0;
-  };
-
-  const issuerPaired = await waitFor(async () => (await readKnownPeerCount(issuer.page)) > 0, {
-    timeoutMs: MESH_SYNC_TIMEOUT_MS,
-    description: 'issuer keyring has >= 1 known peer',
-  });
-  const scannerPaired = await waitFor(async () => (await readKnownPeerCount(scanner.page)) > 0, {
-    timeoutMs: MESH_SYNC_TIMEOUT_MS,
-    description: 'scanner keyring has >= 1 known peer',
-  });
-  TRACE('both', `paired — issuer=${issuerPaired}, scanner=${scannerPaired}`);
-  // Let the post-pairing reload settle before taking screenshots.
-  await sleep(SETTLE_MS);
-  await waitForText(issuer.page, 'fairfox');
-  await waitForText(scanner.page, 'fairfox');
-
-  await issuer.page.screenshot({
-    path: resolve(ARTIFACTS, 'one-scan-issuer.png'),
+  await browser.page.screenshot({
+    path: resolve(ARTIFACTS, 'one-scan.png'),
     fullPage: true,
   });
-  await scanner.page.screenshot({
-    path: resolve(ARTIFACTS, 'one-scan-scanner.png'),
-    fullPage: true,
-  });
-
   ok = true;
-  TRACE('result', 'SUCCESS — one-scan pairing completed without issuer interaction');
-  TRACE(
-    'result',
-    `screenshots at ${resolve(ARTIFACTS, 'one-scan-issuer.png')}, ${resolve(ARTIFACTS, 'one-scan-scanner.png')}`
-  );
+  trace('result', `SUCCESS — invitee "${INVITEE}" paired and joined mesh:users`);
+  trace('result', `screenshot at ${resolve(ARTIFACTS, 'one-scan.png')}`);
 } catch (err) {
-  TRACE('result', `FAILURE — ${err instanceof Error ? err.message : String(err)}`);
+  trace('result', `FAILURE — ${err instanceof Error ? err.message : String(err)}`);
   try {
-    await issuer.page.screenshot({
-      path: resolve(ARTIFACTS, 'one-scan-issuer-error.png'),
-      fullPage: true,
-    });
-    await scanner.page.screenshot({
-      path: resolve(ARTIFACTS, 'one-scan-scanner-error.png'),
+    await browser.page.screenshot({
+      path: resolve(ARTIFACTS, 'one-scan-error.png'),
       fullPage: true,
     });
   } catch {
-    // best effort
+    // best effort on the error screenshot
   }
 } finally {
-  await issuer.browser.close();
-  await scanner.browser.close();
+  await interruptAndWait(pairOpen);
+  await browser.browser.close();
 }
 
 process.exit(ok ? 0 : 1);
