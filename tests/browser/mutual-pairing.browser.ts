@@ -10,7 +10,7 @@
 // asserts the protocol-level requirement that backs that UX.
 
 import { describe, done, expect, test } from '@fairfox/polly/test/browser';
-import { createKeyring, loadOrCreateKeyring } from '../../packages/shared/src/keyring.ts';
+import { createKeyring } from '../../packages/shared/src/keyring.ts';
 import { completePairing, initiatePairing } from '../../packages/shared/src/pairing.ts';
 
 function peerIdFrom(keyring: ReturnType<typeof createKeyring>): string {
@@ -30,18 +30,13 @@ describe('mutual pairing via asymmetric tokens', () => {
   });
 
   test('two-way pairing yields mutual trust', async () => {
-    // Start from a fresh keyring DB. The delete must be awaited —
-    // `loadOrCreateKeyring` persists the keyring it creates, so an
-    // un-awaited delete races the next read and the laptop loads a
-    // stale keyring that already holds a peer from an earlier run
-    // (the test then sees knownPeers.size === 2 instead of 1).
-    await new Promise<void>((resolve) => {
-      const req = indexedDB.deleteDatabase('fairfox-keyring');
-      req.onsuccess = () => resolve();
-      req.onerror = () => resolve();
-      req.onblocked = () => resolve();
-    });
-    const laptop = await loadOrCreateKeyring();
+    // Both keyrings are in-memory (`createKeyring`), like the one-way
+    // test above. An earlier version loaded the laptop via
+    // `loadOrCreateKeyring`, but that returns the module-level
+    // `cachedKeyring` — which the one-way test had already populated
+    // through `completePairing` → `saveKeyring`. The laptop then
+    // started with a peer already in it and the assertion saw 2.
+    const laptop = createKeyring();
     const phone = createKeyring();
 
     const laptopToken = initiatePairing(laptop, peerIdFrom(laptop));
