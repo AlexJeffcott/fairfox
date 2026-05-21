@@ -85,6 +85,16 @@ async function harvestAndMaybeReloadInner(): Promise<void> {
       return;
     }
     await saveKeyring(keyring);
+    // Never reload out from under an in-progress pairing ceremony.
+    // `consumePairingHash` runs a multi-second encrypted identity
+    // hand-off (`awaitIdentityHandoff` → `acceptRecoveryBlob`); a
+    // reload mid-flight aborts its IndexedDB writes and the joining
+    // device ends up paired with no user identity. The harvested keys
+    // are already saved above, so they survive — and `consumePairingHash`
+    // does its own reload when the ceremony finishes.
+    if (pairingMode.value !== 'idle') {
+      return;
+    }
     if (typeof window !== 'undefined') {
       // Small fence so the mesh:devices write + save settle before
       // the page tears down.
