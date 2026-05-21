@@ -18,7 +18,7 @@
 // decoding flips `inversionAttempts` to 'attemptBoth' because a
 // screenshot's colour profile may have inverted the code.
 
-import { Button } from '@fairfox/polly/ui';
+import { Button, Layout, Surface, Text } from '@fairfox/polly/ui';
 import { effect, signal } from '@preact/signals';
 import jsQR from 'jsqr';
 import { importRecoveryBlob, submitScannedValue } from '#src/pairing-actions.ts';
@@ -85,57 +85,23 @@ export function canScanWithCamera(): boolean {
   return Boolean(navigator.mediaDevices?.getUserMedia);
 }
 
-const OVERLAY_STYLE = {
-  position: 'fixed' as const,
-  inset: 0,
-  background: 'rgba(0, 0, 0, 0.85)',
-  zIndex: 1000,
-  display: 'flex',
-  flexDirection: 'column' as const,
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: 'var(--polly-space-md, 1rem)',
-  gap: 'var(--polly-space-md, 1rem)',
-};
-
-const VIDEO_WRAP_STYLE = {
-  position: 'relative' as const,
-  width: '100%',
-  maxWidth: '420px',
-  aspectRatio: '1 / 1',
-  overflow: 'hidden',
-  borderRadius: '12px',
-  background: '#000',
-};
-
+// The <video> fills its wrapping Surface; objectFit has no Surface
+// prop equivalent, so a minimal style stays on the real media element.
 const VIDEO_STYLE = {
   width: '100%',
   height: '100%',
   objectFit: 'cover' as const,
 };
 
+// Decorative guide frame overlaid on the camera feed. Surface's
+// `position` prop has no `absolute` value, so this purely-decorative
+// overlay keeps a minimal positioning style.
 const FRAME_STYLE = {
   position: 'absolute' as const,
   inset: '12%',
   border: '2px solid rgba(255, 255, 255, 0.8)',
-  borderRadius: '8px',
+  borderRadius: 'var(--polly-radius-md)',
   pointerEvents: 'none' as const,
-};
-
-const HINT_STYLE = {
-  margin: 0,
-  color: 'rgba(255, 255, 255, 0.85)',
-  fontSize: '0.9rem',
-  textAlign: 'center' as const,
-  maxWidth: '420px',
-};
-
-const ERROR_STYLE = {
-  margin: 0,
-  color: '#fecaca',
-  fontSize: '0.9rem',
-  textAlign: 'center' as const,
-  maxWidth: '420px',
 };
 
 function closeCamera(): void {
@@ -378,25 +344,60 @@ export function QrScanDialog(): preact.JSX.Element | null {
   }
 
   return (
-    <div style={OVERLAY_STYLE} role="dialog" aria-label="Scan pairing QR">
-      <p style={HINT_STYLE}>
-        Point this device at the QR code shown on the admin device. The pair happens as soon as the
-        code is in frame.
-      </p>
-      <div style={VIDEO_WRAP_STYLE}>
-        <video
-          ref={setCameraVideo}
-          style={VIDEO_STYLE}
-          playsInline={true}
-          muted={true}
-          autoPlay={true}
-        />
-        <div style={FRAME_STYLE} />
-      </div>
-      {cameraScanError.value && <p style={ERROR_STYLE}>{cameraScanError.value}</p>}
-      <Button label="Cancel" tier="secondary" data-action="pairing.close-camera" />
-      <canvas ref={setCameraCanvas} style={{ display: 'none' }} />
-    </div>
+    <Surface
+      position="fixed"
+      inset="0"
+      background="rgba(0, 0, 0, 0.85)"
+      zIndex={1000}
+      padding="var(--polly-space-md)"
+      role="dialog"
+      aria-label="Scan pairing QR"
+      // Token-retint: light copy reads against the dark camera overlay;
+      // all Text descendants inherit this --polly-text override.
+      style={{ '--polly-text': 'rgba(255, 255, 255, 0.85)' }}
+    >
+      <Layout
+        rows="auto auto auto auto"
+        gap="var(--polly-space-md)"
+        justifyItems="center"
+        alignContent="center"
+        height="100%"
+      >
+        <Text as="p" size="sm">
+          Point this device at the QR code shown on the admin device. The pair happens as soon as
+          the code is in frame.
+        </Text>
+        <Surface
+          position="relative"
+          background="#000"
+          radius="lg"
+          width="min(100%, 420px)"
+          height="min(100%, 420px)"
+        >
+          <video
+            ref={setCameraVideo}
+            style={VIDEO_STYLE}
+            playsInline={true}
+            muted={true}
+            autoPlay={true}
+          />
+          <div style={FRAME_STYLE} />
+        </Surface>
+        {cameraScanError.value && (
+          <Surface
+            background="transparent"
+            // Token-retint: the error copy gets its own light-red tint.
+            style={{ '--polly-text': '#fecaca' }}
+          >
+            <Text as="p" size="sm">
+              {cameraScanError.value}
+            </Text>
+          </Surface>
+        )}
+        <Button label="Cancel" tier="secondary" data-action="pairing.close-camera" />
+      </Layout>
+      <canvas ref={setCameraCanvas} hidden={true} />
+    </Surface>
   );
 }
 
@@ -458,19 +459,6 @@ export async function decodeQrFromImageBlob(blob: Blob): Promise<string | null> 
   });
   return code?.data ?? null;
 }
-
-const DROPZONE_STYLE = {
-  display: 'inline-block',
-  padding: '0.55rem 1rem',
-  fontSize: '0.85rem',
-  borderRadius: '6px',
-  border: '1px dashed var(--polly-border, #d4d4d4)',
-  background: 'transparent',
-  color: 'var(--polly-text-muted, #57534e)',
-  cursor: 'pointer',
-  textAlign: 'center' as const,
-  width: '100%',
-};
 
 /** Decode a QR blob and route it through the configured pair or
  * recovery pipeline. Used by the paste listener installed at boot
@@ -552,17 +540,28 @@ export function QrImageDropzone({
   mode?: CameraScanMode;
 } = {}): preact.JSX.Element {
   return (
-    <label style={DROPZONE_STYLE} data-qr-dropzone-mode={mode}>
-      Scan from a screenshot (or paste an image)
+    <Surface
+      as="label"
+      variant="callout"
+      border="default"
+      background="transparent"
+      width="100%"
+      data-qr-dropzone-mode={mode}
+    >
+      <Layout justifyItems="center">
+        <Text size="sm" tone="muted">
+          Scan from a screenshot (or paste an image)
+        </Text>
+      </Layout>
       <input
         type="file"
         accept="image/*"
-        style={{ display: 'none' }}
+        hidden={true}
         aria-label="Pick a screenshot of a pairing QR code"
         data-action="pairing.dropzone-file"
         data-action-mode={mode}
       />
-    </label>
+    </Surface>
   );
 }
 

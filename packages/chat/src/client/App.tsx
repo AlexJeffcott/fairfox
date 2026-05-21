@@ -4,7 +4,7 @@
 // live thread view live in the always-mounted ChatWidget; this page
 // is the "find me that chat from last Tuesday" surface.
 
-import { ActionInput, Badge, Button, Layout } from '@fairfox/polly/ui';
+import { ActionInput, Badge, Button, Cluster, Layout, Text } from '@fairfox/polly/ui';
 import { HubBack } from '@fairfox/shared/hub-back';
 import { setPageContext } from '@fairfox/shared/page-context';
 import { effect, signal } from '@preact/signals';
@@ -84,50 +84,30 @@ function ChatRow({ chat }: { chat: Chat }) {
       alignItems="center"
       padding="var(--polly-space-sm) var(--polly-space-md)"
     >
-      <div>
+      <Layout rows="auto auto auto" gap="var(--polly-space-xs)">
         <Layout columns="auto 1fr" gap="0.5rem" alignItems="center">
           <strong>{chat.title ?? '(untitled)'}</strong>
           {chat.archivedAt && <Badge variant="default">archived</Badge>}
         </Layout>
         {chat.contextRefs.length > 0 && (
-          <div style={{ marginTop: '0.25rem' }}>
+          <Cluster gap="0.35rem">
             {chat.contextRefs.map((r) => (
-              <span
-                key={`${r.kind}:${r.id ?? ''}`}
-                style={{
-                  display: 'inline-block',
-                  padding: '0.1rem 0.5rem',
-                  marginRight: '0.35rem',
-                  background: '#e8edf3',
-                  border: '1px solid #c6cfd9',
-                  borderRadius: '999px',
-                  fontSize: '0.75rem',
-                }}
-              >
+              <Badge key={`${r.kind}:${r.id ?? ''}`} variant="info">
                 {r.kind}: {r.label}
-              </span>
+              </Badge>
             ))}
-          </div>
+          </Cluster>
         )}
         {last && (
-          <div
-            style={{
-              marginTop: '0.25rem',
-              color: 'var(--polly-text-muted)',
-              fontSize: 'var(--polly-text-sm)',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
+          <Text tone="muted" size="sm" data-polly-truncate={true}>
             {last.sender === 'assistant' ? 'Claude: ' : 'You: '}
             {last.text}
-          </div>
+          </Text>
         )}
-      </div>
-      <span style={{ fontSize: 'var(--polly-text-sm)', color: 'var(--polly-text-muted)' }}>
+      </Layout>
+      <Text tone="muted" size="sm">
         {msgCount} msg · {formatDateTime(chat.updatedAt)}
-      </span>
+      </Text>
       <Layout columns="auto auto" gap="0.25rem">
         <Button
           label="Continue"
@@ -175,7 +155,9 @@ export function App() {
   return (
     <Layout rows="auto auto 1fr" gap="var(--polly-space-md)" padding="var(--polly-space-lg)">
       <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
-        <h1 style={{ margin: 0 }}>Chat history</h1>
+        <Text as="h1" size="xl" weight="bold">
+          Chat history
+        </Text>
         <HubBack />
       </Layout>
       <Layout
@@ -202,11 +184,11 @@ export function App() {
       </Layout>
       <Layout rows="auto" gap="var(--polly-space-xs)">
         {chats.length === 0 ? (
-          <p style={{ color: 'var(--polly-text-muted)' }}>
+          <Text as="p" tone="muted">
             {chatState.value.chats.length === 0
               ? 'No chats yet. Open the chat widget (bottom-right) to start one.'
               : 'No chats match your filter.'}
-          </p>
+          </Text>
         ) : (
           chats.map((c) => <ChatRow key={c.id} chat={c} />)
         )}

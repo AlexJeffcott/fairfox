@@ -3,7 +3,7 @@
 // gated by @fairfox/shared/mesh-gate at boot, so this file never has
 // to render the login surface itself.
 
-import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
+import { ActionInput, Badge, Button, Layout, Tabs, Text } from '@fairfox/polly/ui';
 import { HubBack } from '@fairfox/shared/hub-back';
 import { directoryState, familyPhoneActiveTab } from '#src/client/state.ts';
 
@@ -34,16 +34,9 @@ function HumansView() {
             gap="var(--polly-space-sm)"
             alignItems="center"
           >
-            <strong
-              style={{
-                minWidth: 0,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
+            <Text as="strong" weight="bold" data-polly-truncate={true}>
               {h.name}
-            </strong>
+            </Text>
             <Badge variant="default">{deviceCount} devices</Badge>
             <Button
               label="Remove"
@@ -57,7 +50,9 @@ function HumansView() {
         );
       })}
       {humans.length === 0 && (
-        <p style={{ color: 'var(--polly-text-muted)' }}>No family members yet.</p>
+        <Text as="p" tone="muted">
+          No family members yet.
+        </Text>
       )}
     </Layout>
   );
@@ -72,7 +67,9 @@ function DevicesView() {
     <Layout rows="auto" gap="var(--polly-space-md)">
       {active.length > 0 && (
         <Layout rows="auto" gap="var(--polly-space-sm)">
-          <h3>Active ({active.length})</h3>
+          <Text as="h3" size="lg" weight="bold">
+            Active ({active.length})
+          </Text>
           {active.map((d) => (
             <Layout
               key={d.id}
@@ -82,13 +79,13 @@ function DevicesView() {
             >
               <Badge variant="info">{d.kind}</Badge>
               <Layout rows="auto auto" gap="0">
-                <strong style={{ wordBreak: 'break-word' }}>{d.name}</strong>
-                <span
-                  style={{ fontSize: 'var(--polly-text-xs)', color: 'var(--polly-text-muted)' }}
-                >
+                <Text as="strong" weight="bold" data-polly-clamp={true}>
+                  {d.name}
+                </Text>
+                <Text as="span" size="xs" tone="muted">
                   {humansById.get(d.humanId) ?? 'unknown'} · paired{' '}
                   {new Date(d.pairedAt).toLocaleDateString()}
-                </span>
+                </Text>
               </Layout>
               <Button
                 label="Revoke"
@@ -104,25 +101,23 @@ function DevicesView() {
       )}
       {revoked.length > 0 && (
         <Layout rows="auto" gap="var(--polly-space-sm)">
-          <h3>Revoked ({revoked.length})</h3>
+          <Text as="h3" size="lg" weight="bold">
+            Revoked ({revoked.length})
+          </Text>
           {revoked.map((d) => (
             <Layout key={d.id} columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
-              <span
-                style={{
-                  color: 'var(--polly-text-muted)',
-                  minWidth: 0,
-                  wordBreak: 'break-word',
-                }}
-              >
+              <Text as="span" tone="muted" data-polly-clamp={true}>
                 {d.name} · {humansById.get(d.humanId) ?? 'unknown'}
-              </span>
+              </Text>
               <Badge variant="danger">revoked</Badge>
             </Layout>
           ))}
         </Layout>
       )}
       {directoryState.value.devices.length === 0 && (
-        <p style={{ color: 'var(--polly-text-muted)' }}>No devices yet.</p>
+        <Text as="p" tone="muted">
+          No devices yet.
+        </Text>
       )}
     </Layout>
   );
@@ -135,7 +130,9 @@ export function App() {
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout rows="auto" gap="var(--polly-space-md)">
         <Layout columns="1fr auto" gap="var(--polly-space-sm)">
-          <h1 style={{ margin: 0, minWidth: 0, wordBreak: 'break-word' }}>Family Phone — Admin</h1>
+          <Text as="h1" size="xl" weight="bold" data-polly-clamp={true}>
+            Family Phone — Admin
+          </Text>
           <HubBack />
         </Layout>
         <Tabs tabs={TAB_LIST} activeTab={activeTab} action="directory.tab" />

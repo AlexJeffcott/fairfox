@@ -20,6 +20,7 @@
 // never fools the comparison. Network errors are treated as "still
 // connected" — an offline tab shouldn't flash a "new version" banner.
 
+import { Button, Cluster, Surface, Text } from '@fairfox/polly/ui';
 import { signal } from '@preact/signals';
 
 const DEFAULT_POLL_INTERVAL_MS = 2 * 60 * 1000;
@@ -116,56 +117,38 @@ export function BuildFreshnessBanner(): preact.JSX.Element | null {
   }
 
   return (
-    <div
+    <Surface
+      variant="floating"
+      background="#1f2937"
+      padding="var(--polly-space-sm) var(--polly-space-md)"
+      radius="md"
+      inset="auto auto var(--polly-space-md) 50%"
+      // Token-retint: the banner is a deliberate dark one-off, so its
+      // polly tokens are overridden here and inherited by the Text and
+      // Button children. translateX completes the horizontal centring
+      // of a fixed element — no Surface prop expresses a transform.
       style={{
-        position: 'fixed',
-        bottom: '1rem',
-        left: '50%',
         transform: 'translateX(-50%)',
-        padding: '0.5rem 1rem',
-        background: '#1f2937',
-        color: '#f9fafb',
-        borderRadius: '8px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-        fontSize: '0.85rem',
-        display: 'grid',
-        gridAutoFlow: 'column',
-        alignItems: 'center',
-        gap: '0.75rem',
-        zIndex: 9999,
+        '--polly-text': '#f9fafb',
+        '--polly-text-muted': '#f9fafb',
       }}
     >
-      <span>A new version of fairfox is available.</span>
-      <button
-        type="button"
-        data-action="build-freshness.reload"
-        style={{
-          background: '#f59e0b',
-          color: '#1f2937',
-          border: 'none',
-          padding: '0.35rem 0.75rem',
-          borderRadius: '6px',
-          cursor: 'pointer',
-          fontWeight: 600,
-        }}
-      >
-        Reload
-      </button>
-      <button
-        type="button"
-        data-action="build-freshness.dismiss"
-        style={{
-          background: 'transparent',
-          color: '#f9fafb',
-          border: '1px solid rgba(249,250,251,0.3)',
-          padding: '0.35rem 0.5rem',
-          borderRadius: '6px',
-          cursor: 'pointer',
-          fontSize: '0.8rem',
-        }}
-      >
-        Dismiss
-      </button>
-    </div>
+      <Cluster gap="var(--polly-space-sm)" align="center">
+        <Text size="sm">A new version of fairfox is available.</Text>
+        <Button
+          label="Reload"
+          tier="primary"
+          color="warning"
+          size="small"
+          data-action="build-freshness.reload"
+        />
+        <Button
+          label="Dismiss"
+          tier="tertiary"
+          size="small"
+          data-action="build-freshness.dismiss"
+        />
+      </Cluster>
+    </Surface>
   );
 }

@@ -3,7 +3,16 @@
 // Three views: Story (current passage + choices), Memory (litanies +
 // places), and Edit (author chapters, passages, and choices).
 
-import { ActionInput, Button, Checkbox, Layout, Surface, Tabs } from '@fairfox/polly/ui';
+import {
+  ActionInput,
+  ActionSelect,
+  Button,
+  Checkbox,
+  Layout,
+  Surface,
+  Tabs,
+  Text,
+} from '@fairfox/polly/ui';
 import { renderMarkdown } from '@fairfox/polly/ui/markdown';
 import { HubBack } from '@fairfox/shared/hub-back';
 import { setPageContext } from '@fairfox/shared/page-context';
@@ -23,28 +32,15 @@ const TAB_LIST = [
   { id: 'edit', label: 'Edit' },
 ];
 
-const SELECT_STYLE = {
-  font: 'inherit',
-  padding: 'var(--polly-space-sm) var(--polly-space-md)',
-  border: '1px solid var(--polly-border)',
-  borderRadius: 'var(--polly-radius-md)',
-  background: 'var(--polly-surface)',
-  color: 'var(--polly-text)',
-  minWidth: 0,
-} as const;
-
-const TRUNCATE = {
-  minWidth: 0,
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
-} as const;
+function passageOptions(passages: Passage[]): { value: string; label: string }[] {
+  return passages.map((p) => ({ value: p.id, label: p.title || p.id }));
+}
 
 function FieldLabel({ children }: { children: preact.ComponentChildren }) {
   return (
-    <span style={{ fontSize: 'var(--polly-text-sm)', color: 'var(--polly-text-muted)' }}>
+    <Text as="span" tone="muted" size="sm">
       {children}
-    </span>
+    </Text>
   );
 }
 
@@ -77,7 +73,9 @@ function StoryView() {
 
   return (
     <Layout rows="auto" gap="var(--polly-space-md)">
-      <h2>{passage.title}</h2>
+      <Text as="h2" size="lg" weight="bold">
+        {passage.title}
+      </Text>
       <ActionInput
         value={passage.content.body}
         variant="multi"
@@ -86,13 +84,19 @@ function StoryView() {
         renderView={renderMarkdown}
       />
       {passage.content.preamble && (
-        <p style={{ fontStyle: 'italic', color: 'var(--polly-text-muted)' }}>
-          {passage.content.preamble}
-        </p>
+        <Text as="p" tone="muted">
+          <em>{passage.content.preamble}</em>
+        </Text>
       )}
       {passage.isDeath && (
         <Layout rows="auto" gap="var(--polly-space-sm)">
-          <p style={{ color: 'var(--polly-danger)' }}>You have reached a dead end.</p>
+          <Surface
+            variant="callout"
+            background="var(--polly-status-danger-bg)"
+            style={{ color: 'var(--polly-status-danger-text)' }}
+          >
+            <Text as="p">You have reached a dead end.</Text>
+          </Surface>
           <Button label="Start over" tier="secondary" color="danger" data-action="game.reset" />
         </Layout>
       )}
@@ -117,14 +121,20 @@ function MemoryView() {
   const progress = progressState.value.progress;
 
   if (!progress) {
-    return <p style={{ color: 'var(--polly-text-muted)' }}>No memories yet.</p>;
+    return (
+      <Text as="p" tone="muted">
+        No memories yet.
+      </Text>
+    );
   }
 
   return (
     <Layout rows="auto" gap="var(--polly-space-md)">
       {progress.litanies.length > 0 && (
         <Layout rows="auto" gap="var(--polly-space-sm)">
-          <h3>Litanies</h3>
+          <Text as="h3" size="md" weight="bold">
+            Litanies
+          </Text>
           {progress.litanies.map((litany) => (
             <p key={litany}>{litany}</p>
           ))}
@@ -132,14 +142,18 @@ function MemoryView() {
       )}
       {progress.placeNames.length > 0 && (
         <Layout rows="auto" gap="var(--polly-space-sm)">
-          <h3>Places</h3>
+          <Text as="h3" size="md" weight="bold">
+            Places
+          </Text>
           {progress.placeNames.map((place) => (
             <p key={place}>{place}</p>
           ))}
         </Layout>
       )}
       {progress.litanies.length === 0 && progress.placeNames.length === 0 && (
-        <p style={{ color: 'var(--polly-text-muted)' }}>No memories collected.</p>
+        <Text as="p" tone="muted">
+          No memories collected.
+        </Text>
       )}
     </Layout>
   );
@@ -151,13 +165,15 @@ function ChapterList({ chapters }: { chapters: Chapter[] }) {
   return (
     <Layout rows="auto" gap="var(--polly-space-md)">
       <Layout columns="minmax(0, 1fr) auto" gap="var(--polly-space-sm)" alignItems="center">
-        <h2 style={{ margin: 0 }}>Chapters</h2>
+        <Text as="h2" size="lg" weight="bold">
+          Chapters
+        </Text>
         <Button label="+ New chapter" tier="primary" size="small" data-action="chapter.create" />
       </Layout>
       {chapters.length === 0 ? (
-        <p style={{ color: 'var(--polly-text-muted)' }}>
+        <Text as="p" tone="muted">
           No chapters yet. Create one to start writing.
-        </p>
+        </Text>
       ) : (
         chapters.map((chapter) => (
           <Layout
@@ -167,7 +183,7 @@ function ChapterList({ chapters }: { chapters: Chapter[] }) {
             alignItems="center"
           >
             <Layout rows="auto auto" gap="0">
-              <strong style={TRUNCATE}>{chapter.title || '(untitled chapter)'}</strong>
+              <strong data-polly-truncate={true}>{chapter.title || '(untitled chapter)'}</strong>
               <FieldLabel>{chapter.passages.length} passages</FieldLabel>
             </Layout>
             <Button
@@ -194,7 +210,7 @@ function ChapterEditor({ chapter }: { chapter: Chapter }) {
           size="small"
           data-action="struggle.edit-close-chapter"
         />
-        <strong style={TRUNCATE}>{chapter.title || '(untitled chapter)'}</strong>
+        <strong data-polly-truncate={true}>{chapter.title || '(untitled chapter)'}</strong>
       </Layout>
 
       <Layout rows="auto" gap="var(--polly-space-xs)">
@@ -212,28 +228,28 @@ function ChapterEditor({ chapter }: { chapter: Chapter }) {
 
       <Layout rows="auto" gap="var(--polly-space-xs)">
         <FieldLabel>Start passage</FieldLabel>
-        <select
-          data-action="chapter.update"
-          data-action-field="startPassageId"
-          data-action-chapter-id={chapter.id}
+        <ActionSelect
           value={chapter.startPassageId}
-          style={SELECT_STYLE}
-        >
-          <option value="">(choose a passage)</option>
-          {chapter.passages.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.title || p.id}
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: '', label: '(choose a passage)' },
+            ...passageOptions(chapter.passages),
+          ]}
+          action="chapter.update"
+          actionData={{ field: 'startPassageId', chapterId: chapter.id }}
+          placeholder="(choose a passage)"
+        />
       </Layout>
 
       <Layout columns="minmax(0, 1fr) auto" gap="var(--polly-space-sm)" alignItems="center">
-        <h3 style={{ margin: 0 }}>Passages</h3>
+        <Text as="h3" size="md" weight="bold">
+          Passages
+        </Text>
         <Button label="+ New passage" tier="primary" size="small" data-action="passage.create" />
       </Layout>
       {chapter.passages.length === 0 ? (
-        <p style={{ color: 'var(--polly-text-muted)' }}>No passages yet.</p>
+        <Text as="p" tone="muted">
+          No passages yet.
+        </Text>
       ) : (
         chapter.passages.map((passage) => (
           <Layout
@@ -243,7 +259,7 @@ function ChapterEditor({ chapter }: { chapter: Chapter }) {
             alignItems="center"
           >
             <Layout rows="auto auto" gap="0">
-              <strong style={TRUNCATE}>{passage.title || '(untitled passage)'}</strong>
+              <strong data-polly-truncate={true}>{passage.title || '(untitled passage)'}</strong>
               <FieldLabel>
                 {passage.choices.length} choice{passage.choices.length === 1 ? '' : 's'}
                 {passage.isDeath ? ' · death' : ''}
@@ -295,30 +311,25 @@ function ChoiceEditor({ choice, chapter }: { choice: Choice; chapter: Chapter })
           actionData={{ field: 'label', choiceId: choice.id }}
         />
         <Layout columns="1fr 1fr" gap="var(--polly-space-xs)" stackOnMobile={true}>
-          <select
-            data-action="choice.update"
-            data-action-field="type"
-            data-action-choice-id={choice.id}
+          <ActionSelect
             value={choice.type}
-            style={SELECT_STYLE}
-          >
-            <option value="navigate">navigate</option>
-            <option value="inspect">inspect</option>
-          </select>
-          <select
-            data-action="choice.update"
-            data-action-field="targetPassageId"
-            data-action-choice-id={choice.id}
+            options={[
+              { value: 'navigate', label: 'navigate' },
+              { value: 'inspect', label: 'inspect' },
+            ]}
+            action="choice.update"
+            actionData={{ field: 'type', choiceId: choice.id }}
+          />
+          <ActionSelect
             value={choice.targetPassageId}
-            style={SELECT_STYLE}
-          >
-            <option value="">(target passage)</option>
-            {chapter.passages.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.title || p.id}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: '', label: '(target passage)' },
+              ...passageOptions(chapter.passages),
+            ]}
+            action="choice.update"
+            actionData={{ field: 'targetPassageId', choiceId: choice.id }}
+            placeholder="(target passage)"
+          />
         </Layout>
         <Button
           label="Delete choice"
@@ -343,7 +354,7 @@ function PassageEditor({ chapter, passage }: { chapter: Chapter; passage: Passag
           size="small"
           data-action="struggle.edit-close-passage"
         />
-        <strong style={TRUNCATE}>{passage.title || '(untitled passage)'}</strong>
+        <strong data-polly-truncate={true}>{passage.title || '(untitled passage)'}</strong>
       </Layout>
 
       <Layout rows="auto" gap="var(--polly-space-xs)">
@@ -395,7 +406,9 @@ function PassageEditor({ chapter, passage }: { chapter: Chapter; passage: Passag
       </Layout>
 
       <Layout columns="minmax(0, 1fr) auto" gap="var(--polly-space-sm)" alignItems="center">
-        <h3 style={{ margin: 0 }}>Choices</h3>
+        <Text as="h3" size="md" weight="bold">
+          Choices
+        </Text>
         <Button
           label="+ New choice"
           tier="primary"
@@ -405,9 +418,9 @@ function PassageEditor({ chapter, passage }: { chapter: Chapter; passage: Passag
         />
       </Layout>
       {passage.choices.length === 0 ? (
-        <p style={{ color: 'var(--polly-text-muted)' }}>
+        <Text as="p" tone="muted">
           No choices — the reader stops here unless this passage is a dead end.
-        </p>
+        </Text>
       ) : (
         passage.choices.map((choice) => (
           <ChoiceEditor key={choice.id} choice={choice} chapter={chapter} />
@@ -464,7 +477,9 @@ export function App() {
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout rows="auto" gap="var(--polly-space-md)">
         <Layout columns="1fr auto" gap="var(--polly-space-sm)">
-          <h1 style={{ margin: 0 }}>The Struggle</h1>
+          <Text as="h1" size="xl" weight="bold">
+            The Struggle
+          </Text>
           <HubBack />
         </Layout>
         <Tabs tabs={TAB_LIST} activeTab={activeTab} action="game.tab" />

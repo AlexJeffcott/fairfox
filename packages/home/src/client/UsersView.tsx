@@ -7,7 +7,7 @@
 // signed revocation into `mesh:users`. Phase F's accept hook will
 // verify the revoker holds `user.revoke`.
 
-import { Badge, Button, Layout } from '@fairfox/polly/ui';
+import { Badge, Button, Code, Layout, Text } from '@fairfox/polly/ui';
 import { canDo } from '@fairfox/shared/policy';
 import { userIdentity } from '@fairfox/shared/user-identity-state';
 import { type Permission, type UserEntry, usersState } from '@fairfox/shared/users-state';
@@ -63,9 +63,9 @@ export function UsersView(): preact.JSX.Element {
 
   if (users.length === 0) {
     return (
-      <p style={{ color: 'var(--polly-text-muted)' }}>
+      <Text as="p" tone="muted">
         No users yet. Invite someone through the pairing wizard to populate the list.
-      </p>
+      </Text>
     );
   }
 
@@ -89,9 +89,13 @@ export function UsersView(): preact.JSX.Element {
                   alignItems="center"
                   justifyContent="start"
                 >
-                  <strong style={isRevoked ? { textDecoration: 'line-through' } : undefined}>
-                    {user.displayName}
-                  </strong>
+                  {isRevoked ? (
+                    <s>
+                      <strong>{user.displayName}</strong>
+                    </s>
+                  ) : (
+                    <strong>{user.displayName}</strong>
+                  )}
                   {user.roles.map((role) => (
                     <Badge
                       key={role}
@@ -103,15 +107,9 @@ export function UsersView(): preact.JSX.Element {
                   {isSelf && <Badge variant="success">you</Badge>}
                   {isRevoked && <Badge variant="default">revoked</Badge>}
                 </Layout>
-                <span
-                  style={{
-                    color: 'var(--polly-text-muted)',
-                    fontSize: 'var(--polly-text-sm)',
-                    fontFamily: 'var(--polly-font-mono)',
-                  }}
-                >
-                  {user.userId.slice(0, 16)}
-                </span>
+                <Text as="span" tone="muted" size="sm">
+                  <Code>{user.userId.slice(0, 16)}</Code>
+                </Text>
               </Layout>
               {!isSelf && !isRevoked && canRevoke && (
                 <Button

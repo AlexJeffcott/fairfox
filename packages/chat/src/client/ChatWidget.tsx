@@ -5,7 +5,16 @@
 // active chat's message tail, a composer with the live page context
 // chip, and a small header with new / close controls.
 
-import { ActionInput, Button, Code, Layout, Surface } from '@fairfox/polly/ui';
+import {
+  ActionInput,
+  Badge,
+  Button,
+  Cluster,
+  Code,
+  Layout,
+  Surface,
+  Text,
+} from '@fairfox/polly/ui';
 import type { RelayHealth } from '@fairfox/shared/assistant-state';
 import { devicesState } from '@fairfox/shared/devices-state';
 import {
@@ -105,52 +114,25 @@ function anyPending(): boolean {
 
 function ContextChip({ ctx, onDetachAction }: { ctx: PageContext; onDetachAction?: string }) {
   return (
-    <Surface
-      as="span"
-      variant="chip"
-      background="var(--polly-status-info-bg)"
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '0.35rem',
-        color: 'var(--polly-status-info-text)',
-        fontSize: '0.78rem',
-        maxWidth: '100%',
-      }}
-    >
-      <span style={{ fontFamily: 'var(--polly-font-mono)', flexShrink: 0 }}>{ctx.kind}</span>
-      <span
-        style={{
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          minWidth: 0,
-        }}
-      >
-        {ctx.label}
-      </span>
-      {onDetachAction && (
-        <button
-          type="button"
-          data-action={onDetachAction}
-          data-action-kind={ctx.kind}
-          data-action-id={ctx.id ?? ''}
-          data-action-key={`${ctx.kind}:${ctx.id ?? ''}`}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            fontSize: '0.9rem',
-            lineHeight: 1,
-            padding: 0,
-            color: 'var(--polly-text-muted)',
-            flexShrink: 0,
-          }}
-          aria-label={`Remove ${ctx.label}`}
-        >
-          ×
-        </button>
-      )}
+    <Surface as="span" variant="chip" maxInlineSize="100%" background="var(--polly-status-info-bg)">
+      <Cluster gap="0.35rem" inline={true}>
+        <Code>{ctx.kind}</Code>
+        <Text size="sm" data-polly-truncate={true}>
+          {ctx.label}
+        </Text>
+        {onDetachAction && (
+          <Button
+            tier="tertiary"
+            size="small"
+            label="×"
+            data-action={onDetachAction}
+            data-action-kind={ctx.kind}
+            data-action-id={ctx.id ?? ''}
+            data-action-key={`${ctx.kind}:${ctx.id ?? ''}`}
+            aria-label={`Remove ${ctx.label}`}
+          />
+        )}
+      </Cluster>
     </Surface>
   );
 }
@@ -170,31 +152,28 @@ function FloatingButton() {
       zIndex={9998}
       data-action="chat.toggle-widget"
       aria-label="Open chat assistant"
-      style={{
-        color: 'var(--polly-accent-contrast)',
-        cursor: 'pointer',
-        fontSize: '1.5rem',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
     >
-      <span role="img" aria-hidden="true">
-        💬
-      </span>
+      <Layout height="100%" alignItems="center" justifyItems="center">
+        <Text as="span" size="lg" aria-hidden={true}>
+          💬
+        </Text>
+      </Layout>
       {pending && (
-        <span
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            top: '4px',
-            right: '4px',
-            width: '12px',
-            height: '12px',
-            background: 'var(--polly-danger)',
-            borderRadius: '50%',
-            border: '2px solid var(--polly-accent)',
-          }}
+        <Surface
+          as="span"
+          radius="full"
+          background="var(--polly-danger)"
+          border="strong"
+          borderWidth="medium"
+          width="12px"
+          height="12px"
+          position="fixed"
+          inset={`auto calc(1rem - 4px) calc(1rem + ${BUTTON_SIZE - 8}px) auto`}
+          zIndex={9999}
+          aria-hidden={true}
+          // Retint the strong-border token to the accent colour so the
+          // ring reads as a cutout against the accent-coloured button.
+          style={{ '--polly-border-strong': 'var(--polly-accent)' }}
         />
       )}
     </Surface>
@@ -219,82 +198,75 @@ function MessageBubble({
   return (
     <Layout rows="auto auto" gap="0.15rem" padding="0.35rem 0">
       <Layout columns="auto 1fr auto" gap="0.5rem" alignItems="center">
-        <strong
-          style={{
-            fontSize: '0.75rem',
-            color: isAssistant ? '#047857' : '#1c1917',
-          }}
-        >
+        <Text as="strong" size="xs" weight="bold">
           {label}
-        </strong>
+        </Text>
         <span />
-        <span
-          style={{
-            fontSize: '0.75rem',
-            color: '#6b7280',
-          }}
-        >
+        <Text as="span" size="xs" tone="muted">
           {formatTime(message.createdAt)}
           {message.pending && !isAssistant && ' · pending'}
-        </span>
+        </Text>
       </Layout>
       <Surface
         variant="bubble"
         background={bg}
         style={{
           // Bubble backgrounds are hardcoded light (#ffffff,
-          // #e8edf3, #dbeafe, #fef3c7); the text color must be
-          // hardcoded dark too. Reading var(--polly-text) made
+          // #e8edf3, #dbeafe, #fef3c7); the text colour must be
+          // hardcoded dark too — reading var(--polly-text) made
           // white-on-white when the user agent's polly theme
-          // resolved that variable to a near-white value.
-          color: '#1c1917',
+          // resolved that variable to a near-white value. Retint
+          // the polly tokens so the bubble owns its own dark text
+          // and per-sender border without an inline colour rule.
+          '--polly-text': '#1c1917',
           '--polly-border': border,
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word',
-          fontSize: '0.9rem',
         }}
       >
-        {message.text}
+        <Layout rows="auto" gap="0">
+          {message.text.split('\n').map((line, i) => {
+            // Splitting on newline restores the pre-wrap behaviour
+            // the old inline style gave the bubble. The index is a
+            // stable key: a message's text is immutable, so the
+            // lines never reorder or change count.
+            const lineKey = `${message.id}:${i}`;
+            return (
+              <Text key={lineKey} as="p" size="sm">
+                {line === '' ? ' ' : line}
+              </Text>
+            );
+          })}
+        </Layout>
       </Surface>
       {isAssistant && (message.model || message.costUsd !== undefined || message.error) ? (
-        <div
-          style={{
-            fontSize: '0.7rem',
-            color: message.error ? '#b45309' : '#6b7280',
-            display: 'flex',
-            gap: '0.5rem',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-          }}
-        >
-          {message.model ? <span>{shortModel(message.model)}</span> : null}
+        <Cluster gap="0.5rem">
+          {message.model ? (
+            <Text size="xs" tone="muted">
+              {shortModel(message.model)}
+            </Text>
+          ) : null}
           {message.costUsd !== undefined && message.costUsd > 0 ? (
-            <span>${message.costUsd.toFixed(4)}</span>
+            <Text size="xs" tone="muted">
+              ${message.costUsd.toFixed(4)}
+            </Text>
           ) : null}
           {message.durationMs === undefined ? null : (
-            <span>{Math.round(message.durationMs / 100) / 10}s</span>
+            <Text size="xs" tone="muted">
+              {Math.round(message.durationMs / 100) / 10}s
+            </Text>
           )}
-          {message.error ? <span>error: {message.error.kind}</span> : null}
+          {message.error ? <Badge variant="warning">error: {message.error.kind}</Badge> : null}
           {message.error && message.parentId ? (
-            <button
-              type="button"
+            <Button
+              tier="tertiary"
+              color="warning"
+              size="small"
+              label="↻ regenerate"
               data-action="chat.regenerate"
               data-action-id={message.id}
               aria-label="Regenerate this reply"
-              style={{
-                background: 'transparent',
-                border: '1px solid var(--polly-warning)',
-                color: 'var(--polly-warning)',
-                borderRadius: 'var(--polly-radius-full)',
-                padding: '0.05rem 0.5rem',
-                fontSize: '0.7rem',
-                cursor: 'pointer',
-              }}
-            >
-              ↻ regenerate
-            </button>
+            />
           ) : null}
-        </div>
+        </Cluster>
       ) : null}
     </Layout>
   );
@@ -315,9 +287,11 @@ function Composer({ selfPeerId }: { selfPeerId: string | null }) {
   const identity = userIdentity.value;
   if (!identity) {
     return (
-      <p style={{ margin: 0, color: '#6b7280', fontSize: '0.85rem', padding: '0.5rem' }}>
-        Connect your identity on the hub's Peers tab before sending messages.
-      </p>
+      <Surface as="p" padding="0.5rem">
+        <Text tone="muted" size="sm">
+          Connect your identity on the hub's Peers tab before sending messages.
+        </Text>
+      </Surface>
     );
   }
   if (!selfPeerId) {
@@ -333,15 +307,16 @@ function Composer({ selfPeerId }: { selfPeerId: string | null }) {
     // a more targeted heal on the next devicesState tick).
     return (
       <Layout rows="auto auto" gap="0.35rem" padding="0.5rem">
-        <p
-          style={{
-            margin: 0,
-            color: 'var(--polly-status-warning-text)',
-            fontSize: '0.85rem',
-          }}
+        <Surface
+          as="p"
+          variant="callout"
+          background="var(--polly-status-warning-bg)"
+          style={{ '--polly-text': 'var(--polly-status-warning-text)' }}
         >
-          Setting up this device — your endorsement hasn't replicated yet. Reload to repair.
-        </p>
+          <Text size="sm">
+            Setting up this device — your endorsement hasn't replicated yet. Reload to repair.
+          </Text>
+        </Surface>
         <Button
           label="Reload"
           tier="secondary"
@@ -357,13 +332,15 @@ function Composer({ selfPeerId }: { selfPeerId: string | null }) {
     <Layout rows="auto auto" gap="0.35rem">
       <Layout columns="1fr auto" gap="0.35rem" alignItems="center">
         <Layout columns="auto 1fr" gap="0.35rem" alignItems="center">
-          <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+          <Text size="xs" tone="muted">
             {pinned ? 'Pinned:' : 'Context:'}
-          </span>
+          </Text>
           {live ? (
             <ContextChip ctx={live} />
           ) : (
-            <span style={{ fontSize: '0.78rem', color: '#9ca3af' }}>(none)</span>
+            <Text size="xs" tone="muted">
+              (none)
+            </Text>
           )}
         </Layout>
         {live && (
@@ -464,37 +441,15 @@ function RelayBadge() {
       ? `Reconnecting to the mesh… last error: ${errorMsg}`
       : 'Reconnecting to the mesh…';
     return (
-      <span
-        title={tip}
-        style={{
-          fontSize: '0.7rem',
-          padding: '0.1rem 0.4rem',
-          borderRadius: 'var(--polly-radius-full)',
-          background: 'var(--polly-status-warning-bg)',
-          color: 'var(--polly-status-warning-text)',
-          fontWeight: 500,
-          whiteSpace: 'nowrap',
-        }}
-      >
-        reconnecting…
+      <span title={tip}>
+        <Badge variant="warning">reconnecting…</Badge>
       </span>
     );
   }
   if (state.kind === 'none') {
     return (
-      <span
-        title="No laptop is running `fairfox chat serve` on this mesh. Messages will pile up as pending until one starts."
-        style={{
-          fontSize: '0.7rem',
-          padding: '0.1rem 0.4rem',
-          borderRadius: 'var(--polly-radius-full)',
-          background: 'var(--polly-status-warning-bg)',
-          color: 'var(--polly-status-warning-text)',
-          fontWeight: 500,
-          whiteSpace: 'nowrap',
-        }}
-      >
-        no relay
+      <span title="No laptop is running `fairfox chat serve` on this mesh. Messages will pile up as pending until one starts.">
+        <Badge variant="warning">no relay</Badge>
       </span>
     );
   }
@@ -507,38 +462,18 @@ function RelayBadge() {
   const tooltip = `relay ${r.peerId.slice(0, 8)} · v${r.version}\nstarted ${r.startedAt}\nlast tick ${formatAge(ageMs)}\npending ${r.pending} · peers ${r.peers}${errLabel}`;
   if (state.kind === 'live') {
     return (
-      <span
-        title={tooltip}
-        style={{
-          fontSize: '0.7rem',
-          padding: '0.1rem 0.4rem',
-          borderRadius: 'var(--polly-radius-full)',
-          background: r.lastErrorKind
-            ? 'var(--polly-status-warning-bg)'
-            : 'var(--polly-status-success-bg, #dcfce7)',
-          color: r.lastErrorKind ? 'var(--polly-status-warning-text)' : '#166534',
-          fontWeight: 500,
-          whiteSpace: 'nowrap',
-        }}
-      >
-        relay live{r.pending > 0 ? ` · ${r.pending} pending` : ''}
+      <span title={tooltip}>
+        <Badge variant={r.lastErrorKind ? 'warning' : 'success'}>
+          relay live{r.pending > 0 ? ` · ${r.pending} pending` : ''}
+        </Badge>
       </span>
     );
   }
   return (
-    <span
-      title={tooltip}
-      style={{
-        fontSize: '0.7rem',
-        padding: '0.1rem 0.4rem',
-        borderRadius: 'var(--polly-radius-full)',
-        background: 'var(--polly-status-warning-bg)',
-        color: 'var(--polly-status-warning-text)',
-        fontWeight: 500,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      relay {state.kind === 'stale' ? 'stale' : 'gone'} · {formatAge(ageMs)}
+    <span title={tooltip}>
+      <Badge variant="warning">
+        relay {state.kind === 'stale' ? 'stale' : 'gone'} · {formatAge(ageMs)}
+      </Badge>
     </span>
   );
 }
@@ -554,17 +489,9 @@ function ChatHeader({ chat }: { chat: Chat | undefined }) {
   return (
     <Layout rows="auto auto" gap="0.4rem">
       <Layout columns="1fr auto" gap="0.5rem" alignItems="center">
-        <strong
-          style={{
-            fontSize: '0.95rem',
-            minWidth: 0,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
+        <Text as="strong" size="md" weight="bold" data-polly-truncate={true}>
           {title}
-        </strong>
+        </Text>
         <Button label="Close" tier="tertiary" size="small" data-action="chat.close-widget" />
       </Layout>
       <Layout
@@ -601,41 +528,28 @@ function ChatContextStrip({ chat }: { chat: Chat | undefined }) {
     return null;
   }
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '0.35rem',
-        padding: '0.25rem 0',
-      }}
-    >
-      <span style={{ fontSize: '0.75rem', color: '#6b7280', alignSelf: 'center' }}>Following:</span>
+    <Cluster gap="0.35rem" padding="0.25rem 0">
+      <Text size="xs" tone="muted">
+        Following:
+      </Text>
       {chat.contextRefs.map((ctx) => {
         const key = `${ctx.kind}:${ctx.id ?? ''}`;
         return (
-          <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+          <Cluster key={key} gap="0.25rem" inline={true}>
             <ContextChip ctx={ctx} />
-            <button
-              type="button"
+            <Button
+              tier="tertiary"
+              size="small"
+              label="×"
               data-action="chat.remove-context"
               data-action-chat-id={chat.id}
               data-action-key={key}
               aria-label={`Remove ${ctx.label} from this chat`}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                padding: 0,
-                cursor: 'pointer',
-                color: '#6b7280',
-                fontSize: '0.9rem',
-              }}
-            >
-              ×
-            </button>
-          </span>
+            />
+          </Cluster>
         );
       })}
-    </div>
+    </Cluster>
   );
 }
 
@@ -648,37 +562,32 @@ function ActiveCcSessions() {
   }
   const demoIds = overlayIds().sessions;
   return (
-    <Surface
-      borderSides="block-start"
-      border="default"
-      padding="0.35rem 0"
-      style={{ borderTopStyle: 'dashed' }}
-    >
-      <span style={{ fontSize: '0.7rem', color: 'var(--polly-text-muted)' }}>Claude Code:</span>
+    <Surface borderSides="block-start" border="default" padding="0.35rem 0">
+      <Text size="xs" tone="muted">
+        Claude Code:
+      </Text>
       {sessions.map((s) => {
         const leaf = `${s.cwd}`.split('/').slice(-2).join('/');
         const state = s.state;
         const isDemo = demoIds.has(`${s.sessionId}`);
         return (
-          <div
+          <Layout
             key={`${s.sessionId}`}
-            style={{
-              fontSize: '0.75rem',
-              color: s.stale ? '#9ca3af' : '#1c1917',
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: '0.5rem',
-            }}
+            columns="1fr auto"
+            gap="0.5rem"
+            justifyContent="space-between"
           >
             <span title={`${s.cwd}`}>
-              {leaf}
-              {isDemo ? ' · demo' : ''}
+              <Text size="xs" tone={s.stale ? 'muted' : 'default'}>
+                {leaf}
+                {isDemo ? ' · demo' : ''}
+              </Text>
             </span>
-            <span style={{ color: '#6b7280' }}>
+            <Text size="xs" tone="muted">
               {state}
               {s.lastToolName ? ` · ${s.lastToolName}` : ''}
-            </span>
-          </div>
+            </Text>
+          </Layout>
         );
       })}
     </Surface>
@@ -694,14 +603,14 @@ function DemoBanner() {
       variant="callout"
       background="var(--polly-status-warning-bg)"
       style={{
-        color: 'var(--polly-status-warning-text)',
+        '--polly-text': 'var(--polly-status-warning-text)',
         '--polly-border': 'var(--polly-warning)',
-        fontSize: '0.75rem',
-        margin: '0.25rem 0',
       }}
     >
-      ⚠ This widget contains demo data from <Code>#__inject=</Code> in the URL. None of it is real
-      or synced to your other devices.
+      <Text size="xs">
+        ⚠ This widget contains demo data from <Code>#__inject=</Code> in the URL. None of it is real
+        or synced to your other devices.
+      </Text>
     </Surface>
   );
 }
@@ -725,6 +634,7 @@ function Panel({ selfPeerId }: { selfPeerId: string | null }) {
         border: 'none' as const,
         shadow: 'none' as const,
         background: 'raised' as const,
+        height: '100%',
       }
     : {
         position: 'fixed' as const,
@@ -734,49 +644,38 @@ function Panel({ selfPeerId }: { selfPeerId: string | null }) {
         shadow: 'lg' as const,
         background: 'raised' as const,
         width: '380px',
+        height: '70vh',
       };
   return (
-    <Surface
-      {...sharedSurfaceProps}
-      maxInlineSize={mobile ? undefined : '380px'}
-      zIndex={9999}
-      style={{
-        maxHeight: mobile ? undefined : '70vh',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-      }}
-    >
-      <Surface borderSides="block-end" border="default" padding="0.75rem 1rem">
-        <ChatHeader chat={chat} />
-        <DemoBanner />
-        <ChatContextStrip chat={chat} />
-        <ActiveCcSessions />
-      </Surface>
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '0.5rem 1rem',
-        }}
-      >
-        {messages.length === 0 ? (
-          <p
-            style={{
-              color: 'var(--polly-text-muted)',
-              fontSize: '0.85rem',
-              margin: '0.5rem 0',
-            }}
-          >
-            New thread. Type below — the laptop's <Code>fairfox chat serve</Code> will reply.
-          </p>
-        ) : (
-          messages.map((m) => <MessageBubble key={m.id} message={m} selfDeviceId={selfPeerId} />)
-        )}
-      </div>
-      <Surface borderSides="block-start" border="default" padding="0.75rem 1rem">
-        <Composer selfPeerId={selfPeerId} />
-      </Surface>
+    <Surface {...sharedSurfaceProps} maxInlineSize={mobile ? undefined : '380px'} zIndex={9999}>
+      <Layout rows="auto 1fr auto" height="100%">
+        <Surface borderSides="block-end" border="default" padding="0.75rem 1rem">
+          <ChatHeader chat={chat} />
+          <DemoBanner />
+          <ChatContextStrip chat={chat} />
+          <ActiveCcSessions />
+        </Surface>
+        {/* The message tail is the one region in this package that
+          must scroll independently of the panel. polly 0.72.0 ships
+          no overflow/scroll primitive and no token for it, so this
+          is the single unavoidable inline style left in the
+          package: `overflow-y: auto` cannot be expressed through a
+          Surface prop or a --polly-* retint. Dropping it would clip
+          long threads inside the fixed-height panel with no way to
+          reach the older messages. */}
+        <Surface padding="0.5rem 1rem" style={{ overflowY: 'auto' }}>
+          {messages.length === 0 ? (
+            <Text as="p" tone="muted" size="sm">
+              New thread. Type below — the laptop's <Code>fairfox chat serve</Code> will reply.
+            </Text>
+          ) : (
+            messages.map((m) => <MessageBubble key={m.id} message={m} selfDeviceId={selfPeerId} />)
+          )}
+        </Surface>
+        <Surface borderSides="block-start" border="default" padding="0.75rem 1rem">
+          <Composer selfPeerId={selfPeerId} />
+        </Surface>
+      </Layout>
     </Surface>
   );
 }

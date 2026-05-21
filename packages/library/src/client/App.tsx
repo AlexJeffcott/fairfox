@@ -2,7 +2,7 @@
 // Library sub-app — two views: Refs and Docs.
 // All state from the $meshState library document.
 
-import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
+import { ActionInput, Badge, Button, Layout, Tabs, Text } from '@fairfox/polly/ui';
 import { renderMarkdown } from '@fairfox/polly/ui/markdown';
 import { HubBack } from '@fairfox/shared/hub-back';
 import { setPageContext } from '@fairfox/shared/page-context';
@@ -69,17 +69,9 @@ function RefsView() {
       <Layout rows="auto" gap="var(--polly-space-md)">
         <Layout columns="auto minmax(0, 1fr) auto" gap="var(--polly-space-sm)" alignItems="center">
           <Button label="← Back" tier="tertiary" size="small" data-action="ref.close" />
-          <h3
-            style={{
-              margin: 0,
-              minWidth: 0,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
+          <Text as="h3" size="lg" weight="bold" data-polly-truncate={true}>
             {selected.title}
-          </h3>
+          </Text>
           <Button
             label="Delete"
             size="small"
@@ -90,7 +82,9 @@ function RefsView() {
           />
         </Layout>
         {selected.author && (
-          <span style={{ color: 'var(--polly-text-muted)' }}>{selected.author}</span>
+          <Text as="span" tone="muted">
+            {selected.author}
+          </Text>
         )}
         <Layout columns="auto auto" gap="var(--polly-space-xs)" justifyContent="start">
           <Badge variant={FORM_COLORS[selected.form]}>{selected.form}</Badge>
@@ -100,11 +94,15 @@ function RefsView() {
             </Badge>
           ))}
         </Layout>
-        <div style={{ lineHeight: '1.6' }}>{renderMarkdown(selected.body)}</div>
+        <div>{renderMarkdown(selected.body)}</div>
         {selected.notes && (
           <Layout rows="auto" gap="var(--polly-space-xs)">
-            <h4 style={{ margin: 0 }}>Notes</h4>
-            <div style={{ color: 'var(--polly-text-muted)' }}>{renderMarkdown(selected.notes)}</div>
+            <Text as="h4" size="md" weight="bold">
+              Notes
+            </Text>
+            <Text as="div" tone="muted">
+              {renderMarkdown(selected.notes)}
+            </Text>
           </Layout>
         )}
       </Layout>
@@ -128,11 +126,13 @@ function RefsView() {
           alignItems="center"
         >
           <Layout rows="auto auto" gap="0">
-            <strong style={{ wordBreak: 'break-word' }}>{ref.title}</strong>
+            <Text as="span" weight="bold">
+              {ref.title}
+            </Text>
             {ref.author && (
-              <span style={{ fontSize: 'var(--polly-text-sm)', color: 'var(--polly-text-muted)' }}>
+              <Text as="span" size="sm" tone="muted">
                 {ref.author}
-              </span>
+              </Text>
             )}
           </Layout>
           <Badge variant={FORM_COLORS[ref.form]}>{ref.form}</Badge>
@@ -153,7 +153,11 @@ function RefsView() {
           />
         </Layout>
       ))}
-      {refs.length === 0 && <p style={{ color: 'var(--polly-text-muted)' }}>No references yet.</p>}
+      {refs.length === 0 && (
+        <Text as="p" tone="muted">
+          No references yet.
+        </Text>
+      )}
     </Layout>
   );
 }
@@ -167,17 +171,9 @@ function DocsView() {
       <Layout rows="auto" gap="var(--polly-space-md)">
         <Layout columns="auto minmax(0, 1fr) auto" gap="var(--polly-space-sm)" alignItems="center">
           <Button label="← Back" tier="tertiary" size="small" data-action="doc.close" />
-          <h3
-            style={{
-              margin: 0,
-              minWidth: 0,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
+          <Text as="h3" size="lg" weight="bold" data-polly-truncate={true}>
             {selected.title}
-          </h3>
+          </Text>
           <Button
             label="Delete"
             size="small"
@@ -187,10 +183,10 @@ function DocsView() {
             data-action-id={selected.id}
           />
         </Layout>
-        <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+        <Text as="span" tone="muted" size="sm">
           {CATEGORY_LABELS[selected.category]} · {selected.path}
-        </span>
-        <div style={{ lineHeight: '1.6' }}>{renderMarkdown(selected.content)}</div>
+        </Text>
+        <div>{renderMarkdown(selected.content)}</div>
       </Layout>
     );
   }
@@ -227,16 +223,9 @@ function DocsView() {
                 gap="var(--polly-space-sm)"
                 alignItems="center"
               >
-                <span
-                  style={{
-                    minWidth: 0,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
+                <Text as="span" data-polly-truncate={true}>
                   {doc.title}
-                </span>
+                </Text>
                 <Button
                   label="View"
                   size="small"
@@ -257,7 +246,11 @@ function DocsView() {
           </Layout>
         );
       })}
-      {docs.length === 0 && <p style={{ color: 'var(--polly-text-muted)' }}>No documents yet.</p>}
+      {docs.length === 0 && (
+        <Text as="p" tone="muted">
+          No documents yet.
+        </Text>
+      )}
     </Layout>
   );
 }
@@ -281,7 +274,9 @@ export function App() {
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout rows="auto" gap="var(--polly-space-md)">
         <Layout columns="1fr auto" gap="var(--polly-space-sm)">
-          <h1 style={{ margin: 0 }}>Library</h1>
+          <Text as="h1" size="xl" weight="bold">
+            Library
+          </Text>
           <HubBack />
         </Layout>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="library.tab" />

@@ -7,7 +7,7 @@
 // body + rendered markdown preview side-by-side on wide screens,
 // stacked on narrow).
 
-import { ActionInput, Badge, Button, Layout } from '@fairfox/polly/ui';
+import { ActionInput, ActionSelect, Badge, Button, Code, Layout, Text } from '@fairfox/polly/ui';
 import { HubBack } from '@fairfox/shared/hub-back';
 import { setPageContext } from '@fairfox/shared/page-context';
 import { projectsState } from '@fairfox/todo-v2/state';
@@ -35,12 +35,11 @@ function projectNameFor(pid: string): string {
   return match ? `${pid} — ${match.name}` : pid;
 }
 
-const SELECT_STYLE = {
-  padding: '0.35rem',
-  border: '1px solid var(--polly-border)',
-  borderRadius: '4px',
-  fontSize: 'var(--polly-text-sm)',
-};
+function projectSelectOptions(): { value: string; label: string }[] {
+  return projectOptions()
+    .filter((pid) => pid !== '')
+    .map((pid) => ({ value: pid, label: projectNameFor(pid) }));
+}
 
 function matchesFilter(doc: Document, projectFilter: string, query: string): boolean {
   if (projectFilter && doc.project !== projectFilter) {
@@ -82,27 +81,13 @@ function ListView() {
         alignItems="center"
         stackOnMobile={true}
       >
-        <label
-          for="docs-filter-project"
-          style={{ fontSize: 'var(--polly-text-sm)', color: 'var(--polly-text-muted)' }}
-        >
-          Project
-        </label>
-        <select
-          id="docs-filter-project"
+        <ActionSelect
           value={filterProject.value}
-          data-action="docs.filter-project"
-          style={SELECT_STYLE}
-        >
-          <option value="">(any)</option>
-          {projectOptions()
-            .filter((pid) => pid !== '')
-            .map((pid) => (
-              <option key={pid} value={pid}>
-                {projectNameFor(pid)}
-              </option>
-            ))}
-        </select>
+          action="docs.filter-project"
+          label="Project"
+          placeholder="(any)"
+          options={projectSelectOptions()}
+        />
         <ActionInput
           value={searchQuery.value}
           variant="single"
@@ -114,11 +99,11 @@ function ListView() {
         <Button label="+ New doc" tier="primary" size="small" data-action="docs.create" />
       </Layout>
       {docs.length === 0 ? (
-        <p style={{ color: 'var(--polly-text-muted)' }}>
+        <Text as="p" tone="muted">
           {docsState.value.docs.length === 0
             ? 'No documents yet. Create one to get started.'
             : 'No documents match the current filter.'}
-        </p>
+        </Text>
       ) : (
         <Layout rows="auto" gap="var(--polly-space-xs)">
           {docs.map((doc) => (
@@ -129,39 +114,22 @@ function ListView() {
               alignItems="center"
               padding="var(--polly-space-sm) var(--polly-space-md)"
             >
-              <button
-                type="button"
+              <Button
+                tier="tertiary"
+                size="small"
                 data-action="docs.open"
                 data-action-id={doc.id}
-                style={{
-                  textAlign: 'left',
-                  background: 'transparent',
-                  border: 'none',
-                  padding: 0,
-                  cursor: 'pointer',
-                  color: 'inherit',
-                }}
-              >
-                <div style={{ fontWeight: 600 }}>{doc.title}</div>
-                <div
-                  style={{
-                    fontSize: 'var(--polly-text-sm)',
-                    color: 'var(--polly-text-muted)',
-                    fontFamily: 'var(--polly-font-mono)',
-                  }}
-                >
-                  {doc.slug}
-                </div>
-              </button>
+                label={
+                  <Layout rows="auto auto" gap="var(--polly-space-xs)" justifyItems="start">
+                    <Text weight="bold">{doc.title}</Text>
+                    <Code>{doc.slug}</Code>
+                  </Layout>
+                }
+              />
               {doc.project && <Badge variant="info">{doc.project}</Badge>}
-              <span
-                style={{
-                  fontSize: 'var(--polly-text-sm)',
-                  color: 'var(--polly-text-muted)',
-                }}
-              >
+              <Text size="sm" tone="muted">
                 {formatDate(doc.updatedAt)}
-              </span>
+              </Text>
               <Button
                 label="Delete"
                 tier="tertiary"
@@ -184,7 +152,7 @@ function EditView() {
   if (!doc) {
     return (
       <Layout rows="auto auto" gap="var(--polly-space-sm)">
-        <p>Document not found. It may have been deleted on another device.</p>
+        <Text as="p">Document not found. It may have been deleted on another device.</Text>
         <Button label="Back to list" tier="secondary" data-action="docs.back-to-list" />
       </Layout>
     );
@@ -193,9 +161,9 @@ function EditView() {
     <Layout rows="auto auto auto 1fr" gap="var(--polly-space-md)">
       <Layout columns="auto minmax(0, 1fr) auto" gap="var(--polly-space-sm)" alignItems="center">
         <Button label="← Back" tier="tertiary" size="small" data-action="docs.back-to-list" />
-        <span style={{ fontSize: 'var(--polly-text-sm)', color: 'var(--polly-text-muted)' }}>
+        <Text size="sm" tone="muted">
           Updated {formatDate(doc.updatedAt)}
-        </span>
+        </Text>
         <Button
           label="Delete"
           tier="tertiary"
@@ -229,22 +197,14 @@ function EditView() {
           ariaLabel="Slug"
           data-action-id={doc.id}
         />
-        <select
+        <ActionSelect
           value={doc.project}
-          data-action="docs.project"
-          data-action-id={doc.id}
-          style={SELECT_STYLE}
-          aria-label="Project"
-        >
-          <option value="">(no project)</option>
-          {projectOptions()
-            .filter((pid) => pid !== '')
-            .map((pid) => (
-              <option key={pid} value={pid}>
-                {projectNameFor(pid)}
-              </option>
-            ))}
-        </select>
+          action="docs.project"
+          actionData={{ id: doc.id }}
+          label="Project"
+          placeholder="(no project)"
+          options={projectSelectOptions()}
+        />
       </Layout>
       <BodyEditor doc={doc} />
     </Layout>
@@ -296,7 +256,9 @@ export function App() {
   return (
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
-        <h1 style={{ margin: 0 }}>Docs</h1>
+        <Text as="h1" size="xl" weight="bold">
+          Docs
+        </Text>
         <HubBack />
       </Layout>
       <div>{activeView.value === 'edit' ? <EditView /> : <ListView />}</div>

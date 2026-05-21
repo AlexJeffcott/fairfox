@@ -2,7 +2,18 @@
 // Todo sub-app — project tracker with tasks and quick capture.
 // Three views: Projects, Tasks, Capture. All state from $meshState.
 
-import { ActionInput, Badge, Button, Checkbox, Layout, Tabs } from '@fairfox/polly/ui';
+import {
+  ActionInput,
+  ActionSelect,
+  Badge,
+  Button,
+  Checkbox,
+  Cluster,
+  Code,
+  Layout,
+  Tabs,
+  Text,
+} from '@fairfox/polly/ui';
 import { HubBack } from '@fairfox/shared/hub-back';
 import { setPageContext } from '@fairfox/shared/page-context';
 import { effect, signal } from '@preact/signals';
@@ -81,6 +92,24 @@ const PRIORITY_COLORS = {
   low: 'info',
 } as const;
 
+const PRIORITY_OPTIONS = [
+  { value: 'high', label: 'high' },
+  { value: 'med', label: 'med' },
+  { value: 'low', label: 'low' },
+];
+
+const CATEGORY_OPTIONS = [
+  { value: 'personal', label: 'personal' },
+  { value: 'amboss', label: 'amboss' },
+];
+
+const STATUS_OPTIONS = [
+  { value: 'active', label: 'active' },
+  { value: 'paused', label: 'paused' },
+  { value: 'done', label: 'done' },
+  { value: 'archived', label: 'archived' },
+];
+
 function ProjectsView() {
   const activeProjects = projectsState.value.projects.filter((p) => p.status === 'active');
   const pausedProjects = projectsState.value.projects.filter((p) => p.status === 'paused');
@@ -89,14 +118,16 @@ function ProjectsView() {
   return (
     <Layout rows="auto" gap="var(--polly-space-md)">
       <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
-        <span style={{ color: 'var(--polly-text-muted)' }}>
+        <Text tone="muted">
           {total} project{total === 1 ? '' : 's'}
-        </span>
+        </Text>
         <Button label="+ New project" tier="primary" size="small" data-action="project.new" />
       </Layout>
       {activeProjects.length > 0 && (
         <Layout rows="auto" gap="var(--polly-space-sm)">
-          <h3>Active ({activeProjects.length})</h3>
+          <Text as="h3" size="lg" weight="bold">
+            Active ({activeProjects.length})
+          </Text>
           {activeProjects.map((p) => {
             const taskCount = tasksState.value.tasks.filter(
               (t) => t.project === p.name && !t.done
@@ -108,34 +139,16 @@ function ProjectsView() {
                 gap="var(--polly-space-sm)"
                 alignItems="center"
               >
-                <div
-                  data-action="project.open"
-                  data-action-pid={p.pid}
-                  style={{ cursor: 'pointer', display: 'grid', gap: 0, minWidth: 0 }}
-                >
-                  <strong
-                    style={{
-                      minWidth: 0,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
+                <Layout rows="auto" gap="0" data-action="project.open" data-action-pid={p.pid}>
+                  <Text weight="bold" data-polly-truncate={true}>
                     {p.name || '(untitled)'}
-                  </strong>
+                  </Text>
                   {p.notes && (
-                    <span
-                      data-polly-clamp={true}
-                      style={{
-                        fontSize: 'var(--polly-text-sm)',
-                        color: 'var(--polly-text-muted)',
-                        '--polly-clamp': 1,
-                      }}
-                    >
+                    <Text tone="muted" size="sm" data-polly-truncate={true}>
                       {p.notes}
-                    </span>
+                    </Text>
                   )}
-                </div>
+                </Layout>
                 <Badge variant="default">{taskCount} tasks</Badge>
                 <Button
                   label="Pause"
@@ -152,7 +165,9 @@ function ProjectsView() {
       )}
       {pausedProjects.length > 0 && (
         <Layout rows="auto" gap="var(--polly-space-sm)">
-          <h3>Paused ({pausedProjects.length})</h3>
+          <Text as="h3" size="lg" weight="bold">
+            Paused ({pausedProjects.length})
+          </Text>
           {pausedProjects.map((p) => (
             <Layout
               key={p.pid}
@@ -160,20 +175,14 @@ function ProjectsView() {
               gap="var(--polly-space-sm)"
               alignItems="center"
             >
-              <span
+              <Text
+                tone="muted"
                 data-action="project.open"
                 data-action-pid={p.pid}
-                style={{
-                  color: 'var(--polly-text-muted)',
-                  cursor: 'pointer',
-                  minWidth: 0,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
+                data-polly-truncate={true}
               >
                 {p.name || '(untitled)'}
-              </span>
+              </Text>
               <Button
                 label="Resume"
                 size="small"
@@ -192,69 +201,39 @@ function ProjectsView() {
 }
 
 function TaskFilters({ projectNames }: { projectNames: string[] }) {
-  const SELECT_STYLE = {
-    font: 'inherit',
-    padding: 'var(--polly-space-xs) var(--polly-space-sm)',
-    border: '1px solid var(--polly-border)',
-    borderRadius: 'var(--polly-radius-md)',
-    background: 'var(--polly-surface)',
-    color: 'var(--polly-text)',
-  };
+  const projectOptions = [
+    { value: '', label: '(any)' },
+    ...projectNames.map((n) => ({ value: n, label: n })),
+  ];
+  const priorityOptions = [
+    { value: '', label: '(any)' },
+    { value: 'high', label: 'high' },
+    { value: 'med', label: 'med' },
+    { value: 'low', label: 'low' },
+  ];
   return (
-    <Layout
-      columns="auto auto auto"
-      gap="var(--polly-space-sm)"
-      alignItems="center"
-      justifyContent="start"
-      stackOnMobile={true}
-    >
-      <Layout columns="auto auto" gap="var(--polly-space-xs)" alignItems="center">
-        <label
-          for="task-filter-project"
-          style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}
-        >
-          Project
-        </label>
-        <select
-          id="task-filter-project"
-          data-action="tasks.set-filter-project"
-          value={filterProjectName.value}
-          style={SELECT_STYLE}
-        >
-          <option value="">(any)</option>
-          {projectNames.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-      </Layout>
-      <Layout columns="auto auto" gap="var(--polly-space-xs)" alignItems="center">
-        <label
-          for="task-filter-priority"
-          style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}
-        >
-          Priority
-        </label>
-        <select
-          id="task-filter-priority"
-          data-action="tasks.set-filter-priority"
-          value={filterPriority.value}
-          style={SELECT_STYLE}
-        >
-          <option value="">(any)</option>
-          <option value="high">high</option>
-          <option value="med">med</option>
-          <option value="low">low</option>
-        </select>
-      </Layout>
-      <Layout columns="auto auto" gap="var(--polly-space-xs)" alignItems="center">
+    <Cluster gap="var(--polly-space-sm)" align="end">
+      <ActionSelect
+        id="task-filter-project"
+        label="Project"
+        value={filterProjectName.value}
+        options={projectOptions}
+        action="tasks.set-filter-project"
+      />
+      <ActionSelect
+        id="task-filter-priority"
+        label="Priority"
+        value={filterPriority.value}
+        options={priorityOptions}
+        action="tasks.set-filter-priority"
+      />
+      <Cluster gap="var(--polly-space-xs)" align="center">
         <span data-action="tasks.toggle-show-done">
           <Checkbox checked={showDone.value} />
         </span>
-        <span style={{ fontSize: 'var(--polly-text-sm)' }}>Show done</span>
-      </Layout>
-    </Layout>
+        <Text size="sm">Show done</Text>
+      </Cluster>
+    </Cluster>
   );
 }
 
@@ -286,20 +265,19 @@ function TasksView() {
   return (
     <Layout rows="auto" gap="var(--polly-space-md)">
       <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
-        <span style={{ color: 'var(--polly-text-muted)' }}>
+        <Text tone="muted">
           {tasks.length} task{tasks.length === 1 ? '' : 's'}
-        </span>
+        </Text>
         <Button label="+ New task" tier="primary" size="small" data-action="task.new" />
       </Layout>
       <TaskFilters projectNames={projectNames} />
       {filterProjectName.value || filterPriority.value || showDone.value ? (
-        <Layout columns="auto auto 1fr" gap="var(--polly-space-sm)" alignItems="center">
-          <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+        <Cluster gap="var(--polly-space-sm)" align="center">
+          <Text tone="muted" size="sm">
             Filters on
-          </span>
+          </Text>
           <Button label="Clear" size="small" tier="tertiary" data-action="tasks.clear-filters" />
-          <span />
-        </Layout>
+        </Cluster>
       ) : null}
       {(['high', 'med', 'low'] as const).map((prio) => {
         const group = byPriority[prio];
@@ -308,9 +286,9 @@ function TasksView() {
         }
         return (
           <Layout key={prio} rows="auto" gap="var(--polly-space-xs)">
-            <h3>
+            <Text as="h3" size="lg" weight="bold">
               <Badge variant={PRIORITY_COLORS[prio]}>{prio}</Badge> ({group.length})
-            </h3>
+            </Text>
             {group.map((t) => (
               <Layout
                 key={t.tid}
@@ -321,23 +299,13 @@ function TasksView() {
                 <span data-action="task.toggle-done" data-action-tid={t.tid}>
                   <Checkbox checked={t.done} />
                 </span>
-                <span
-                  data-polly-truncate={true}
-                  data-action="task.open"
-                  data-action-tid={t.tid}
-                  style={{ cursor: 'pointer', minWidth: 0 }}
-                >
+                <Text data-polly-truncate={true} data-action="task.open" data-action-tid={t.tid}>
                   {t.description || '(untitled)'}
-                </span>
+                </Text>
                 {t.project ? (
-                  <span
-                    style={{
-                      fontSize: 'var(--polly-text-sm)',
-                      color: 'var(--polly-text-muted)',
-                    }}
-                  >
+                  <Text size="sm" tone="muted">
                     {t.project}
-                  </span>
+                  </Text>
                 ) : (
                   <span />
                 )}
@@ -356,7 +324,9 @@ function TasksView() {
       })}
       {byPriority.done.length > 0 && (
         <Layout rows="auto" gap="var(--polly-space-xs)">
-          <h3>Done ({byPriority.done.length})</h3>
+          <Text as="h3" size="lg" weight="bold">
+            Done ({byPriority.done.length})
+          </Text>
           {byPriority.done.map((t) => (
             <Layout
               key={t.tid}
@@ -365,19 +335,9 @@ function TasksView() {
               alignItems="center"
             >
               <Checkbox checked={t.done} data-action="task.toggle-done" data-action-tid={t.tid} />
-              <span
-                data-polly-truncate={true}
-                data-action="task.open"
-                data-action-tid={t.tid}
-                style={{
-                  textDecoration: 'line-through',
-                  color: 'var(--polly-text-muted)',
-                  cursor: 'pointer',
-                  minWidth: 0,
-                }}
-              >
-                {t.description || '(untitled)'}
-              </span>
+              <s data-polly-truncate={true} data-action="task.open" data-action-tid={t.tid}>
+                <Text tone="muted">{t.description || '(untitled)'}</Text>
+              </s>
               <Button
                 label="×"
                 size="small"
@@ -400,18 +360,22 @@ function TaskDetail({ tid }: { tid: string }) {
     return (
       <Layout rows="auto" gap="var(--polly-space-md)">
         <Button label="← Back" tier="tertiary" size="small" data-action="task.close" />
-        <p style={{ color: 'var(--polly-text-muted)' }}>Task not found.</p>
+        <Text as="p" tone="muted">
+          Task not found.
+        </Text>
       </Layout>
     );
   }
   const projects = projectsState.value.projects;
+  const projectOptions = [
+    { value: '', label: '(none)' },
+    ...projects.map((p) => ({ value: p.name, label: p.name })),
+  ];
   return (
     <Layout rows="auto" gap="var(--polly-space-md)">
       <Layout columns="auto minmax(0, 1fr) auto" gap="var(--polly-space-sm)" alignItems="center">
         <Button label="← Back" tier="tertiary" size="small" data-action="task.close" />
-        <span style={{ color: 'var(--polly-text-muted)', fontFamily: 'var(--polly-font-mono)' }}>
-          {task.tid}
-        </span>
+        <Code>{task.tid}</Code>
         <Button
           label="Delete"
           tier="tertiary"
@@ -423,9 +387,9 @@ function TaskDetail({ tid }: { tid: string }) {
       </Layout>
 
       <Layout rows="auto" gap="var(--polly-space-xs)">
-        <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+        <Text tone="muted" size="sm">
           Description
-        </span>
+        </Text>
         <ActionInput
           value={task.description}
           variant="single"
@@ -438,77 +402,35 @@ function TaskDetail({ tid }: { tid: string }) {
       </Layout>
 
       <Layout columns="1fr 1fr" gap="var(--polly-space-md)" stackOnMobile={true}>
-        <Layout rows="auto" gap="var(--polly-space-xs)">
-          <label
-            for={`project-${task.tid}`}
-            style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}
-          >
-            Project
-          </label>
-          <select
-            id={`project-${task.tid}`}
-            data-action="task.update"
-            data-action-field="project"
-            data-action-tid={task.tid}
-            value={task.project}
-            style={{
-              font: 'inherit',
-              padding: 'var(--polly-space-sm) var(--polly-space-md)',
-              border: '1px solid var(--polly-border)',
-              borderRadius: 'var(--polly-radius-md)',
-              background: 'var(--polly-surface)',
-              color: 'var(--polly-text)',
-            }}
-          >
-            <option value="">(none)</option>
-            {projects.map((p) => (
-              <option key={p.pid} value={p.name}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </Layout>
-
-        <Layout rows="auto" gap="var(--polly-space-xs)">
-          <label
-            for={`priority-${task.tid}`}
-            style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}
-          >
-            Priority
-          </label>
-          <select
-            id={`priority-${task.tid}`}
-            data-action="task.update"
-            data-action-field="priority"
-            data-action-tid={task.tid}
-            value={task.priority}
-            style={{
-              font: 'inherit',
-              padding: 'var(--polly-space-sm) var(--polly-space-md)',
-              border: '1px solid var(--polly-border)',
-              borderRadius: 'var(--polly-radius-md)',
-              background: 'var(--polly-surface)',
-              color: 'var(--polly-text)',
-            }}
-          >
-            <option value="high">high</option>
-            <option value="med">med</option>
-            <option value="low">low</option>
-          </select>
-        </Layout>
+        <ActionSelect
+          id={`project-${task.tid}`}
+          label="Project"
+          value={task.project}
+          options={projectOptions}
+          action="task.update"
+          actionData={{ field: 'project', tid: task.tid }}
+        />
+        <ActionSelect
+          id={`priority-${task.tid}`}
+          label="Priority"
+          value={task.priority}
+          options={PRIORITY_OPTIONS}
+          action="task.update"
+          actionData={{ field: 'priority', tid: task.tid }}
+        />
       </Layout>
 
       <Layout columns="auto 1fr" gap="var(--polly-space-sm)" alignItems="center">
         <span data-action="task.toggle-done" data-action-tid={task.tid}>
           <Checkbox checked={task.done} />
         </span>
-        <span>Done</span>
+        <Text>Done</Text>
       </Layout>
 
       <Layout rows="auto" gap="var(--polly-space-xs)">
-        <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+        <Text tone="muted" size="sm">
           Notes
-        </span>
+        </Text>
         <ActionInput
           value={task.notes}
           variant="multi"
@@ -521,9 +443,9 @@ function TaskDetail({ tid }: { tid: string }) {
       </Layout>
 
       <Layout rows="auto" gap="var(--polly-space-xs)">
-        <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+        <Text tone="muted" size="sm">
           Links
-        </span>
+        </Text>
         <ActionInput
           value={task.links}
           variant="single"
@@ -544,20 +466,26 @@ function ProjectDetail({ pid }: { pid: string }) {
     return (
       <Layout rows="auto" gap="var(--polly-space-md)">
         <Button label="← Back" tier="tertiary" size="small" data-action="project.close" />
-        <p style={{ color: 'var(--polly-text-muted)' }}>Project not found.</p>
+        <Text as="p" tone="muted">
+          Project not found.
+        </Text>
       </Layout>
     );
   }
   const otherProjects = projectsState.value.projects.filter((p) => p.pid !== pid);
   const projectTaskCount = tasksState.value.tasks.filter((t) => t.project === project.name).length;
+  const parentOptions = [
+    { value: '', label: '(none)' },
+    ...otherProjects.map((p) => ({ value: p.pid, label: `${p.pid} — ${p.name}` })),
+  ];
 
   return (
     <Layout rows="auto" gap="var(--polly-space-md)">
       <Layout columns="auto minmax(0, 1fr) auto" gap="var(--polly-space-sm)" alignItems="center">
         <Button label="← Back" tier="tertiary" size="small" data-action="project.close" />
-        <span style={{ color: 'var(--polly-text-muted)', fontFamily: 'var(--polly-font-mono)' }}>
+        <Code>
           {project.pid} · {projectTaskCount} task{projectTaskCount === 1 ? '' : 's'}
-        </span>
+        </Code>
         <Button
           label="Delete"
           tier="tertiary"
@@ -569,9 +497,9 @@ function ProjectDetail({ pid }: { pid: string }) {
       </Layout>
 
       <Layout rows="auto" gap="var(--polly-space-xs)">
-        <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+        <Text tone="muted" size="sm">
           Name
-        </span>
+        </Text>
         <ActionInput
           value={project.name}
           variant="single"
@@ -584,66 +512,26 @@ function ProjectDetail({ pid }: { pid: string }) {
       </Layout>
 
       <Layout columns="1fr 1fr 1fr" gap="var(--polly-space-md)" stackOnMobile={true}>
+        <ActionSelect
+          id={`category-${project.pid}`}
+          label="Category"
+          value={project.category}
+          options={CATEGORY_OPTIONS}
+          action="project.update"
+          actionData={{ field: 'category', pid: project.pid }}
+        />
+        <ActionSelect
+          id={`status-${project.pid}`}
+          label="Status"
+          value={project.status}
+          options={STATUS_OPTIONS}
+          action="project.update"
+          actionData={{ field: 'status', pid: project.pid }}
+        />
         <Layout rows="auto" gap="var(--polly-space-xs)">
-          <label
-            for={`category-${project.pid}`}
-            style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}
-          >
-            Category
-          </label>
-          <select
-            id={`category-${project.pid}`}
-            data-action="project.update"
-            data-action-field="category"
-            data-action-pid={project.pid}
-            value={project.category}
-            style={{
-              font: 'inherit',
-              padding: 'var(--polly-space-sm) var(--polly-space-md)',
-              border: '1px solid var(--polly-border)',
-              borderRadius: 'var(--polly-radius-md)',
-              background: 'var(--polly-surface)',
-              color: 'var(--polly-text)',
-            }}
-          >
-            <option value="personal">personal</option>
-            <option value="amboss">amboss</option>
-          </select>
-        </Layout>
-
-        <Layout rows="auto" gap="var(--polly-space-xs)">
-          <label
-            for={`status-${project.pid}`}
-            style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}
-          >
-            Status
-          </label>
-          <select
-            id={`status-${project.pid}`}
-            data-action="project.update"
-            data-action-field="status"
-            data-action-pid={project.pid}
-            value={project.status}
-            style={{
-              font: 'inherit',
-              padding: 'var(--polly-space-sm) var(--polly-space-md)',
-              border: '1px solid var(--polly-border)',
-              borderRadius: 'var(--polly-radius-md)',
-              background: 'var(--polly-surface)',
-              color: 'var(--polly-text)',
-            }}
-          >
-            <option value="active">active</option>
-            <option value="paused">paused</option>
-            <option value="done">done</option>
-            <option value="archived">archived</option>
-          </select>
-        </Layout>
-
-        <Layout rows="auto" gap="var(--polly-space-xs)">
-          <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+          <Text tone="muted" size="sm">
             Type
-          </span>
+          </Text>
           <ActionInput
             value={project.type}
             variant="single"
@@ -656,41 +544,19 @@ function ProjectDetail({ pid }: { pid: string }) {
         </Layout>
       </Layout>
 
-      <Layout rows="auto" gap="var(--polly-space-xs)">
-        <label
-          for={`parent-${project.pid}`}
-          style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}
-        >
-          Parent
-        </label>
-        <select
-          id={`parent-${project.pid}`}
-          data-action="project.update"
-          data-action-field="parent"
-          data-action-pid={project.pid}
-          value={project.parent ?? ''}
-          style={{
-            font: 'inherit',
-            padding: 'var(--polly-space-sm) var(--polly-space-md)',
-            border: '1px solid var(--polly-border)',
-            borderRadius: 'var(--polly-radius-md)',
-            background: 'var(--polly-surface)',
-            color: 'var(--polly-text)',
-          }}
-        >
-          <option value="">(none)</option>
-          {otherProjects.map((p) => (
-            <option key={p.pid} value={p.pid}>
-              {p.pid} — {p.name}
-            </option>
-          ))}
-        </select>
-      </Layout>
+      <ActionSelect
+        id={`parent-${project.pid}`}
+        label="Parent"
+        value={project.parent ?? ''}
+        options={parentOptions}
+        action="project.update"
+        actionData={{ field: 'parent', pid: project.pid }}
+      />
 
       <Layout rows="auto" gap="var(--polly-space-xs)">
-        <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+        <Text tone="muted" size="sm">
           Notes
-        </span>
+        </Text>
         <ActionInput
           value={project.notes}
           variant="multi"
@@ -704,9 +570,9 @@ function ProjectDetail({ pid }: { pid: string }) {
 
       <Layout columns="1fr 1fr" gap="var(--polly-space-md)" stackOnMobile={true}>
         <Layout rows="auto" gap="var(--polly-space-xs)">
-          <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+          <Text tone="muted" size="sm">
             Dirs
-          </span>
+          </Text>
           <ActionInput
             value={project.dirs}
             variant="single"
@@ -719,9 +585,9 @@ function ProjectDetail({ pid }: { pid: string }) {
         </Layout>
 
         <Layout rows="auto" gap="var(--polly-space-xs)">
-          <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+          <Text tone="muted" size="sm">
             Skills
-          </span>
+          </Text>
           <ActionInput
             value={project.skills}
             variant="single"
@@ -750,10 +616,12 @@ function ProjectTasks({ projectName }: { projectName: string }) {
   if (matches.length === 0) {
     return (
       <Layout rows="auto" gap="var(--polly-space-sm)">
-        <h3 style={{ margin: 0 }}>Tasks</h3>
-        <p style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+        <Text as="h3" size="lg" weight="bold">
+          Tasks
+        </Text>
+        <Text as="p" tone="muted" size="sm">
           No tasks yet. Add one from the Tasks tab and set this project as its parent.
-        </p>
+        </Text>
       </Layout>
     );
   }
@@ -761,9 +629,9 @@ function ProjectTasks({ projectName }: { projectName: string }) {
   return (
     <Layout rows="auto" gap="var(--polly-space-sm)">
       <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
-        <h3 style={{ margin: 0 }}>
+        <Text as="h3" size="lg" weight="bold">
           Tasks ({open.length} open{done.length > 0 ? `, ${done.length} done` : ''})
-        </h3>
+        </Text>
       </Layout>
       {open.map((t) => (
         <Layout
@@ -773,14 +641,9 @@ function ProjectTasks({ projectName }: { projectName: string }) {
           alignItems="center"
         >
           <Checkbox checked={t.done} data-action="task.toggle-done" data-action-tid={t.tid} />
-          <span
-            data-polly-truncate={true}
-            data-action="task.open"
-            data-action-tid={t.tid}
-            style={{ cursor: 'pointer', minWidth: 0 }}
-          >
+          <Text data-polly-truncate={true} data-action="task.open" data-action-tid={t.tid}>
             {t.description || '(untitled)'}
-          </span>
+          </Text>
           <Badge variant={PRIORITY_COLORS[t.priority]}>{t.priority}</Badge>
           <Button
             label="×"
@@ -794,14 +657,10 @@ function ProjectTasks({ projectName }: { projectName: string }) {
       ))}
       {done.length > 0 && (
         <details>
-          <summary
-            style={{
-              cursor: 'pointer',
-              color: 'var(--polly-text-muted)',
-              fontSize: 'var(--polly-text-sm)',
-            }}
-          >
-            Done ({done.length})
+          <summary>
+            <Text tone="muted" size="sm">
+              Done ({done.length})
+            </Text>
           </summary>
           <Layout rows="auto" gap="var(--polly-space-xs)" padding="var(--polly-space-xs) 0 0 0">
             {done.map((t) => (
@@ -814,19 +673,9 @@ function ProjectTasks({ projectName }: { projectName: string }) {
                 <span data-action="task.toggle-done" data-action-tid={t.tid}>
                   <Checkbox checked={t.done} />
                 </span>
-                <span
-                  data-polly-truncate={true}
-                  data-action="task.open"
-                  data-action-tid={t.tid}
-                  style={{
-                    textDecoration: 'line-through',
-                    color: 'var(--polly-text-muted)',
-                    cursor: 'pointer',
-                    minWidth: 0,
-                  }}
-                >
-                  {t.description || '(untitled)'}
-                </span>
+                <s data-polly-truncate={true} data-action="task.open" data-action-tid={t.tid}>
+                  <Text tone="muted">{t.description || '(untitled)'}</Text>
+                </s>
                 <Button
                   label="×"
                   size="small"
@@ -871,9 +720,9 @@ function CaptureView() {
               ariaLabel="Capture text"
               actionData={{ id: c.id }}
             />
-            <span style={{ fontSize: 'var(--polly-text-xs)', color: 'var(--polly-text-muted)' }}>
+            <Text size="xs" tone="muted">
               {new Date(c.createdAt).toLocaleDateString()}
-            </span>
+            </Text>
           </Layout>
           <Button
             label="→ Task"
@@ -893,7 +742,9 @@ function CaptureView() {
         </Layout>
       ))}
       {capturesState.value.captures.length === 0 && (
-        <p style={{ color: 'var(--polly-text-muted)' }}>No captures yet.</p>
+        <Text as="p" tone="muted">
+          No captures yet.
+        </Text>
       )}
     </Layout>
   );
@@ -984,7 +835,9 @@ export function App() {
     >
       <Layout rows="auto" gap="var(--polly-space-md)">
         <Layout columns="1fr auto" gap="var(--polly-space-sm)">
-          <h1 style={{ margin: 0 }}>Todo</h1>
+          <Text as="h1" size="xl" weight="bold">
+            Todo
+          </Text>
           <HubBack />
         </Layout>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="todo.tab" />

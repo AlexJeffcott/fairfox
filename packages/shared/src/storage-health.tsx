@@ -14,7 +14,7 @@
 // and dismissing the warning would only leave the user staring at a
 // silent broken app.
 
-import { Code } from '@fairfox/polly/ui';
+import { Button, Code, Layout, Surface, Text } from '@fairfox/polly/ui';
 import { signal } from '@preact/signals';
 import { mesh } from '#src/ensure-mesh.ts';
 
@@ -82,46 +82,37 @@ export function StorageHealthBanner(): preact.JSX.Element | null {
     return null;
   }
   return (
-    <div
+    <Surface
+      variant="floating"
+      background="#7f1d1d"
+      padding="var(--polly-space-sm) var(--polly-space-md)"
+      radius="md"
+      maxInlineSize="40rem"
+      inset="auto auto var(--polly-space-md) 50%"
+      // Token-retint: a deliberate dark error banner. Its polly tokens
+      // are overridden here and inherited by the Text and Button
+      // children. translateX completes horizontal centring of a fixed
+      // element — no Surface prop expresses a transform.
       style={{
-        position: 'fixed',
-        bottom: '1rem',
-        left: '50%',
         transform: 'translateX(-50%)',
-        padding: '0.75rem 1.25rem',
-        background: '#7f1d1d',
-        color: '#fef2f2',
-        borderRadius: '8px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-        fontSize: '0.85rem',
-        display: 'grid',
-        gridTemplateColumns: '1fr auto',
-        alignItems: 'center',
-        gap: '0.75rem',
-        maxWidth: '40rem',
-        zIndex: 9999,
+        '--polly-text': '#fef2f2',
+        '--polly-text-muted': '#fef2f2',
       }}
     >
-      <span>
-        Local mesh storage is unresponsive ({err.operation} on{' '}
-        <Code>{err.documentId.slice(0, 12)}</Code> hung for {Math.round(err.elapsedMs / 1000)}s).
-        Clear local mesh storage and reload to recover; your keyring and identity stay paired.
-      </span>
-      <button
-        type="button"
-        data-action="app.clear-local-mesh"
-        style={{
-          background: '#f87171',
-          color: '#7f1d1d',
-          border: 'none',
-          padding: '0.4rem 0.85rem',
-          borderRadius: '6px',
-          cursor: 'pointer',
-          fontWeight: 600,
-        }}
-      >
-        Clear and reload
-      </button>
-    </div>
+      <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
+        <Text size="sm">
+          Local mesh storage is unresponsive ({err.operation} on{' '}
+          <Code>{err.documentId.slice(0, 12)}</Code> hung for {Math.round(err.elapsedMs / 1000)}s).
+          Clear local mesh storage and reload to recover; your keyring and identity stay paired.
+        </Text>
+        <Button
+          label="Clear and reload"
+          tier="primary"
+          color="danger"
+          size="small"
+          data-action="app.clear-local-mesh"
+        />
+      </Layout>
+    </Surface>
   );
 }

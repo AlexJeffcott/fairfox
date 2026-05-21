@@ -6,7 +6,7 @@
 // the other rows offer forget-locally (revoke + drop from this
 // keyring, then reload).
 
-import { ActionInput, Badge, Button, Layout } from '@fairfox/polly/ui';
+import { ActionInput, Badge, Button, Code, Layout, Surface, Text } from '@fairfox/polly/ui';
 import { devicesState } from '@fairfox/shared/devices-state';
 import { peersPresent } from '@fairfox/shared/peers-presence';
 import { canDo, effectivePermissionsForDevice } from '@fairfox/shared/policy';
@@ -21,33 +21,14 @@ import { selfPeerId } from '#src/client/self-peer.ts';
 
 function ConnectIdentityPanel() {
   return (
-    <div
-      style={{
-        border: '1px solid var(--polly-border)',
-        borderRadius: '8px',
-        padding: 'var(--polly-space-md)',
-        background: 'var(--polly-surface-muted, #f5f5f4)',
-      }}
-    >
-      <p
-        style={{
-          margin: '0 0 var(--polly-space-xs, 0.25rem)',
-          fontSize: '0.9rem',
-          fontWeight: 600,
-        }}
-      >
+    <Surface variant="sunken" padding="var(--polly-space-md)" radius="md" border="default">
+      <Text as="p" size="sm" weight="bold">
         Connect my identity
-      </p>
-      <p
-        style={{
-          margin: '0 0 var(--polly-space-sm, 0.5rem)',
-          fontSize: '0.85rem',
-          color: 'var(--polly-text-muted, #57534e)',
-        }}
-      >
+      </Text>
+      <Text as="p" size="sm" tone="muted">
         This device is paired but not yet linked to a user — that's why pairing new peers and some
         writes are blocked. Import your recovery blob to finish the hookup.
-      </p>
+      </Text>
       {canScanWithCamera() && (
         <Layout
           columns="1fr"
@@ -90,17 +71,13 @@ function ConnectIdentityPanel() {
         />
       </Layout>
       {userSetupError.value && (
-        <p
-          style={{
-            margin: 'var(--polly-space-sm, 0.5rem) 0 0',
-            color: '#b91c1c',
-            fontSize: '0.85rem',
-          }}
-        >
-          {userSetupError.value}
-        </p>
+        <Surface as="p" variant="callout" padding="var(--polly-space-sm)">
+          <Text as="span" size="sm">
+            {userSetupError.value}
+          </Text>
+        </Surface>
       )}
-    </div>
+    </Surface>
   );
 }
 
@@ -111,9 +88,9 @@ function PairActions() {
   }
   return (
     <Layout columns="minmax(0, 1fr) auto" gap="var(--polly-space-sm)" alignItems="center">
-      <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
+      <Text as="span" tone="muted" size="sm">
         Bring another device, CLI, or browser extension into this mesh.
-      </span>
+      </Text>
       <Button
         label="+ Pair another device"
         tier="primary"
@@ -208,9 +185,9 @@ export function PeersView() {
     return (
       <Layout rows="auto auto" gap="var(--polly-space-md)">
         <PairActions />
-        <p style={{ color: 'var(--polly-text-muted)' }}>
+        <Text as="p" tone="muted">
           No devices yet. When another device pairs with this one it will show up here.
-        </p>
+        </Text>
       </Layout>
     );
   }
@@ -233,15 +210,13 @@ export function PeersView() {
               alignItems="center"
               padding="var(--polly-space-md) var(--polly-space-lg)"
             >
-              <span
-                style={{
-                  display: 'inline-block',
-                  width: '0.6rem',
-                  height: '0.6rem',
-                  borderRadius: '9999px',
-                  background: isOnline ? 'var(--polly-success)' : 'var(--polly-border)',
-                }}
-                title={isOnline ? 'online' : 'offline'}
+              <Surface
+                inline={true}
+                width="0.6rem"
+                height="0.6rem"
+                radius="full"
+                background={isOnline ? 'var(--polly-success)' : 'var(--polly-border)'}
+                aria-label={isOnline ? 'online' : 'offline'}
               />
               <Layout rows="auto auto auto auto" gap="0">
                 <Layout
@@ -266,17 +241,11 @@ export function PeersView() {
                   <Badge variant={agentColor(entry.agent)}>{entry.agent}</Badge>
                   {isSelf && <Badge variant="default">this device</Badge>}
                 </Layout>
-                <span
-                  style={{
-                    color: 'var(--polly-text-muted)',
-                    fontSize: 'var(--polly-text-sm)',
-                    fontFamily: 'var(--polly-font-mono)',
-                  }}
-                >
-                  {entry.peerId.slice(0, 12)}
+                <Text as="span" tone="muted" size="sm">
+                  <Code>{entry.peerId.slice(0, 12)}</Code>
                   {' · '}
                   {isOnline ? 'online' : `last seen ${relativeTime(entry.lastSeenAt)}`}
-                </span>
+                </Text>
                 {ownerUserIds.length > 0 && (
                   <Layout
                     columns="repeat(auto-fill, minmax(8rem, 1fr))"
@@ -297,26 +266,14 @@ export function PeersView() {
                   </Layout>
                 )}
                 {effective.length > 0 && (
-                  <span
-                    style={{
-                      color: 'var(--polly-text-muted)',
-                      fontSize: 'var(--polly-text-sm)',
-                      fontStyle: 'italic',
-                    }}
-                  >
-                    can: {effective.join(', ')}
-                  </span>
+                  <Text as="span" tone="muted" size="sm">
+                    <em>can: {effective.join(', ')}</em>
+                  </Text>
                 )}
                 {ownerUserIds.length > 0 && effective.length === 0 && (
-                  <span
-                    style={{
-                      color: 'var(--polly-warning, #b45309)',
-                      fontSize: 'var(--polly-text-sm)',
-                      fontStyle: 'italic',
-                    }}
-                  >
-                    read-only (no endorsed user has any permissions)
-                  </span>
+                  <Text as="span" size="sm">
+                    <em>read-only (no endorsed user has any permissions)</em>
+                  </Text>
                 )}
               </Layout>
               {isSelf ? (

@@ -7,24 +7,18 @@
 // weeds. Replaces the `MeshControls` button that used to start the
 // pairing wizard inline — pairing now lives on the hub.
 
+import { Button } from '@fairfox/polly/ui';
+
 export function HubBack(): preact.JSX.Element {
   return (
-    <a
+    <Button
       href="/"
+      tier="tertiary"
+      size="small"
       data-action="app.navigate"
       data-action-href="/"
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 'var(--polly-space-xs)',
-        color: 'var(--polly-text-muted)',
-        textDecoration: 'none',
-        fontSize: 'var(--polly-text-sm)',
-      }}
       aria-label="Back to fairfox home"
-    >
-      <span aria-hidden="true">←</span>
-      <span>fairfox</span>
-    </a>
+      label="← fairfox"
+    />
   );
 }

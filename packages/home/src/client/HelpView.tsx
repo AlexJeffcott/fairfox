@@ -6,7 +6,7 @@
 
 import { OBSERVED_MESH_STATE_MODULE_ID_FROM_AGENDA } from '@fairfox/agenda/state';
 import { MESH_STATE_MODULE_ID } from '@fairfox/polly/mesh';
-import { Button, Code, Layout } from '@fairfox/polly/ui';
+import { Button, Cluster, Code, Layout, Surface, Text } from '@fairfox/polly/ui';
 import { devicesState } from '@fairfox/shared/devices-state';
 import { mesh } from '@fairfox/shared/ensure-mesh';
 import {
@@ -39,8 +39,12 @@ function Section({
 }): preact.JSX.Element {
   return (
     <Layout rows="auto auto" columns="minmax(0, 1fr)" gap="var(--polly-space-sm)">
-      <h2 style={{ margin: 0, fontSize: 'var(--polly-text-lg)' }}>{heading}</h2>
-      <div style={{ minWidth: 0, color: 'var(--polly-text-muted)' }}>{children}</div>
+      <Text as="h2" size="lg" weight="bold">
+        {heading}
+      </Text>
+      <Text as="div" tone="muted">
+        {children}
+      </Text>
     </Layout>
   );
 }
@@ -110,32 +114,22 @@ function Diagnostics(): preact.JSX.Element {
   const lineCount = text.split('\n').length;
   return (
     <Layout rows="auto auto" columns="minmax(0, 1fr)" gap="var(--polly-space-sm)">
-      <h2 style={{ margin: 0, fontSize: 'var(--polly-text-lg)' }}>Diagnostics</h2>
-      <p style={{ color: 'var(--polly-text-muted)', margin: 0 }}>
+      <Text as="h2" size="lg" weight="bold">
+        Diagnostics
+      </Text>
+      <Text as="p" tone="muted">
         Tap the box to select everything for copy. Compare with another paired device's Help tab to
         confirm you're on the same mesh.
-      </p>
-      <textarea
-        readOnly={true}
-        rows={lineCount}
-        value={text}
-        data-action="help.select-all-textarea"
-        data-help-snapshot="true"
-        style={{
-          width: '100%',
-          boxSizing: 'border-box',
-          fontFamily: 'var(--polly-font-mono)',
-          fontSize: 'var(--polly-text-sm)',
-          padding: 'var(--polly-space-sm) var(--polly-space-md)',
-          background: 'var(--polly-surface-sunken)',
-          borderRadius: 'var(--polly-radius-md)',
-          border: '1px solid var(--polly-border)',
-          color: 'var(--polly-text)',
-          resize: 'none',
-          whiteSpace: 'pre',
-          overflow: 'auto',
-        }}
-      />
+      </Text>
+      <Surface variant="sunken">
+        <textarea
+          readOnly={true}
+          rows={lineCount}
+          value={text}
+          data-action="help.select-all-textarea"
+          data-help-snapshot="true"
+        />
+      </Surface>
     </Layout>
   );
 }
@@ -509,13 +503,15 @@ function DocSizes(): preact.JSX.Element {
   const lineCount = Math.max(3, text.split('\n').length);
   return (
     <Layout rows="auto auto auto auto" columns="minmax(0, 1fr)" gap="var(--polly-space-sm)">
-      <h2 style={{ margin: 0, fontSize: 'var(--polly-text-lg)' }}>Document sizes</h2>
-      <p style={{ color: 'var(--polly-text-muted)', margin: 0 }}>
+      <Text as="h2" size="lg" weight="bold">
+        Document sizes
+      </Text>
+      <Text as="p" tone="muted">
         On-disk size of every $meshState document in this device's polly store, summed across
         snapshots and incremental chunks. A doc much larger than a few KB is a candidate for
         compaction — the heavy automerge replay on first peer sync scales with this number.
-      </p>
-      <div style={{ display: 'flex', gap: 'var(--polly-space-sm)', justifySelf: 'start' }}>
+      </Text>
+      <Cluster gap="var(--polly-space-sm)" justify="start">
         <Button
           data-action="help.refresh-doc-sizes"
           tier="secondary"
@@ -531,28 +527,16 @@ function DocSizes(): preact.JSX.Element {
             label="Delete sealed docs"
           />
         ) : null}
-      </div>
-      <textarea
-        readOnly={true}
-        rows={lineCount}
-        value={text}
-        data-action="help.select-all-textarea"
-        data-help-snapshot="true"
-        style={{
-          width: '100%',
-          boxSizing: 'border-box',
-          fontFamily: 'var(--polly-font-mono)',
-          fontSize: 'var(--polly-text-sm)',
-          padding: 'var(--polly-space-sm) var(--polly-space-md)',
-          background: 'var(--polly-surface-sunken)',
-          borderRadius: 'var(--polly-radius-md)',
-          border: '1px solid var(--polly-border)',
-          color: 'var(--polly-text)',
-          resize: 'none',
-          whiteSpace: 'pre',
-          overflow: 'auto',
-        }}
-      />
+      </Cluster>
+      <Surface variant="sunken">
+        <textarea
+          readOnly={true}
+          rows={lineCount}
+          value={text}
+          data-action="help.select-all-textarea"
+          data-help-snapshot="true"
+        />
+      </Surface>
     </Layout>
   );
 }
@@ -562,33 +546,23 @@ function SyncDiagnostics(): preact.JSX.Element {
   const lineCount = Math.max(3, text.split('\n').length);
   return (
     <Layout rows="auto auto auto" columns="minmax(0, 1fr)" gap="var(--polly-space-sm)">
-      <h2 style={{ margin: 0, fontSize: 'var(--polly-text-lg)' }}>Sync diagnostics</h2>
-      <p style={{ color: 'var(--polly-text-muted)', margin: 0 }}>
+      <Text as="h2" size="lg" weight="bold">
+        Sync diagnostics
+      </Text>
+      <Text as="p" tone="muted">
         Per-peer ICE / data-channel / sync state, polled every 2s from polly's getPeerStateSnapshot
         + refreshAllTransportStats. Use this to see whether bytes are actually traversing the relay
         and whether the apply backlog is draining.
-      </p>
-      <textarea
-        readOnly={true}
-        rows={lineCount}
-        value={text}
-        data-action="help.select-all-textarea"
-        data-help-snapshot="true"
-        style={{
-          width: '100%',
-          boxSizing: 'border-box',
-          fontFamily: 'var(--polly-font-mono)',
-          fontSize: 'var(--polly-text-sm)',
-          padding: 'var(--polly-space-sm) var(--polly-space-md)',
-          background: 'var(--polly-surface-sunken)',
-          borderRadius: 'var(--polly-radius-md)',
-          border: '1px solid var(--polly-border)',
-          color: 'var(--polly-text)',
-          resize: 'none',
-          whiteSpace: 'pre',
-          overflow: 'auto',
-        }}
-      />
+      </Text>
+      <Surface variant="sunken">
+        <textarea
+          readOnly={true}
+          rows={lineCount}
+          value={text}
+          data-action="help.select-all-textarea"
+          data-help-snapshot="true"
+        />
+      </Surface>
     </Layout>
   );
 }
@@ -599,11 +573,11 @@ export function HelpView(): preact.JSX.Element {
       <Diagnostics />
       <DocSizes />
       <SyncDiagnostics />
-      <p style={{ margin: 0 }}>
+      <Text as="p">
         fairfox is a small household mesh. Every paired device shares the same CRDT state — todos,
         agenda, users, peers — over WebRTC. The server is only here for discovery and a one-shot
         pairing relay, not the data path. This page is a quick tour of the moving parts.
-      </p>
+      </Text>
 
       <Section heading="Install fairfox as an app">
         <p>

@@ -7,7 +7,7 @@
 // is the natural home for pairing-adjacent administration since
 // pairing already lives on this sub-app.
 
-import { Button, Layout, Tabs } from '@fairfox/polly/ui';
+import { Button, Cluster, Layout, Surface, Tabs, Text } from '@fairfox/polly/ui';
 import { ensureMeshFingerprintLoaded, meshMetaState } from '@fairfox/shared/mesh-meta-state';
 import { setPageContext } from '@fairfox/shared/page-context';
 import { canDo } from '@fairfox/shared/policy';
@@ -72,27 +72,20 @@ function AppsGrid() {
   return (
     <Layout rows="auto" gap="var(--polly-space-md)">
       {SUBAPPS.map((s) => (
-        <a
-          key={s.path}
-          href={s.path}
-          data-action="app.navigate"
-          data-action-href={s.path}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr',
-            gap: 'var(--polly-space-xs)',
-            padding: 'var(--polly-space-md) var(--polly-space-lg)',
-            border: '1px solid var(--polly-border)',
-            borderRadius: 'var(--polly-radius-lg)',
-            textDecoration: 'none',
-            color: 'var(--polly-text)',
-            background: 'var(--polly-surface)',
-          }}
-        >
-          <strong>{s.name}</strong>
-          <span style={{ color: 'var(--polly-text-muted)', fontSize: 'var(--polly-text-sm)' }}>
-            {s.description}
-          </span>
+        <a key={s.path} href={s.path} data-action="app.navigate" data-action-href={s.path}>
+          <Surface
+            variant="raised"
+            padding="var(--polly-space-md) var(--polly-space-lg)"
+            radius="lg"
+            border="default"
+          >
+            <Layout rows="auto auto" gap="var(--polly-space-xs)">
+              <strong>{s.name}</strong>
+              <Text as="span" tone="muted" size="sm">
+                {s.description}
+              </Text>
+            </Layout>
+          </Surface>
         </a>
       ))}
     </Layout>
@@ -127,16 +120,14 @@ export function Home() {
     >
       <header>
         <Layout columns="1fr auto" gap="var(--polly-space-md)" alignItems="center">
-          <div>
-            <h1 style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--polly-space-sm)' }}>
-              <span>fairfox</span>
-              {meshName && (
-                <span style={{ color: 'var(--polly-text-muted)', fontSize: '1rem' }}>
-                  · {meshName}
-                </span>
-              )}
-            </h1>
-          </div>
+          <Cluster as="h1" gap="var(--polly-space-sm)" align="baseline">
+            <span>fairfox</span>
+            {meshName && (
+              <Text as="span" tone="muted" size="md" weight="normal">
+                · {meshName}
+              </Text>
+            )}
+          </Cluster>
           <Layout columns="auto auto" gap="var(--polly-space-xs)" alignItems="center">
             <Button
               label="Reload"

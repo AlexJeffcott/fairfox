@@ -3,7 +3,16 @@
 // All state from the $meshState agenda document. Actions dispatch through
 // the global delegator via data-action attributes.
 
-import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
+import {
+  ActionInput,
+  ActionSelect,
+  Badge,
+  Button,
+  Layout,
+  Surface,
+  Tabs,
+  Text,
+} from '@fairfox/polly/ui';
 import { HubBack } from '@fairfox/shared/hub-back';
 import { setPageContext } from '@fairfox/shared/page-context';
 import { effect, signal } from '@preact/signals';
@@ -171,9 +180,9 @@ function TodayView() {
 
   if (annotated.length === 0) {
     return (
-      <p style={{ color: 'var(--polly-text-muted)' }}>
+      <Text as="p" tone="muted">
         Nothing due today ({now.toISOString().slice(0, 10)}).
-      </p>
+      </Text>
     );
   }
 
@@ -181,7 +190,9 @@ function TodayView() {
     <Layout rows="auto auto" gap="var(--polly-space-md)">
       {events.length > 0 && (
         <Layout rows="auto" gap="var(--polly-space-sm)">
-          <h3 style={{ margin: 0 }}>Events</h3>
+          <Text as="h3" size="lg" weight="bold">
+            Events
+          </Text>
           {events.map(({ item }) => (
             <Layout
               key={item.id}
@@ -190,23 +201,16 @@ function TodayView() {
               alignItems="center"
             >
               {item.time && <Badge variant="info">{item.time}</Badge>}
-              <span
-                style={{
-                  minWidth: 0,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {item.name}
-              </span>
+              <span data-polly-truncate={true}>{item.name}</span>
             </Layout>
           ))}
         </Layout>
       )}
       {chores.length > 0 && (
         <Layout rows="auto" gap="var(--polly-space-sm)">
-          <h3 style={{ margin: 0 }}>Chores</h3>
+          <Text as="h3" size="lg" weight="bold">
+            Chores
+          </Text>
           {chores.map(({ item, due }) => (
             <ChoreRow key={item.id} item={item} daysOverdue={due.daysOverdue} />
           ))}
@@ -220,20 +224,15 @@ function ChoreRow({ item, daysOverdue }: { item: AgendaItem; daysOverdue: number
   return (
     <Layout rows="auto auto" gap="var(--polly-space-xs)" padding="var(--polly-space-sm) 0">
       <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
-        <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <span data-polly-truncate={true}>
           <strong>{item.name}</strong>
           {item.room && (
-            <span
-              style={{
-                marginLeft: 'var(--polly-space-xs)',
-                color: 'var(--polly-text-muted)',
-                fontSize: 'var(--polly-text-sm)',
-              }}
-            >
+            <Text size="sm" tone="muted">
+              {' '}
               {item.room}
-            </span>
+            </Text>
           )}
-        </div>
+        </span>
         <Badge variant={overdueBadgeVariant(daysOverdue)}>{overdueLabel(daysOverdue)}</Badge>
       </Layout>
       <Layout
@@ -347,7 +346,7 @@ function CreateItemForm() {
       )}
       {draft.recurrence === 'interval' && (
         <Layout columns="auto 1fr" gap="var(--polly-space-xs)" alignItems="center">
-          <span style={{ fontSize: 'var(--polly-text-sm)' }}>Every</span>
+          <Text size="sm">Every</Text>
           <ActionInput
             value={String(draft.recurrenceInterval)}
             variant="single"
@@ -390,24 +389,15 @@ function CreateItemForm() {
           placeholder="points (1–10)"
           ariaLabel="Points"
         />
-        <select
+        <ActionSelect
           value={draft.room ?? ''}
-          data-action="draft.room"
-          aria-label="Room"
-          style={{
-            padding: '0.35rem',
-            border: '1px solid var(--polly-border)',
-            borderRadius: '4px',
-            fontSize: 'var(--polly-text-sm)',
-          }}
-        >
-          <option value="">(no room)</option>
-          {ROOMS.map((room) => (
-            <option key={room} value={room}>
-              {room}
-            </option>
-          ))}
-        </select>
+          action="draft.room"
+          placeholder="(no room)"
+          options={[
+            { value: '', label: '(no room)' },
+            ...ROOMS.map((room) => ({ value: room, label: room })),
+          ]}
+        />
         <Button label="Add" size="small" tier="primary" data-action="item.create-from-draft" />
       </Layout>
     </Layout>
@@ -421,7 +411,9 @@ function ItemsView() {
     <Layout rows="auto auto" gap="var(--polly-space-md)">
       <CreateItemForm />
       <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
-        <h3 style={{ margin: 0 }}>{showArchivedSignal.value ? 'All items' : 'Active items'}</h3>
+        <Text as="h3" size="lg" weight="bold">
+          {showArchivedSignal.value ? 'All items' : 'Active items'}
+        </Text>
         <Button
           label={showArchivedSignal.value ? 'Hide archived' : 'Show archived'}
           size="small"
@@ -438,20 +430,15 @@ function ItemsView() {
             alignItems="center"
           >
             <Badge variant={item.kind === 'event' ? 'info' : 'default'}>{item.kind}</Badge>
-            <div>
+            <Layout rows="auto auto">
               <strong>{item.name}</strong>
-              <div
-                style={{
-                  fontSize: 'var(--polly-text-sm)',
-                  color: 'var(--polly-text-muted)',
-                }}
-              >
+              <Text as="div" size="sm" tone="muted">
                 {describeRecurrence(item)}
                 {item.room && ` · ${item.room}`}
                 {item.time && ` · ${item.time}`}
                 {` · ${item.points} pt`}
-              </div>
-            </div>
+              </Text>
+            </Layout>
             <Button
               label={item.active ? 'Archive' : 'Restore'}
               size="small"
@@ -470,7 +457,9 @@ function ItemsView() {
           </Layout>
         ))}
         {items.length === 0 && (
-          <p style={{ color: 'var(--polly-text-muted)' }}>No items. Add one above.</p>
+          <Text as="p" tone="muted">
+            No items. Add one above.
+          </Text>
         )}
       </Layout>
     </Layout>
@@ -530,9 +519,9 @@ function FairnessView() {
           />
         ))}
       </Layout>
-      <p style={{ margin: 0, color: 'var(--polly-text-muted)' }}>
+      <Text as="p" tone="muted">
         {recent.length} completions · {totalPoints} points
-      </p>
+      </Text>
       <Layout rows="auto" gap="var(--polly-space-xs)">
         {PEOPLE.map((person) => {
           const entry = totals.get(person) ?? { points: 0, count: 0 };
@@ -549,23 +538,14 @@ function FairnessView() {
                 {entry.count} done · {entry.points} pt
               </span>
               <Badge variant={pct >= 30 ? 'success' : 'warning'}>{pct}%</Badge>
-              <div
-                style={{
-                  width: '4rem',
-                  height: '0.4rem',
-                  background: 'var(--polly-border)',
-                  borderRadius: '2px',
-                  overflow: 'hidden',
-                }}
-              >
-                <div
-                  style={{
-                    width: `${pct}%`,
-                    height: '100%',
-                    background: 'var(--polly-primary, #2563eb)',
-                  }}
+              <Surface width="4rem" height="0.4rem" background="sunken" radius="full">
+                <Surface
+                  width={`${pct}%`}
+                  height="0.4rem"
+                  background="var(--polly-accent)"
+                  radius="full"
                 />
-              </div>
+              </Surface>
             </Layout>
           );
         })}
@@ -611,7 +591,9 @@ export function App() {
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout rows="auto" gap="var(--polly-space-md)">
         <Layout columns="1fr auto" gap="var(--polly-space-sm)">
-          <h1 style={{ margin: 0 }}>Agenda</h1>
+          <Text as="h1" size="xl" weight="bold">
+            Agenda
+          </Text>
           <HubBack />
         </Layout>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="agenda.tab" />

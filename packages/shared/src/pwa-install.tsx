@@ -17,7 +17,7 @@
 // same page load, so holding onto the deferred prompt beyond one use is
 // pointless.
 
-import { Button } from '@fairfox/polly/ui';
+import { Button, Layout, Surface, Text } from '@fairfox/polly/ui';
 import { signal } from '@preact/signals';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -62,20 +62,14 @@ export function PwaInstallPrompt(): preact.JSX.Element | null {
   }
 
   return (
-    <div
-      style={{
-        marginTop: 'var(--polly-space-md)',
-        padding: 'var(--polly-space-md)',
-        border: '1px solid var(--polly-border)',
-        borderRadius: 'var(--polly-radius-md)',
-        background: 'var(--polly-surface-sunken)',
-      }}
-    >
-      <div style={{ fontSize: 'var(--polly-text-sm)', marginBottom: 'var(--polly-space-xs)' }}>
-        Install fairfox as an app on this device.
-      </div>
-      <Button label="Install fairfox" tier="primary" size="small" data-action="pwa.install" />
-    </div>
+    <Layout padding="var(--polly-space-md) 0 0 0">
+      <Surface variant="sunken" padding="var(--polly-space-md)" border="default" radius="md">
+        <Layout rows="auto auto" gap="var(--polly-space-xs)" justifyItems="start">
+          <Text size="sm">Install fairfox as an app on this device.</Text>
+          <Button label="Install fairfox" tier="primary" size="small" data-action="pwa.install" />
+        </Layout>
+      </Surface>
+    </Layout>
   );
 }
 

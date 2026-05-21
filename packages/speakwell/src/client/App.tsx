@@ -4,7 +4,7 @@
 // History (review past sessions). Full voice I/O comes in a later
 // iteration; the current UI is a text-first stepping stone.
 
-import { ActionInput, Badge, Button, Layout, Tabs } from '@fairfox/polly/ui';
+import { ActionInput, Badge, Button, Layout, Tabs, Text } from '@fairfox/polly/ui';
 import { HubBack } from '@fairfox/shared/hub-back';
 import type { Format, Language } from '#src/client/state.ts';
 import {
@@ -39,9 +39,13 @@ function StartView() {
 
   return (
     <Layout rows="auto" gap="var(--polly-space-lg)">
-      <h2>New session</h2>
+      <Text as="h2" size="lg" weight="bold">
+        New session
+      </Text>
       <Layout rows="auto" gap="var(--polly-space-sm)">
-        <strong>Format</strong>
+        <Text as="span" weight="bold">
+          Format
+        </Text>
         <Layout columns="auto auto auto" gap="var(--polly-space-sm)" stackOnMobile={true}>
           {(['yarn', 'pitch', 'summary'] as const).map((f) => (
             <Button
@@ -56,7 +60,9 @@ function StartView() {
         </Layout>
       </Layout>
       <Layout rows="auto" gap="var(--polly-space-sm)">
-        <strong>Language</strong>
+        <Text as="span" weight="bold">
+          Language
+        </Text>
         <Layout columns="auto auto auto" gap="var(--polly-space-sm)" stackOnMobile={true}>
           {(['en-GB', 'it-IT', 'de-DE'] as const).map((l) => (
             <Button
@@ -96,7 +102,11 @@ function HistoryView() {
   );
 
   if (sessions.length === 0) {
-    return <p style={{ color: 'var(--polly-text-muted)' }}>No sessions yet.</p>;
+    return (
+      <Text as="p" tone="muted">
+        No sessions yet.
+      </Text>
+    );
   }
 
   return (
@@ -110,15 +120,17 @@ function HistoryView() {
         >
           <Badge variant="info">{FORMAT_LABELS[s.format]}</Badge>
           <Layout rows="auto" gap="0">
-            <strong>{s.topic || 'Untitled'}</strong>
-            <span style={{ fontSize: 'var(--polly-text-xs)', color: 'var(--polly-text-muted)' }}>
+            <Text as="span" weight="bold">
+              {s.topic || 'Untitled'}
+            </Text>
+            <Text as="span" size="xs" tone="muted">
               {s.speaker} · {LANGUAGE_LABELS[s.language]} · {s.turns.length} turns
-            </span>
+            </Text>
           </Layout>
           {s.rating !== null && <Badge variant="success">{s.rating}/5</Badge>}
-          <span style={{ fontSize: 'var(--polly-text-xs)', color: 'var(--polly-text-muted)' }}>
+          <Text as="span" size="xs" tone="muted">
             {new Date(s.startedAt).toLocaleDateString()}
-          </span>
+          </Text>
         </Layout>
       ))}
     </Layout>
@@ -132,7 +144,9 @@ export function App() {
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
       <Layout rows="auto" gap="var(--polly-space-md)">
         <Layout columns="1fr auto" gap="var(--polly-space-sm)">
-          <h1 style={{ margin: 0 }}>Speakwell</h1>
+          <Text as="h1" size="xl" weight="bold">
+            Speakwell
+          </Text>
           <HubBack />
         </Layout>
         <Tabs tabs={TAB_LIST} activeTab={current} action="speakwell.tab" />

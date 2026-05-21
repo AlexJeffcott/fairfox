@@ -16,7 +16,7 @@
 // mutual trust. A `#pair=<token>` fragment in the URL on mount
 // short-circuits the idle screen and auto-submits the scanned token.
 
-import { ActionInput, Button, Code, Layout } from '@fairfox/polly/ui';
+import { ActionInput, Button, Code, Layout, Surface, Text } from '@fairfox/polly/ui';
 import {
   inviteDraftEnabled,
   inviteDraftName,
@@ -42,24 +42,33 @@ import {
 } from '#src/user-identity-state.ts';
 import { usersState } from '#src/users-state.ts';
 
-const PAGE_STYLE = {
-  minHeight: '100vh',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: 'var(--polly-space-lg)',
-  background: 'var(--polly-surface-muted, #f5f5f4)',
-};
+/** Full-viewport muted backdrop that vertically and horizontally
+ * centres the login card. */
+function Page({ children }: { children: preact.ComponentChildren }): preact.JSX.Element {
+  return (
+    <Surface background="sunken" minHeight="100vh" padding="var(--polly-space-lg)">
+      <Layout autoFlow="row" justifyItems="center" alignContent="center" minHeight="100%">
+        {children}
+      </Layout>
+    </Surface>
+  );
+}
 
-const CARD_STYLE = {
-  width: '100%',
-  maxWidth: '460px',
-  background: 'var(--polly-surface, #ffffff)',
-  color: 'var(--polly-text, #1c1917)',
-  padding: 'var(--polly-space-lg, 1.5rem)',
-  borderRadius: '12px',
-  boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06)',
-};
+/** The bounded login panel. */
+function Card({ children }: { children: preact.ComponentChildren }): preact.JSX.Element {
+  return (
+    <Surface
+      variant="raised"
+      radius="lg"
+      shadow="md"
+      padding="var(--polly-space-lg)"
+      width="100%"
+      maxInlineSize="460px"
+    >
+      {children}
+    </Surface>
+  );
+}
 
 function CliPairReveal({ token }: { token: string }): preact.JSX.Element | null {
   if (typeof window === 'undefined') {
@@ -78,15 +87,17 @@ function CliPairReveal({ token }: { token: string }): preact.JSX.Element | null 
   const installUrl = `${window.location.origin}/cli/install?${params.toString()}`;
   const command = `curl -fsSL "${installUrl}" | sh`;
   return (
-    <details style={{ marginTop: 'var(--polly-space-sm, 0.5rem)' }}>
-      <summary style={{ cursor: 'pointer', fontSize: '0.8rem' }}>
-        Pair a CLI instead of a browser
+    <details>
+      <summary>
+        <Text size="sm">Pair a CLI instead of a browser</Text>
       </summary>
-      <p style={{ margin: '0.25rem 0', fontSize: '0.75rem' }}>
-        Paste this command into a terminal on the machine you want to pair. The installer drops
-        fairfox at <Code>~/.local/bin/fairfox</Code> and applies the pair token in one step.
-      </p>
-      <Code block={true}>{command}</Code>
+      <Layout rows="auto auto" gap="var(--polly-space-xs)" padding="var(--polly-space-xs) 0 0 0">
+        <Text as="p" size="xs">
+          Paste this command into a terminal on the machine you want to pair. The installer drops
+          fairfox at <Code>~/.local/bin/fairfox</Code> and applies the pair token in one step.
+        </Text>
+        <Code block={true}>{command}</Code>
+      </Layout>
     </details>
   );
 }
@@ -97,44 +108,42 @@ function ExtensionPairReveal({ token }: { token: string }): preact.JSX.Element |
   }
   const downloadUrl = `${window.location.origin}/extension/fairfox.zip?token=${encodeURIComponent(token)}`;
   return (
-    <details style={{ marginTop: 'var(--polly-space-sm, 0.5rem)' }}>
-      <summary style={{ cursor: 'pointer', fontSize: '0.8rem' }}>
-        Pair a Chrome extension instead
+    <details>
+      <summary>
+        <Text size="sm">Pair a Chrome extension instead</Text>
       </summary>
-      <p style={{ margin: '0.25rem 0', fontSize: '0.75rem' }}>
-        Download the fairfox side-panel extension with this pairing token already baked in. Unzip
-        it, open <Code>chrome://extensions</Code>, enable Developer mode, and load the unpacked
-        folder. The first time the side panel opens, fairfox pairs itself through the embedded
-        frame.
-      </p>
-      <a
-        href={downloadUrl}
-        download="fairfox-extension.zip"
-        style={{
-          display: 'inline-block',
-          marginTop: '0.25rem',
-          padding: '0.4rem 0.75rem',
-          borderRadius: '4px',
-          fontSize: '0.8rem',
-          background: 'rgba(0, 0, 0, 0.06)',
-          textDecoration: 'none',
-          color: 'inherit',
-        }}
-      >
-        Download extension .zip
-      </a>
+      <Layout rows="auto auto" gap="var(--polly-space-xs)" padding="var(--polly-space-xs) 0 0 0">
+        <Text as="p" size="xs">
+          Download the fairfox side-panel extension with this pairing token already baked in. Unzip
+          it, open <Code>chrome://extensions</Code>, enable Developer mode, and load the unpacked
+          folder. The first time the side panel opens, fairfox pairs itself through the embedded
+          frame.
+        </Text>
+        <Layout rows="auto" justifyItems="start">
+          <a href={downloadUrl} download="fairfox-extension.zip">
+            <Text size="sm">Download extension .zip</Text>
+          </a>
+        </Layout>
+      </Layout>
     </details>
   );
 }
 
 function Header(): preact.JSX.Element {
   return (
-    <div style={{ textAlign: 'center', marginBottom: 'var(--polly-space-md, 1rem)' }}>
-      <h1 style={{ margin: '0 0 0.5rem', fontSize: '1.5rem' }}>fairfox</h1>
-      <p style={{ margin: 0, color: 'var(--polly-text-muted, #57534e)', fontSize: '0.95rem' }}>
+    <Layout
+      rows="auto auto"
+      gap="var(--polly-space-sm)"
+      justifyItems="center"
+      padding="0 0 var(--polly-space-md) 0"
+    >
+      <Text as="h1" size="xl" weight="bold">
+        fairfox
+      </Text>
+      <Text as="p" tone="muted" size="md">
         This device isn't connected to your mesh yet. Pick how you'd like to continue.
-      </p>
-    </div>
+      </Text>
+    </Layout>
   );
 }
 
@@ -184,9 +193,9 @@ function InviteSection(): preact.JSX.Element | null {
   }
   const enabled = inviteDraftEnabled.value;
   return (
-    <details style={{ marginTop: 'var(--polly-space-sm, 0.5rem)' }}>
-      <summary style={{ cursor: 'pointer', fontSize: '0.8rem' }}>
-        Also invite a new user with this link
+    <details>
+      <summary>
+        <Text size="sm">Also invite a new user with this link</Text>
       </summary>
       <Layout
         rows="auto auto auto auto"
@@ -233,21 +242,26 @@ function InviteSection(): preact.JSX.Element | null {
               />
             </Layout>
             {inviteIssuedName.value && (
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: '0.75rem',
-                  color: 'var(--polly-text-muted, #57534e)',
-                  fontStyle: 'italic',
-                }}
-              >
+              <Text as="p" size="xs" tone="muted">
                 Invite baked into the link above for {inviteIssuedName.value}.
-              </p>
+              </Text>
             )}
           </>
         )}
       </Layout>
     </details>
+  );
+}
+
+/** Danger-coloured paragraph for pairing / setup errors. Surface
+ * token-retint is polly's sanctioned path for a one-off colour. */
+function ErrorText({ children }: { children: preact.ComponentChildren }): preact.JSX.Element {
+  return (
+    <Surface background="transparent" style={{ '--polly-text': '#b91c1c' }}>
+      <Text as="p" size="sm">
+        {children}
+      </Text>
+    </Surface>
   );
 }
 
@@ -257,57 +271,51 @@ function IssueView(): preact.JSX.Element {
   const waiting = issuerWaitingForReturn.value;
   const doneLabel = scanPending ? 'Continue — paste their link' : "They accepted — we're done";
   return (
-    <div>
-      <p style={{ margin: '0 0 var(--polly-space-md, 1rem)' }}>
+    <Layout autoFlow="row" gap="var(--polly-space-md)">
+      <Text as="p">
         Open the other device's camera on this QR, or send it the link. The receiving device takes
         the token and signs this device into the mesh.
-      </p>
+      </Text>
       {issuedQr.value ? (
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'center',
-            marginBottom: 'var(--polly-space-md, 1rem)',
-          }}
-          dangerouslySetInnerHTML={{ __html: issuedQr.value }}
-        />
+        <Layout rows="auto" justifyItems="center">
+          {/* QR markup is locally-generated SVG; render it into a span. */}
+          <span dangerouslySetInnerHTML={{ __html: issuedQr.value }} />
+        </Layout>
       ) : (
-        <p style={{ textAlign: 'center', fontStyle: 'italic' }}>Generating QR…</p>
+        <Layout rows="auto" justifyItems="center">
+          <Text tone="muted">Generating QR…</Text>
+        </Layout>
       )}
       {waiting && (
-        <p
-          style={{
-            textAlign: 'center',
-            fontStyle: 'italic',
-            color: 'var(--polly-text-muted, #57534e)',
-            fontSize: '0.85rem',
-            marginBottom: 'var(--polly-space-sm, 0.5rem)',
-          }}
-        >
-          Waiting for the other device… (or paste their token manually below)
-        </p>
+        <Layout rows="auto" justifyItems="center">
+          <Text tone="muted" size="sm">
+            Waiting for the other device… (or paste their token manually below)
+          </Text>
+        </Layout>
       )}
       {issuedShareUrl.value && (
-        <p style={{ wordBreak: 'break-all', fontSize: '0.8rem', textAlign: 'center' }}>
-          <a href={issuedShareUrl.value}>{issuedShareUrl.value}</a>
-        </p>
+        <Layout rows="auto" justifyItems="center">
+          {/* wordBreak keeps a long unbroken pairing URL from
+              overflowing the card — no polly prop expresses it. */}
+          <a href={issuedShareUrl.value} style={{ wordBreak: 'break-all' }}>
+            <Text size="sm">{issuedShareUrl.value}</Text>
+          </a>
+        </Layout>
       )}
       {issuedToken.value && (
-        <details style={{ marginTop: 'var(--polly-space-sm, 0.5rem)' }}>
-          <summary style={{ cursor: 'pointer', fontSize: '0.8rem' }}>
-            Show the raw token (for manual paste)
+        <details>
+          <summary>
+            <Text size="sm">Show the raw token (for manual paste)</Text>
           </summary>
-          <Code block={true}>{issuedToken.value}</Code>
+          <Layout padding="var(--polly-space-xs) 0 0 0">
+            <Code block={true}>{issuedToken.value}</Code>
+          </Layout>
         </details>
       )}
       {issuedToken.value && <CliPairReveal token={issuedToken.value} />}
       {issuedToken.value && <ExtensionPairReveal token={issuedToken.value} />}
       {issuedToken.value && <InviteSection />}
-      <Layout
-        columns="1fr 1fr"
-        gap="var(--polly-space-sm, 0.5rem)"
-        padding="var(--polly-space-md, 1rem) 0 0 0"
-      >
+      <Layout columns="1fr 1fr" gap="var(--polly-space-sm, 0.5rem)">
         <Button
           label={doneLabel}
           tier="primary"
@@ -316,12 +324,8 @@ function IssueView(): preact.JSX.Element {
         />
         <Button label="Back" tier="tertiary" fullWidth={true} data-action="pairing.cancel" />
       </Layout>
-      {pairingError.value && (
-        <p style={{ color: '#b91c1c', marginTop: 'var(--polly-space-sm, 0.5rem)' }}>
-          {pairingError.value}
-        </p>
-      )}
-    </div>
+      {pairingError.value && <ErrorText>{pairingError.value}</ErrorText>}
+    </Layout>
   );
 }
 
@@ -333,29 +337,17 @@ function ScanView(): preact.JSX.Element {
     : 'Scan the QR on the admin device with the camera button below, or paste its token and press Enter.';
   const cameraAvailable = canScanWithCamera();
   return (
-    <div>
-      <p style={{ margin: '0 0 var(--polly-space-md, 1rem)' }}>{instruction}</p>
+    <Layout autoFlow="row" gap="var(--polly-space-md)">
+      <Text as="p">{instruction}</Text>
       {cameraAvailable && (
-        <Layout
-          columns="1fr"
-          gap="var(--polly-space-sm, 0.5rem)"
-          padding="0 0 var(--polly-space-sm, 0.5rem) 0"
-        >
-          <Button
-            label="Scan with camera"
-            tier="primary"
-            fullWidth={true}
-            data-action="pairing.open-camera"
-          />
-        </Layout>
+        <Button
+          label="Scan with camera"
+          tier="primary"
+          fullWidth={true}
+          data-action="pairing.open-camera"
+        />
       )}
-      <Layout
-        columns="1fr"
-        gap="var(--polly-space-sm, 0.5rem)"
-        padding="0 0 var(--polly-space-sm, 0.5rem) 0"
-      >
-        <QrImageDropzone />
-      </Layout>
+      <QrImageDropzone />
       <ActionInput
         value={scanInput.value}
         variant="single"
@@ -363,44 +355,47 @@ function ScanView(): preact.JSX.Element {
         saveOn="enter"
         placeholder="…or paste token here"
       />
-      <Layout
-        columns="1fr"
-        gap="var(--polly-space-sm, 0.5rem)"
-        padding="var(--polly-space-md, 1rem) 0 0 0"
-      >
-        <Button label="Back" tier="tertiary" fullWidth={true} data-action="pairing.cancel" />
-      </Layout>
-      {pairingError.value && (
-        <p style={{ color: '#b91c1c', marginTop: 'var(--polly-space-sm, 0.5rem)' }}>
-          {pairingError.value}
-        </p>
-      )}
-    </div>
+      <Button label="Back" tier="tertiary" fullWidth={true} data-action="pairing.cancel" />
+      {pairingError.value && <ErrorText>{pairingError.value}</ErrorText>}
+    </Layout>
   );
 }
 
 function WhoAreYouHeader(): preact.JSX.Element {
   return (
-    <div style={{ textAlign: 'center', marginBottom: 'var(--polly-space-md, 1rem)' }}>
-      <h1 style={{ margin: '0 0 0.5rem', fontSize: '1.5rem' }}>fairfox</h1>
-      <p style={{ margin: 0, color: 'var(--polly-text-muted, #57534e)', fontSize: '0.95rem' }}>
+    <Layout
+      rows="auto auto"
+      gap="var(--polly-space-sm)"
+      justifyItems="center"
+      padding="0 0 var(--polly-space-md) 0"
+    >
+      <Text as="h1" size="xl" weight="bold">
+        fairfox
+      </Text>
+      <Text as="p" tone="muted" size="md">
         This device isn't on a mesh yet. Join one to get started.
-      </p>
-    </div>
+      </Text>
+    </Layout>
   );
 }
 
-const SECTION_HEADING_STYLE = {
-  margin: '0 0 var(--polly-space-xs, 0.25rem)',
-  fontSize: '0.9rem',
-  fontWeight: 600,
-};
+/** A small bold section heading inside the WhoAreYou wizard. */
+function SectionHeading({ children }: { children: preact.ComponentChildren }): preact.JSX.Element {
+  return (
+    <Text as="p" size="sm" weight="bold">
+      {children}
+    </Text>
+  );
+}
 
-const SECTION_BODY_STYLE = {
-  margin: '0 0 var(--polly-space-sm, 0.5rem)',
-  fontSize: '0.85rem',
-  color: 'var(--polly-text-muted, #57534e)',
-};
+/** Muted body copy for a WhoAreYou wizard section. */
+function SectionBody({ children }: { children: preact.ComponentChildren }): preact.JSX.Element {
+  return (
+    <Text as="p" size="sm" tone="muted">
+      {children}
+    </Text>
+  );
+}
 
 // The onboarding wizard for an unpaired device. Two doors: Join a mesh
 // (the everyday path — scan a QR or open a link from a device already
@@ -412,17 +407,13 @@ const SECTION_BODY_STYLE = {
 function WhoAreYouView(): preact.JSX.Element {
   return (
     <Layout rows="auto auto auto auto" gap="var(--polly-space-md, 1rem)">
-      <div>
-        <p style={SECTION_HEADING_STYLE}>Join a mesh</p>
-        <p style={SECTION_BODY_STYLE}>
+      <Layout autoFlow="row" gap="var(--polly-space-xs)">
+        <SectionHeading>Join a mesh</SectionHeading>
+        <SectionBody>
           Scan the QR or open the join link from a device that's already on the mesh. This device
           pairs in and picks up its identity automatically.
-        </p>
-        <Layout
-          columns="1fr"
-          gap="var(--polly-space-sm, 0.5rem)"
-          padding="var(--polly-space-sm, 0.5rem) 0 0 0"
-        >
+        </SectionBody>
+        <Layout padding="var(--polly-space-xs) 0 0 0">
           <Button
             label="Join a mesh"
             tier="primary"
@@ -430,49 +421,35 @@ function WhoAreYouView(): preact.JSX.Element {
             data-action="pairing.start-scan"
           />
         </Layout>
-      </div>
+      </Layout>
 
-      <p style={{ ...SECTION_BODY_STYLE, margin: 0, textAlign: 'center' }}>
-        Starting fresh? Run <Code>fairfox init</Code> on a computer to create a new mesh, then come
-        back here and join it.
-      </p>
+      <Layout rows="auto" justifyItems="center">
+        <SectionBody>
+          Starting fresh? Run <Code>fairfox init</Code> on a computer to create a new mesh, then
+          come back here and join it.
+        </SectionBody>
+      </Layout>
 
       <details>
-        <summary
-          style={{
-            cursor: 'pointer',
-            fontSize: '0.85rem',
-            color: 'var(--polly-text-muted, #57534e)',
-          }}
-        >
-          Used this identity before? Recover it
+        <summary>
+          <Text size="sm" tone="muted">
+            Used this identity before? Recover it
+          </Text>
         </summary>
-        <div style={{ paddingTop: 'var(--polly-space-sm, 0.5rem)' }}>
-          <p style={SECTION_BODY_STYLE}>
+        <Layout autoFlow="row" gap="var(--polly-space-sm)" padding="var(--polly-space-sm) 0 0 0">
+          <SectionBody>
             Bring an existing identity onto this device with its recovery blob — scan the QR, drop
             in a screenshot, or paste the blob as text.
-          </p>
+          </SectionBody>
           {canScanWithCamera() && (
-            <Layout
-              columns="1fr"
-              gap="var(--polly-space-sm, 0.5rem)"
-              padding="0 0 var(--polly-space-sm, 0.5rem) 0"
-            >
-              <Button
-                label="Scan with camera"
-                tier="secondary"
-                fullWidth={true}
-                data-action="users.open-recovery-camera"
-              />
-            </Layout>
+            <Button
+              label="Scan with camera"
+              tier="secondary"
+              fullWidth={true}
+              data-action="users.open-recovery-camera"
+            />
           )}
-          <Layout
-            columns="1fr"
-            gap="var(--polly-space-sm, 0.5rem)"
-            padding="0 0 var(--polly-space-sm, 0.5rem) 0"
-          >
-            <QrImageDropzone mode="recovery" />
-          </Layout>
+          <QrImageDropzone mode="recovery" />
           <ActionInput
             value={recoveryBlobDraft.value}
             variant="single"
@@ -481,24 +458,16 @@ function WhoAreYouView(): preact.JSX.Element {
             placeholder="…or paste fairfox-user-v1:…"
             ariaLabel="Recovery blob"
           />
-          <Layout
-            columns="1fr"
-            gap="var(--polly-space-sm, 0.5rem)"
-            padding="var(--polly-space-sm, 0.5rem) 0 0 0"
-          >
-            <Button
-              label="Recover"
-              tier="secondary"
-              fullWidth={true}
-              data-action="users.import-recovery"
-            />
-          </Layout>
-        </div>
+          <Button
+            label="Recover"
+            tier="secondary"
+            fullWidth={true}
+            data-action="users.import-recovery"
+          />
+        </Layout>
       </details>
 
-      {userSetupError.value && (
-        <p style={{ color: '#b91c1c', fontSize: '0.85rem' }}>{userSetupError.value}</p>
-      )}
+      {userSetupError.value && <ErrorText>{userSetupError.value}</ErrorText>}
     </Layout>
   );
 }
@@ -510,27 +479,15 @@ function RecoveryBlobView(): preact.JSX.Element | null {
   }
   return (
     <Layout rows="auto auto auto auto" gap="var(--polly-space-sm, 0.5rem)">
-      <div>
-        <p
-          style={{
-            margin: 0,
-            fontSize: '0.9rem',
-            fontWeight: 600,
-          }}
-        >
+      <Layout autoFlow="row" gap="var(--polly-space-xs)">
+        <Text as="p" size="sm" weight="bold">
           Save this recovery blob
-        </p>
-        <p
-          style={{
-            margin: '0.25rem 0 0',
-            fontSize: '0.85rem',
-            color: 'var(--polly-text-muted, #57534e)',
-          }}
-        >
+        </Text>
+        <Text as="p" size="sm" tone="muted">
           It holds your user key. Store it somewhere safe (password manager, encrypted note).
           Without it, losing every device holding this identity means losing access.
-        </p>
-      </div>
+        </Text>
+      </Layout>
       <Code block={true}>{blob}</Code>
       <Button
         label="I've saved it — continue"
@@ -554,37 +511,37 @@ export function LoginPage(): preact.JSX.Element {
   }
   if (pendingRecoveryBlob.value) {
     return (
-      <div style={PAGE_STYLE}>
-        <div style={CARD_STYLE}>
+      <Page>
+        <Card>
           <WhoAreYouHeader />
           <RecoveryBlobView />
           <PwaInstallPrompt />
-        </div>
-      </div>
+        </Card>
+      </Page>
     );
   }
   if (identity === null) {
     return (
-      <div style={PAGE_STYLE}>
-        <div style={CARD_STYLE}>
+      <Page>
+        <Card>
           <WhoAreYouHeader />
           {pairingMode.value === 'wizard-scan' ? <ScanView /> : <WhoAreYouView />}
           <PwaInstallPrompt />
-        </div>
+        </Card>
         <QrScanDialog />
-      </div>
+      </Page>
     );
   }
   return (
-    <div style={PAGE_STYLE}>
-      <div style={CARD_STYLE}>
+    <Page>
+      <Card>
         <Header />
         {pairingMode.value === 'idle' && <IdleChoices />}
         {pairingMode.value === 'wizard-issue' && <IssueView />}
         {pairingMode.value === 'wizard-scan' && <ScanView />}
         <PwaInstallPrompt />
-      </div>
+      </Card>
       <QrScanDialog />
-    </div>
+    </Page>
   );
 }

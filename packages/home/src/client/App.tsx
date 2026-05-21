@@ -12,7 +12,7 @@ import { ChatWidget } from '@fairfox/chat/widget';
 import { App as DocsApp } from '@fairfox/docs/client';
 import { App as FamilyPhoneApp } from '@fairfox/family-phone-admin/client';
 import { App as LibraryApp } from '@fairfox/library/client';
-import { ConfirmDialog, OverlayRoot } from '@fairfox/polly/ui';
+import { ConfirmDialog, Layout, OverlayRoot, Text } from '@fairfox/polly/ui';
 import { MeshGate } from '@fairfox/shared/mesh-gate';
 import { App as SpeakwellApp } from '@fairfox/speakwell/client';
 import { App as TheStruggleApp } from '@fairfox/the-struggle/client';
@@ -70,11 +70,18 @@ function RouteView(): preact.JSX.Element {
 
 function NotFound({ path }: { path: string }): preact.JSX.Element {
   return (
-    <div style={{ padding: 'var(--polly-space-xl, 2rem)', textAlign: 'center' }}>
-      <p style={{ color: 'var(--polly-text-muted, #57534e)' }}>No sub-app mounted at {path}.</p>
+    <Layout
+      rows="auto auto"
+      gap="var(--polly-space-md)"
+      padding="var(--polly-space-xl)"
+      justifyItems="center"
+    >
+      <Text as="p" tone="muted">
+        No sub-app mounted at {path}.
+      </Text>
       <a href="/" data-action="app.navigate" data-action-href="/">
         ← Back to the hub
       </a>
-    </div>
+    </Layout>
   );
 }
