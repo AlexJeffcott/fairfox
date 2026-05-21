@@ -16,7 +16,7 @@
 // mutual trust. A `#pair=<token>` fragment in the URL on mount
 // short-circuits the idle screen and auto-submits the scanned token.
 
-import { ActionInput, Button, Layout } from '@fairfox/polly/ui';
+import { ActionInput, Button, Code, Layout } from '@fairfox/polly/ui';
 import {
   inviteDraftEnabled,
   inviteDraftName,
@@ -84,21 +84,9 @@ function CliPairReveal({ token }: { token: string }): preact.JSX.Element | null 
       </summary>
       <p style={{ margin: '0.25rem 0', fontSize: '0.75rem' }}>
         Paste this command into a terminal on the machine you want to pair. The installer drops
-        fairfox at <code>~/.local/bin/fairfox</code> and applies the pair token in one step.
+        fairfox at <Code>~/.local/bin/fairfox</Code> and applies the pair token in one step.
       </p>
-      <code
-        style={{
-          display: 'block',
-          wordBreak: 'break-all',
-          padding: '0.5rem',
-          background: 'rgba(0, 0, 0, 0.06)',
-          borderRadius: '4px',
-          fontSize: '0.75rem',
-          marginTop: '0.25rem',
-        }}
-      >
-        {command}
-      </code>
+      <Code block={true}>{command}</Code>
     </details>
   );
 }
@@ -115,7 +103,7 @@ function ExtensionPairReveal({ token }: { token: string }): preact.JSX.Element |
       </summary>
       <p style={{ margin: '0.25rem 0', fontSize: '0.75rem' }}>
         Download the fairfox side-panel extension with this pairing token already baked in. Unzip
-        it, open <code>chrome://extensions</code>, enable Developer mode, and load the unpacked
+        it, open <Code>chrome://extensions</Code>, enable Developer mode, and load the unpacked
         folder. The first time the side panel opens, fairfox pairs itself through the embedded
         frame.
       </p>
@@ -309,19 +297,7 @@ function IssueView(): preact.JSX.Element {
           <summary style={{ cursor: 'pointer', fontSize: '0.8rem' }}>
             Show the raw token (for manual paste)
           </summary>
-          <code
-            style={{
-              display: 'block',
-              wordBreak: 'break-all',
-              padding: '0.5rem',
-              background: 'rgba(0, 0, 0, 0.06)',
-              borderRadius: '4px',
-              fontSize: '0.75rem',
-              marginTop: '0.25rem',
-            }}
-          >
-            {issuedToken.value}
-          </code>
+          <Code block={true}>{issuedToken.value}</Code>
         </details>
       )}
       {issuedToken.value && <CliPairReveal token={issuedToken.value} />}
@@ -457,7 +433,7 @@ function WhoAreYouView(): preact.JSX.Element {
       </div>
 
       <p style={{ ...SECTION_BODY_STYLE, margin: 0, textAlign: 'center' }}>
-        Starting fresh? Run <code>fairfox init</code> on a computer to create a new mesh, then come
+        Starting fresh? Run <Code>fairfox init</Code> on a computer to create a new mesh, then come
         back here and join it.
       </p>
 
@@ -555,18 +531,7 @@ function RecoveryBlobView(): preact.JSX.Element | null {
           Without it, losing every device holding this identity means losing access.
         </p>
       </div>
-      <code
-        style={{
-          display: 'block',
-          wordBreak: 'break-all',
-          padding: '0.5rem',
-          background: 'rgba(0, 0, 0, 0.06)',
-          borderRadius: '4px',
-          fontSize: '0.72rem',
-        }}
-      >
-        {blob}
-      </code>
+      <Code block={true}>{blob}</Code>
       <Button
         label="I've saved it — continue"
         tier="primary"

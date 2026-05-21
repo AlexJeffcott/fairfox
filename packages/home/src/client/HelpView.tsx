@@ -6,7 +6,7 @@
 
 import { OBSERVED_MESH_STATE_MODULE_ID_FROM_AGENDA } from '@fairfox/agenda/state';
 import { MESH_STATE_MODULE_ID } from '@fairfox/polly/mesh';
-import { Button, Layout } from '@fairfox/polly/ui';
+import { Button, Code, Layout } from '@fairfox/polly/ui';
 import { devicesState } from '@fairfox/shared/devices-state';
 import { mesh } from '@fairfox/shared/ensure-mesh';
 import {
@@ -42,24 +42,6 @@ function Section({
       <h2 style={{ margin: 0, fontSize: 'var(--polly-text-lg)' }}>{heading}</h2>
       <div style={{ minWidth: 0, color: 'var(--polly-text-muted)' }}>{children}</div>
     </Layout>
-  );
-}
-
-function Code({ children }: { children: string }): preact.JSX.Element {
-  return (
-    <pre
-      style={{
-        margin: 'var(--polly-space-xs) 0',
-        padding: 'var(--polly-space-sm) var(--polly-space-md)',
-        background: 'var(--polly-surface-sunken)',
-        borderRadius: 'var(--polly-radius-md)',
-        overflowX: 'auto',
-        fontSize: 'var(--polly-text-sm)',
-        color: 'var(--polly-text)',
-      }}
-    >
-      <code>{children}</code>
-    </pre>
   );
 }
 
@@ -626,7 +608,7 @@ export function HelpView(): preact.JSX.Element {
       <Section heading="Install fairfox as an app">
         <p>
           <strong>Desktop Chrome / Edge:</strong> when the browser decides the site qualifies, it
-          fires <code>beforeinstallprompt</code> and an "Install fairfox" button appears under this
+          fires <Code>beforeinstallprompt</Code> and an "Install fairfox" button appears under this
           header. A first visit may not fire it — scroll, click, wait ~30s, or reload once to nudge
           it.
         </p>
@@ -657,13 +639,13 @@ export function HelpView(): preact.JSX.Element {
           The CLI is a full peer — same keyring, same documents as this browser. From a fresh
           checkout of the repo:
         </p>
-        <Code>{'bash scripts/install-cli-local.sh'}</Code>
+        <Code block={true}>{'bash scripts/install-cli-local.sh'}</Code>
         <p>
-          Symlinks <code>~/.local/bin/fairfox</code> and drops a zsh completion at{' '}
-          <code>~/.zfunc/_fairfox</code>. If <code>~/.local/bin</code> isn't on your PATH yet, add
-          to your <code>~/.zshrc</code>:
+          Symlinks <Code>~/.local/bin/fairfox</Code> and drops a zsh completion at{' '}
+          <Code>~/.zfunc/_fairfox</Code>. If <Code>~/.local/bin</Code> isn't on your PATH yet, add
+          to your <Code>~/.zshrc</Code>:
         </p>
-        <Code>
+        <Code block={true}>
           {[
             'export PATH="$HOME/.local/bin:$PATH"',
             'fpath=($HOME/.zfunc $fpath)',
@@ -673,7 +655,7 @@ export function HelpView(): preact.JSX.Element {
       </Section>
 
       <Section heading="Start a new mesh">
-        <Code>
+        <Code block={true}>
           {[
             'fairfox init "Holm household" \\',
             '  --admin "Alex" \\',
@@ -683,13 +665,13 @@ export function HelpView(): preact.JSX.Element {
         </Code>
         <p>
           Creates the mesh, prints your recovery blob (save it — password manager), names the mesh
-          from the first positional argument, and queues one invite blob per <code>--user</code>.
-          Roles: <code>admin</code>, <code>member</code>, <code>guest</code>, <code>llm</code>.
+          from the first positional argument, and queues one invite blob per <Code>--user</Code>.
+          Roles: <Code>admin</Code>, <Code>member</Code>, <Code>guest</Code>, <Code>llm</Code>.
         </p>
       </Section>
 
       <Section heading="Add another device for yourself">
-        <Code>{'fairfox add device'}</Code>
+        <Code block={true}>{'fairfox add device'}</Code>
         <p>
           Terminal QR + share URL. Scan on your phone — the URL carries a pair token and your
           recovery blob, so the phone pairs and adopts your identity in one tap. The URL carries
@@ -698,12 +680,12 @@ export function HelpView(): preact.JSX.Element {
       </Section>
 
       <Section heading="Onboard someone else">
-        <Code>{'fairfox add user elisa --role member'}</Code>
+        <Code block={true}>{'fairfox add user elisa --role member'}</Code>
         <p>
           One verb. Mints a fresh invite blob (or reopens an existing one with the same name),
-          writes the invitee's UserEntry into <code>mesh:users</code>, and holds a live QR open
-          until they scan or you ctrl-c. <code>fairfox invites</code> shows pending and consumed
-          invites; pass <code>--queue-only</code> if you want to mint without opening the socket.
+          writes the invitee's UserEntry into <Code>mesh:users</Code>, and holds a live QR open
+          until they scan or you ctrl-c. <Code>fairfox invites</Code> shows pending and consumed
+          invites; pass <Code>--queue-only</Code> if you want to mint without opening the socket.
         </p>
         <p>
           The invitee has three ways to feed the QR into their already-installed PWA, all behind{' '}
@@ -716,7 +698,7 @@ export function HelpView(): preact.JSX.Element {
       </Section>
 
       <Section heading="Receive a pair token, share URL, or recovery blob">
-        <Code>{'fairfox pair <token-or-url-or-blob>'}</Code>
+        <Code block={true}>{'fairfox pair <token-or-url-or-blob>'}</Code>
         <p>
           The receiving side of every onboarding flow — sniffs the input and routes to the right
           handler. Use this on a fresh CLI install with a share URL someone else generated, or with
@@ -725,7 +707,7 @@ export function HelpView(): preact.JSX.Element {
       </Section>
 
       <Section heading="Verify two devices are on the same mesh">
-        <Code>{'fairfox fingerprint'}</Code>
+        <Code block={true}>{'fairfox fingerprint'}</Code>
         <p>
           Prints the 8-hex mesh fingerprint — same value the Diagnostics panel above shows. Two
           devices on the same mesh print the same line; a different mesh prints a different one.
@@ -733,7 +715,7 @@ export function HelpView(): preact.JSX.Element {
       </Section>
 
       <Section heading="Everyday commands">
-        <Code>
+        <Code block={true}>
           {[
             '# Todos — same data as the Todo sub-app',
             'fairfox todo tasks',
@@ -767,17 +749,17 @@ export function HelpView(): preact.JSX.Element {
       <Section heading="Files the CLI writes">
         <ul>
           <li>
-            <code>~/.fairfox/keyring.json</code> — per-device Ed25519 keypair + known peers.
+            <Code>~/.fairfox/keyring.json</Code> — per-device Ed25519 keypair + known peers.
           </li>
           <li>
-            <code>~/.fairfox/user-identity.json</code> — per-user Ed25519 keypair + display name.
+            <Code>~/.fairfox/user-identity.json</Code> — per-user Ed25519 keypair + display name.
             Mode 0600.
           </li>
           <li>
-            <code>~/.fairfox/invites.json</code> — pending invite blobs. Mode 0600.
+            <Code>~/.fairfox/invites.json</Code> — pending invite blobs. Mode 0600.
           </li>
           <li>
-            <code>~/.fairfox/mesh/</code> — this CLI's Automerge document store. Safe to delete;
+            <Code>~/.fairfox/mesh/</Code> — this CLI's Automerge document store. Safe to delete;
             re-syncs from any other peer.
           </li>
         </ul>
@@ -788,16 +770,16 @@ export function HelpView(): preact.JSX.Element {
           <li>
             <strong>"This device isn't allowed to bring in new peers."</strong> Hard-reload (⇧⌘R);
             the self-heal writes the missing row on mount. If it persists, re-scan with{' '}
-            <code>fairfox mesh add-device</code>.
+            <Code>fairfox mesh add-device</Code>.
           </li>
           <li>
             <strong>Install button not showing.</strong> Desktop Chrome needs a user engagement
-            signal before <code>beforeinstallprompt</code> fires. Scroll / click / wait ~30s, then
+            signal before <Code>beforeinstallprompt</Code> fires. Scroll / click / wait ~30s, then
             reload. Safari: use the share menu → "Add to Dock" / "Add to Home Screen".
           </li>
           <li>
             <strong>CLI crashes with "Cycle detected."</strong> Polly bug fixed in 0.29.3 — make
-            sure <code>bun install</code> has picked it up.
+            sure <Code>bun install</Code> has picked it up.
           </li>
         </ul>
       </Section>

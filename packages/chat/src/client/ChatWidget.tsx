@@ -5,7 +5,7 @@
 // active chat's message tail, a composer with the live page context
 // chip, and a small header with new / close controls.
 
-import { ActionInput, Button, Layout, Surface } from '@fairfox/polly/ui';
+import { ActionInput, Button, Code, Layout, Surface } from '@fairfox/polly/ui';
 import type { RelayHealth } from '@fairfox/shared/assistant-state';
 import { devicesState } from '@fairfox/shared/devices-state';
 import {
@@ -700,7 +700,7 @@ function DemoBanner() {
         margin: '0.25rem 0',
       }}
     >
-      ⚠ This widget contains demo data from <code>#__inject=</code> in the URL. None of it is real
+      ⚠ This widget contains demo data from <Code>#__inject=</Code> in the URL. None of it is real
       or synced to your other devices.
     </Surface>
   );
@@ -768,7 +768,7 @@ function Panel({ selfPeerId }: { selfPeerId: string | null }) {
               margin: '0.5rem 0',
             }}
           >
-            New thread. Type below — the laptop's <code>fairfox chat serve</code> will reply.
+            New thread. Type below — the laptop's <Code>fairfox chat serve</Code> will reply.
           </p>
         ) : (
           messages.map((m) => <MessageBubble key={m.id} message={m} selfDeviceId={selfPeerId} />)

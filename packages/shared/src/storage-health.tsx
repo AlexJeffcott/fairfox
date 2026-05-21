@@ -14,6 +14,7 @@
 // and dismissing the warning would only leave the user staring at a
 // silent broken app.
 
+import { Code } from '@fairfox/polly/ui';
 import { signal } from '@preact/signals';
 import { mesh } from '#src/ensure-mesh.ts';
 
@@ -103,7 +104,7 @@ export function StorageHealthBanner(): preact.JSX.Element | null {
     >
       <span>
         Local mesh storage is unresponsive ({err.operation} on{' '}
-        <code>{err.documentId.slice(0, 12)}</code> hung for {Math.round(err.elapsedMs / 1000)}s).
+        <Code>{err.documentId.slice(0, 12)}</Code> hung for {Math.round(err.elapsedMs / 1000)}s).
         Clear local mesh storage and reload to recover; your keyring and identity stay paired.
       </span>
       <button
