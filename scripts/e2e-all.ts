@@ -59,6 +59,15 @@ const TESTS: readonly Test[] = [
   // survivor through signalling. Needs a polly fix before this can
   // pass deterministically.
   //
+  // Re-checked on polly 0.72.0: its slot-liveness watchdog
+  // (polly#109/#110) helps but does not close the gap — relayB now
+  // tears the dead slot down cleanly and drops to `peers=0` instead
+  // of staying wedged at `peers=1`, and still claims `lease=self`.
+  // But the surviving relay never rediscovers the brief `chat send`
+  // peer, so the post-failover message is delivered to nobody and
+  // the test fails with `got 0` replies. Rediscovery of a fresh
+  // short-lived peer after a topology change is the open polly item.
+  //
   // The lease state-machine properties this e2e was meant to verify
   // (mutual exclusion, eventual handoff after holder death) are now
   // covered by `specs/tla/LeaseHandoff.tla` — model-checked with

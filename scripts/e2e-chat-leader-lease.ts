@@ -13,7 +13,7 @@
 import { mkdirSync, rmSync } from 'node:fs';
 import {
   bootstrapAndOpenInvite,
-  buildBundleIfMissing,
+  buildBundle,
   fail,
   killAndWait,
   openExistingInvite,
@@ -32,7 +32,7 @@ for (const h of [ADMIN_HOME, RELAY2_HOME, SENDER_HOME]) {
   rmSync(h, { recursive: true, force: true });
   mkdirSync(h, { recursive: true });
 }
-buildBundleIfMissing();
+buildBundle();
 
 // Three users: Admin (relay A), Relay2 (relay B), Sender (briefly
 // authors messages). Two relay-capable users each run their own
@@ -42,15 +42,15 @@ const senderInvite = await bootstrapAndOpenInvite({
   adminHome: ADMIN_HOME,
   adminName: 'Admin',
   invitees: [{ name: 'Relay2', role: 'admin' }, { name: 'Sender' }],
-  inviteToOpen: 'sender',
+  inviteToOpen: 'Sender',
 });
-await runCli(['pair', senderInvite.shareUrl], SENDER_HOME);
+await runCli(['pair', 'join', senderInvite.shareUrl], SENDER_HOME);
 await new Promise((r) => setTimeout(r, 4000));
 await senderInvite.close();
 trace('sender', 'paired');
 
-const relay2Invite = await openExistingInvite(ADMIN_HOME, 'relay2');
-await runCli(['pair', relay2Invite.shareUrl], RELAY2_HOME);
+const relay2Invite = await openExistingInvite(ADMIN_HOME, 'Relay2');
+await runCli(['pair', 'join', relay2Invite.shareUrl], RELAY2_HOME);
 await new Promise((r) => setTimeout(r, 4000));
 await relay2Invite.close();
 trace('relay2', 'paired');

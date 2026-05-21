@@ -210,47 +210,58 @@ export function trace(label: string, msg: string): void {
 }
 
 /** Convenience: run mesh init on `adminHome` with one or more
- * invitee names, then return the share URL for a given invitee.
- * Holds the invite-open subprocess alive until `closeInvite` is
- * called by the caller (the share URL is only routable while the
- * issuer's signalling socket is open). */
+ * invitee names, then return the join URL for a given invitee.
+ * Holds the `pair open` subprocess alive until `close` is called by
+ * the caller (the join URL is only routable while the issuer's
+ * signalling socket is open). */
 export interface OpenedInvite {
   shareUrl: string;
   close: () => Promise<void>;
 }
 
+/** Match the redesign-era join URL `pair open` prints. The QR/URL
+ * carries transport only — `#pair=<tok>&s=<sid>&k=<key>` — so there
+ * is no `invite=` segment any more; the identity rides the encrypted
+ * pair-ack. */
+const JOIN_URL_RE = /(https?:\/\/\S*#pair=\S+)/;
+
 export async function bootstrapAndOpenInvite(opts: {
   adminHome: string;
   adminName: string;
+  meshName?: string;
   invitees: { name: string; role?: 'admin' | 'member' | 'guest' | 'llm' }[];
   inviteToOpen: string;
 }): Promise<OpenedInvite> {
   const userArgs = opts.invitees.flatMap((u) => ['--user', `${u.name}:${u.role ?? 'member'}`]);
-  const init = await runCli(['init', '--admin', opts.adminName, ...userArgs], opts.adminHome);
+  const init = await runCli(
+    ['init', opts.meshName ?? 'e2e mesh', '--admin', opts.adminName, ...userArgs],
+    opts.adminHome
+  );
   if (init.status !== 0) {
     throw new Error(`mesh init failed: ${init.stderr.slice(0, 200)}`);
   }
   const handle = spawnCli(
     `invite-${opts.inviteToOpen}`,
-    ['add', 'user', opts.inviteToOpen],
+    ['pair', 'open', '--user', opts.inviteToOpen],
     opts.adminHome
   );
   const m = await waitForLine(
     handle.stdout,
-    /(https?:\/\/\S+#pair=\S+invite=\S+)/,
+    JOIN_URL_RE,
     15_000,
-    `share URL for ${opts.inviteToOpen}`
+    `join URL for ${opts.inviteToOpen}`
   );
   const shareUrl = (m[1] ?? '').replace(/[)\].,]+$/, '');
   return {
     shareUrl,
+    // SIGINT so `pair open` flushes its synced mesh Repo to disk.
     close: async () => {
-      await killAndWait(handle);
+      await interruptAndWait(handle);
     },
   };
 }
 
-/** Pair a fresh CLI (`peerHome`) using a share URL produced by
+/** Pair a fresh CLI (`peerHome`) using a join URL produced by
  * `bootstrapAndOpenInvite`. Waits for the issuer's pair-ack to
  * confirm both keyrings know each other. */
 export async function pairWithShare(
@@ -258,37 +269,32 @@ export async function pairWithShare(
   shareUrl: string,
   inviteHandle: SubprocessHandle
 ): Promise<void> {
-  const r = await runCli(['pair', shareUrl], peerHome);
+  const r = await runCli(['pair', 'join', shareUrl], peerHome);
   if (r.status !== 0) {
-    throw new Error(`pair failed (${peerHome}): ${r.stderr.slice(0, 200)}`);
+    throw new Error(`pair join failed (${peerHome}): ${r.stderr.slice(0, 200)}`);
   }
   await waitForLine(inviteHandle.stdout, /✓\s+"\S+"\s+paired/i, 30_000, 'pair ack');
 }
 
 /** Reopen an invite for the named invitee, returning a fresh
- * share URL. Used by the three-peer test where the admin opens
+ * join URL. Used by the three-peer test where the admin opens
  * invites for two different invitees in sequence. */
 export async function openExistingInvite(
   adminHome: string,
   inviteName: string,
   options: { reopen?: boolean } = {}
 ): Promise<OpenedInvite> {
-  const args = ['add', 'user', inviteName];
+  const args = ['pair', 'open', '--user', inviteName];
   if (options.reopen) {
     args.push('--reopen');
   }
   const handle = spawnCli(`invite-${inviteName}`, args, adminHome);
-  const m = await waitForLine(
-    handle.stdout,
-    /(https?:\/\/\S+#pair=\S+invite=\S+)/,
-    15_000,
-    `share URL for ${inviteName}`
-  );
+  const m = await waitForLine(handle.stdout, JOIN_URL_RE, 15_000, `join URL for ${inviteName}`);
   const shareUrl = (m[1] ?? '').replace(/[)\].,]+$/, '');
   return {
     shareUrl,
     close: async () => {
-      await killAndWait(handle);
+      await interruptAndWait(handle);
     },
   };
 }
