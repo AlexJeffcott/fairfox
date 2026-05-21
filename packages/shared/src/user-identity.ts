@@ -39,7 +39,14 @@ export interface UserIdentity {
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    // Open without a fixed version. The self-heal below bumps the DB to
+    // version 2 when it finds the store missing (a known fresh-install
+    // race); a hardcoded `open(DB_NAME, 1)` then fails every later call
+    // with `VersionError: requested version (1) < existing version (2)`,
+    // which strands the recovery/invite hand-off — it cannot save the
+    // user identity. A versionless open adapts to whatever exists and
+    // only triggers `onupgradeneeded` on first creation.
+    const req = indexedDB.open(DB_NAME);
     req.onupgradeneeded = () => {
       if (!req.result.objectStoreNames.contains(STORE_NAME)) {
         req.result.createObjectStore(STORE_NAME);

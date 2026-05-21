@@ -132,7 +132,7 @@ async function launchBrowser(label: string): Promise<DeviceHandle> {
         TRACE(`${label}-console-${type}`, text);
         consoleProblems.push({ level: type, text });
       }
-    } else {
+    } else if (/\[policy\]/.test(text)) {
       TRACE(`${label}-console`, text);
     }
   });
@@ -183,36 +183,49 @@ try {
   const browserJoinUrl = joinUrl.replace(/\/#pair=/, '/agenda#pair=');
   TRACE('cli', `join URL captured (${joinUrl.length} chars)`);
 
-  // 3 — the browser joins. consumePairingHash pairs, waits for the
-  // encrypted identity over pair-ack, applies it, and reloads.
+  // 3 — the browser joins. consumePairingHash pairs (the agenda renders
+  // the instant `knownPeerCount` flips — before the identity lands),
+  // waits for the encrypted identity over pair-ack, applies it, then
+  // reloads. Don't interact until the identity has actually landed and
+  // the post-pair reload has settled: poll IndexedDB, tolerating the
+  // reload destroying the evaluation context.
   TRACE('browser', 'open the join URL');
   await desktopBrowser.page.goto(browserJoinUrl, { waitUntil: 'domcontentloaded' });
+  const identityName = await waitFor(
+    async () => {
+      try {
+        return await desktopBrowser.page.evaluate(async () => {
+          const db = await new Promise<IDBDatabase>((res, rej) => {
+            // Versionless open — the app's own openDb may have bumped
+            // the DB past version 1 via its missing-store self-heal.
+            const r = indexedDB.open('fairfox-user-identity');
+            r.onsuccess = () => res(r.result);
+            r.onerror = () => rej(r.error);
+          });
+          const val = await new Promise<{ displayName?: string } | null>((res, rej) => {
+            const rq = db
+              .transaction('user-identity', 'readonly')
+              .objectStore('user-identity')
+              .get('default');
+            rq.onsuccess = () => res(rq.result ?? null);
+            rq.onerror = () => rej(rq.error);
+          });
+          return val?.displayName ?? '';
+        });
+      } catch {
+        // Execution context destroyed mid-reload — retry.
+        return '';
+      }
+    },
+    {
+      timeoutMs: PAIR_CEREMONY_TIMEOUT_MS,
+      intervalMs: 1000,
+      description: 'user identity applied on the browser',
+    }
+  );
+  TRACE('browser', `identity applied: "${identityName}"`);
   await waitForText(desktopBrowser.page, 'Agenda', PAIR_CEREMONY_TIMEOUT_MS);
   TRACE('browser', 'paired — agenda visible');
-
-  // DIAGNOSTIC — did the encrypted identity hand-off land?
-  const identityState = await desktopBrowser.page.evaluate(async () => {
-    try {
-      const db = await new Promise<IDBDatabase>((res, rej) => {
-        const r = indexedDB.open('fairfox-user-identity', 1);
-        r.onsuccess = () => res(r.result);
-        r.onerror = () => rej(r.error);
-      });
-      const val = await new Promise<{ displayName?: string } | null>((res, rej) => {
-        const rq = db
-          .transaction('user-identity', 'readonly')
-          .objectStore('user-identity')
-          .get('default');
-        rq.onsuccess = () => res(rq.result ?? null);
-        rq.onerror = () => rej(rq.error);
-      });
-      return val ? `present (${val.displayName ?? '?'})` : 'ABSENT';
-    } catch (err) {
-      return `read failed: ${err instanceof Error ? err.message : String(err)}`;
-    }
-  });
-  TRACE('browser', `user identity in IDB: ${identityState}`);
-  TRACE('cli', `pair-open log so far:\n${pairOpenOut.trim()}`);
 
   // Let the WebRTC data channel to the CLI peer settle before writing.
   await sleep(5000);
