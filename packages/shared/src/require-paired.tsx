@@ -81,18 +81,15 @@ export function RequirePaired({ children }: RequirePairedProps): preact.JSX.Elem
     return null;
   }
   const paired = knownPeerCount.value > 0 || soloDeviceMode.value;
-  if (!paired) {
-    if (typeof window !== 'undefined' && window.location.pathname !== '/') {
-      window.location.replace('/');
-    }
-    return null;
-  }
   // A paired device can still open the pairing wizard — the "Pair another
   // device" control in every sub-app header does exactly that, flipping
   // pairingMode out of 'idle'. While the wizard is active, render the
   // LoginPage in place of the sub-app so the ceremony has somewhere to
   // show its QR / paste box. Cancelling the ceremony returns pairingMode
-  // to 'idle' and the sub-app reappears.
+  // to 'idle' and the sub-app reappears. This is checked *before* the
+  // not-paired redirect: a fresh device consuming a join link is briefly
+  // not-paired while `consumePairingHash` runs, and redirecting it to '/'
+  // mid-ceremony aborts the async identity hand-off.
   if (pairingMode.value !== 'idle') {
     return (
       <>
@@ -101,6 +98,19 @@ export function RequirePaired({ children }: RequirePairedProps): preact.JSX.Elem
         <StorageHealthBanner />
       </>
     );
+  }
+  // A `#pair=` fragment means `consumePairingHash` is about to run (it
+  // flips pairingMode itself, but only after it has read and stripped
+  // the hash). Hold the screen rather than redirecting, so the join
+  // link survives the gap before pairingMode catches up.
+  if (typeof window !== 'undefined' && window.location.hash.startsWith('#pair=')) {
+    return null;
+  }
+  if (!paired) {
+    if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+      window.location.replace('/');
+    }
+    return null;
   }
   return (
     <>
