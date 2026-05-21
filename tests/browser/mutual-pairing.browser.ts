@@ -30,9 +30,17 @@ describe('mutual pairing via asymmetric tokens', () => {
   });
 
   test('two-way pairing yields mutual trust', async () => {
-    // Use a fresh IndexedDB namespace so loadOrCreateKeyring does not
-    // reuse a previous test's keyring.
-    indexedDB.deleteDatabase('fairfox-keyring');
+    // Start from a fresh keyring DB. The delete must be awaited —
+    // `loadOrCreateKeyring` persists the keyring it creates, so an
+    // un-awaited delete races the next read and the laptop loads a
+    // stale keyring that already holds a peer from an earlier run
+    // (the test then sees knownPeers.size === 2 instead of 1).
+    await new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase('fairfox-keyring');
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
+      req.onblocked = () => resolve();
+    });
     const laptop = await loadOrCreateKeyring();
     const phone = createKeyring();
 
