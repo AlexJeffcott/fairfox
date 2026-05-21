@@ -89,12 +89,11 @@ export function StorageHealthBanner(): preact.JSX.Element | null {
       radius="md"
       maxInlineSize="40rem"
       inset="auto auto var(--polly-space-md) 50%"
-      // Token-retint: a deliberate dark error banner. Its polly tokens
-      // are overridden here and inherited by the Text and Button
-      // children. translateX completes horizontal centring of a fixed
-      // element — no Surface prop expresses a transform.
+      transform="translateX(-50%)"
+      // Token-retint: a deliberate dark error banner. Its light text
+      // tokens are overridden here and inherited by the Text and
+      // Button children.
       style={{
-        transform: 'translateX(-50%)',
         '--polly-text': '#fef2f2',
         '--polly-text-muted': '#fef2f2',
       }}

@@ -90,12 +90,10 @@ function StoryView() {
       )}
       {passage.isDeath && (
         <Layout rows="auto" gap="var(--polly-space-sm)">
-          <Surface
-            variant="callout"
-            background="var(--polly-status-danger-bg)"
-            style={{ color: 'var(--polly-status-danger-text)' }}
-          >
-            <Text as="p">You have reached a dead end.</Text>
+          <Surface variant="callout" background="var(--polly-status-danger-bg)">
+            <Text as="p" tone="danger">
+              You have reached a dead end.
+            </Text>
           </Surface>
           <Button label="Start over" tier="secondary" color="danger" data-action="game.reset" />
         </Layout>

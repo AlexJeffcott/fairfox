@@ -544,6 +544,7 @@ export function QrImageDropzone({
       as="label"
       variant="callout"
       border="default"
+      borderStyle="dashed"
       background="transparent"
       width="100%"
       data-qr-dropzone-mode={mode}

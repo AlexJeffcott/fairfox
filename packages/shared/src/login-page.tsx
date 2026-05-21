@@ -253,15 +253,12 @@ function InviteSection(): preact.JSX.Element | null {
   );
 }
 
-/** Danger-coloured paragraph for pairing / setup errors. Surface
- * token-retint is polly's sanctioned path for a one-off colour. */
+/** Danger-coloured paragraph for pairing / setup errors. */
 function ErrorText({ children }: { children: preact.ComponentChildren }): preact.JSX.Element {
   return (
-    <Surface background="transparent" style={{ '--polly-text': '#b91c1c' }}>
-      <Text as="p" size="sm">
-        {children}
-      </Text>
-    </Surface>
+    <Text as="p" size="sm" tone="danger">
+      {children}
+    </Text>
   );
 }
 
@@ -295,9 +292,9 @@ function IssueView(): preact.JSX.Element {
       )}
       {issuedShareUrl.value && (
         <Layout rows="auto" justifyItems="center">
-          {/* wordBreak keeps a long unbroken pairing URL from
-              overflowing the card — no polly prop expresses it. */}
-          <a href={issuedShareUrl.value} style={{ wordBreak: 'break-all' }}>
+          {/* data-polly-wrap keeps a long unbroken pairing URL from
+              overflowing the card. */}
+          <a href={issuedShareUrl.value} data-polly-wrap={true}>
             <Text size="sm">{issuedShareUrl.value}</Text>
           </a>
         </Layout>

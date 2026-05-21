@@ -123,12 +123,11 @@ export function BuildFreshnessBanner(): preact.JSX.Element | null {
       padding="var(--polly-space-sm) var(--polly-space-md)"
       radius="md"
       inset="auto auto var(--polly-space-md) 50%"
+      transform="translateX(-50%)"
       // Token-retint: the banner is a deliberate dark one-off, so its
-      // polly tokens are overridden here and inherited by the Text and
-      // Button children. translateX completes the horizontal centring
-      // of a fixed element — no Surface prop expresses a transform.
+      // light text tokens are overridden here and inherited by the
+      // Text and Button children.
       style={{
-        transform: 'translateX(-50%)',
         '--polly-text': '#f9fafb',
         '--polly-text-muted': '#f9fafb',
       }}

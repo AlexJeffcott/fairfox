@@ -266,13 +266,13 @@ export function PeersView() {
                   </Layout>
                 )}
                 {effective.length > 0 && (
-                  <Text as="span" tone="muted" size="sm">
-                    <em>can: {effective.join(', ')}</em>
+                  <Text as="span" tone="muted" size="sm" italic={true}>
+                    can: {effective.join(', ')}
                   </Text>
                 )}
                 {ownerUserIds.length > 0 && effective.length === 0 && (
-                  <Text as="span" size="sm">
-                    <em>read-only (no endorsed user has any permissions)</em>
+                  <Text as="span" size="sm" tone="warning" italic={true}>
+                    read-only (no endorsed user has any permissions)
                   </Text>
                 )}
               </Layout>

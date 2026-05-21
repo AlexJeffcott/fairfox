@@ -307,13 +307,8 @@ function Composer({ selfPeerId }: { selfPeerId: string | null }) {
     // a more targeted heal on the next devicesState tick).
     return (
       <Layout rows="auto auto" gap="0.35rem" padding="0.5rem">
-        <Surface
-          as="p"
-          variant="callout"
-          background="var(--polly-status-warning-bg)"
-          style={{ '--polly-text': 'var(--polly-status-warning-text)' }}
-        >
-          <Text size="sm">
+        <Surface as="p" variant="callout" background="var(--polly-status-warning-bg)">
+          <Text size="sm" tone="warning">
             Setting up this device — your endorsement hasn't replicated yet. Reload to repair.
           </Text>
         </Surface>
@@ -599,15 +594,8 @@ function DemoBanner() {
     return null;
   }
   return (
-    <Surface
-      variant="callout"
-      background="var(--polly-status-warning-bg)"
-      style={{
-        '--polly-text': 'var(--polly-status-warning-text)',
-        '--polly-border': 'var(--polly-warning)',
-      }}
-    >
-      <Text size="xs">
+    <Surface variant="callout" background="var(--polly-status-warning-bg)">
+      <Text size="xs" tone="warning">
         ⚠ This widget contains demo data from <Code>#__inject=</Code> in the URL. None of it is real
         or synced to your other devices.
       </Text>
@@ -655,15 +643,9 @@ function Panel({ selfPeerId }: { selfPeerId: string | null }) {
           <ChatContextStrip chat={chat} />
           <ActiveCcSessions />
         </Surface>
-        {/* The message tail is the one region in this package that
-          must scroll independently of the panel. polly 0.72.0 ships
-          no overflow/scroll primitive and no token for it, so this
-          is the single unavoidable inline style left in the
-          package: `overflow-y: auto` cannot be expressed through a
-          Surface prop or a --polly-* retint. Dropping it would clip
-          long threads inside the fixed-height panel with no way to
-          reach the older messages. */}
-        <Surface padding="0.5rem 1rem" style={{ overflowY: 'auto' }}>
+        {/* The message tail scrolls independently of the fixed-height
+          panel so long threads stay reachable. */}
+        <Surface padding="0.5rem 1rem" overflow="auto">
           {messages.length === 0 ? (
             <Text as="p" tone="muted" size="sm">
               New thread. Type below — the laptop's <Code>fairfox chat serve</Code> will reply.
