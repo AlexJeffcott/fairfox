@@ -506,27 +506,33 @@ async function holdPairCeremony(ceremony: PairCeremony): Promise<number> {
       }
       const agentHint = typeof frame.agent === 'string' ? frame.agent : undefined;
       const nameHint = typeof frame.name === 'string' ? frame.name : undefined;
+      // Hand the encrypted identity back FIRST. The scanner waits on it
+      // with a bounded timeout, and it depends on nothing below —
+      // `acceptReturnToken` can stall on a first-touch
+      // `devicesState.loaded`, which used to push the pair-ack past the
+      // scanner's deadline and strand it with no identity.
+      const ack: Record<string, unknown> = { sessionId };
+      if (identityBlob) {
+        try {
+          ack.payload = encryptPairingPayload(identityBlob, ackKey);
+        } catch {
+          // Leave payload off — the scanner falls back to the join
+          // wizard rather than receiving a corrupt identity.
+        }
+      }
+      client.signaling.sendCustom('pair-ack', ack);
+      // Then apply the scanner's token so the issuer trusts it back.
       // Mutate polly's keyring instance directly, not our local
       // `storage.load()` copy — they are different objects, and the
       // MeshNetworkAdapter reads through the polly-side one for
       // `tryUnwrap` signature verification. The userId comes from the
-      // issuer's own context (the identity we are about to push), not
-      // from the scanner — the scanner does not know its identity yet.
+      // issuer's own context (the identity we just pushed), not from
+      // the scanner — the scanner does not know its identity yet.
       void acceptReturnToken(returnToken, client.keyring, storage, client, {
         ...(agentHint ? { agent: agentHint } : {}),
         ...(nameHint ? { name: nameHint } : {}),
         ...(ownerUserId ? { userId: ownerUserId } : {}),
       }).then(() => {
-        const ack: Record<string, unknown> = { sessionId };
-        if (identityBlob) {
-          try {
-            ack.payload = encryptPairingPayload(identityBlob, ackKey);
-          } catch {
-            // Leave payload off — the scanner falls back to the join
-            // wizard rather than receiving a corrupt identity.
-          }
-        }
-        client.signaling.sendCustom('pair-ack', ack);
         process.stdout.write(`\n✓ ${label} paired. Close with ctrl-c, or stay open.\n`);
       });
     },

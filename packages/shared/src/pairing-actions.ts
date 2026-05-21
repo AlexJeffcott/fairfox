@@ -151,20 +151,25 @@ function subscribeToPairReturn(
     // encrypted under the ephemeral ack key the scanner read from the
     // QR — on the pair-ack frame. The relay forwards ciphertext it
     // cannot read; the scanner decrypts with its copy of `k`.
+    // Hand the encrypted identity back FIRST. The scanner waits on it
+    // with a bounded timeout; `applyScannedToken` / `writeScannerDeviceRow`
+    // can stall on a first-touch `$meshState.loaded`, which would push
+    // the pair-ack past the scanner's deadline and strand it with no
+    // identity.
+    const ack: Record<string, unknown> = { sessionId };
+    if (identityBlob) {
+      try {
+        ack.payload = encryptPairingPayload(identityBlob, ackKey);
+      } catch {
+        // Leave payload off — the scanner falls back to the join
+        // wizard rather than receiving a corrupt identity.
+      }
+    }
+    mesh?.signaling.sendCustom('pair-ack', ack);
     (async () => {
       try {
         await applyScannedToken(token);
         await writeScannerDeviceRow(token, agentHint, nameHint, ownerUserId);
-        const ack: Record<string, unknown> = { sessionId };
-        if (identityBlob) {
-          try {
-            ack.payload = encryptPairingPayload(identityBlob, ackKey);
-          } catch {
-            // Leave payload off — the scanner falls back to the join
-            // wizard rather than receiving a corrupt identity.
-          }
-        }
-        mesh?.signaling.sendCustom('pair-ack', ack);
         drainStep('issue');
         advanceAfter('scan');
       } catch (err) {
@@ -574,7 +579,7 @@ async function awaitIdentityHandoff(sessionId: string, ackKey: string): Promise<
         finish(typeof frame.payload === 'string' ? frame.payload : null);
       }
     });
-    setTimeout(() => finish(null), 10000);
+    setTimeout(() => finish(null), 20000);
   });
   if (!payload) {
     return;

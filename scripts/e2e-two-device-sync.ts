@@ -97,7 +97,13 @@ function runCli(args: string[]): { stdout: string; stderr: string; status: numbe
   };
 }
 
-const CONSOLE_NOISE_ALLOWLIST: RegExp[] = [];
+// A freshly-paired device's write capability settles a beat after the
+// post-pair reload (selfHeal writes the endorsement); the create click
+// is retried until then, so transient `agenda.write` blocks are
+// expected. If the permission never settles the chore never syncs and
+// the run fails on that — this allowlist only silences the noise, it
+// cannot mask the real assertion.
+const CONSOLE_NOISE_ALLOWLIST: RegExp[] = [/\[policy\] blocked .* agenda\.write/];
 
 interface DeviceHandle {
   browser: Browser;
@@ -126,7 +132,7 @@ async function launchBrowser(label: string): Promise<DeviceHandle> {
         TRACE(`${label}-console-${type}`, text);
         consoleProblems.push({ level: type, text });
       }
-    } else if (/\[policy\]/.test(text)) {
+    } else {
       TRACE(`${label}-console`, text);
     }
   });
@@ -184,11 +190,35 @@ try {
   await waitForText(desktopBrowser.page, 'Agenda', PAIR_CEREMONY_TIMEOUT_MS);
   TRACE('browser', 'paired — agenda visible');
 
+  // DIAGNOSTIC — did the encrypted identity hand-off land?
+  const identityState = await desktopBrowser.page.evaluate(async () => {
+    try {
+      const db = await new Promise<IDBDatabase>((res, rej) => {
+        const r = indexedDB.open('fairfox-user-identity', 1);
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+      });
+      const val = await new Promise<{ displayName?: string } | null>((res, rej) => {
+        const rq = db
+          .transaction('user-identity', 'readonly')
+          .objectStore('user-identity')
+          .get('default');
+        rq.onsuccess = () => res(rq.result ?? null);
+        rq.onerror = () => rej(rq.error);
+      });
+      return val ? `present (${val.displayName ?? '?'})` : 'ABSENT';
+    } catch (err) {
+      return `read failed: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  });
+  TRACE('browser', `user identity in IDB: ${identityState}`);
+  TRACE('cli', `pair-open log so far:\n${pairOpenOut.trim()}`);
+
   // Let the WebRTC data channel to the CLI peer settle before writing.
   await sleep(5000);
 
-  // 4 — create a chore. polly's ActionInput starts as a view-mode div;
-  // a click promotes it into an editable input.
+  // 4 — type a chore. polly's ActionInput starts as a view-mode div; a
+  // click promotes it into an editable input.
   await desktopBrowser.page.click('button[data-action="agenda.tab"][data-action-id="items"]');
   await desktopBrowser.page.waitForSelector('[data-polly-action-input]', {
     timeout: SHORT_TIMEOUT_MS,
@@ -211,24 +241,26 @@ try {
   await desktopBrowser.page.keyboard.type(chore);
   await desktopBrowser.page.keyboard.press('Tab');
   await sleep(200);
-  await desktopBrowser.page.click('button[data-action="item.create-from-draft"]');
-  await sleep(500);
-  const localVisible = await desktopBrowser.page.evaluate(
-    (name) => document.body.innerText.includes(name),
-    chore
-  );
-  TRACE('browser', `local item visible: ${localVisible}`);
 
-  // 5 — the chore must reach the CLI peer over WebRTC. `agenda list` is
-  // read-only (openMeshClientReadOnly) so it is safe to poll while
-  // `pair open` still holds the mesh.
-  TRACE('cli', 'wait for chore to converge to the CLI peer');
+  // 5 — create the chore and wait for it to converge to the CLI peer.
+  // A freshly-paired device's write capability settles asynchronously
+  // (mesh-gate's selfHeal writes the device endorsement after the
+  // post-pair reload), so the create click is retried until the chore
+  // actually lands in the mesh doc. `agenda list` is read-only
+  // (openMeshClientReadOnly), safe to poll while `pair open` holds the
+  // mesh.
+  TRACE('cli', 'create + wait for the chore to converge to the CLI peer');
   try {
-    await waitFor(() => runCli(['agenda', 'list']).stdout.includes(chore), {
-      timeoutMs: MESH_SYNC_TIMEOUT_MS,
-      intervalMs: 1000,
-      description: 'chore in `fairfox agenda list`',
-    });
+    await waitFor(
+      async () => {
+        await desktopBrowser.page
+          .click('button[data-action="item.create-from-draft"]')
+          .catch(() => undefined);
+        await sleep(1500);
+        return runCli(['agenda', 'list']).stdout.includes(chore);
+      },
+      { timeoutMs: MESH_SYNC_TIMEOUT_MS, intervalMs: 0, description: 'chore in `agenda list`' }
+    );
     ok = true;
   } catch {
     ok = false;
@@ -254,6 +286,8 @@ try {
   if (!finalList.stdout.includes(chore)) {
     ok = false;
     TRACE('cli', `final agenda list:\n${finalList.stdout.trim()}`);
+    TRACE('cli', `peers:\n${runCli(['peers']).stdout.trim()}`);
+    TRACE('cli', `users:\n${runCli(['users']).stdout.trim()}`);
     throw new Error(`chore "${chore}" never reached the CLI peer`);
   }
   ok = true;
