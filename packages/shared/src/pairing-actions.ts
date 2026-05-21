@@ -564,6 +564,7 @@ export function installPairingHashListener(): void {
  * if no pair-ack arrives the scanner proceeds without an identity and
  * lands on the join wizard's Recover path. */
 async function awaitIdentityHandoff(sessionId: string, ackKey: string): Promise<void> {
+  console.log(`[handoff] start session=${sessionId} ackKeyLen=${ackKey.length}`);
   const payload = await new Promise<string | null>((resolve) => {
     let settled = false;
     const finish = (value: string | null): void => {
@@ -575,12 +576,14 @@ async function awaitIdentityHandoff(sessionId: string, ackKey: string): Promise<
       resolve(value);
     };
     const unsub = subscribeCustomFrames((frame: CustomFrame) => {
+      console.log(`[handoff] frame type=${String(frame.type)} session=${String(frame.sessionId)}`);
       if (frame.type === 'pair-ack' && frame.sessionId === sessionId) {
         finish(typeof frame.payload === 'string' ? frame.payload : null);
       }
     });
     setTimeout(() => finish(null), 20000);
   });
+  console.log(`[handoff] resolved payload=${payload ? `${payload.length} chars` : 'null'}`);
   if (!payload) {
     return;
   }
@@ -588,9 +591,11 @@ async function awaitIdentityHandoff(sessionId: string, ackKey: string): Promise<
   try {
     blob = decryptPairingPayload(payload, ackKey);
   } catch (err) {
+    console.log(`[handoff] decrypt failed: ${err instanceof Error ? err.message : String(err)}`);
     pairingError.value = err instanceof Error ? err.message : String(err);
     return;
   }
+  console.log(`[handoff] decrypted blob prefix=${blob.slice(0, 16)}`);
   // A recovery blob has the `fairfox-user-v1:` prefix; anything else is
   // an admin-signed invite blob.
   if (blob.startsWith('fairfox-user-v1')) {
@@ -598,6 +603,7 @@ async function awaitIdentityHandoff(sessionId: string, ackKey: string): Promise<
   } else {
     await acceptInviteBlob(blob);
   }
+  console.log('[handoff] identity applied');
 }
 
 // Consume a `#pair=<token>[&s=<sessionId>][&k=<ackKey>]` hash on banner
@@ -634,6 +640,9 @@ export async function consumePairingHash(): Promise<boolean> {
     if (parsed.sessionId) {
       void sendPairReturnForSession(parsed.sessionId);
     }
+    console.log(
+      `[handoff] consumePairingHash branch: invite=${!!parsed.invite} recovery=${!!parsed.recovery} sessionId=${!!parsed.sessionId} ackKey=${!!parsed.ackKey}`
+    );
     if (parsed.invite) {
       await acceptInviteBlob(parsed.invite);
     } else if (parsed.recovery) {
