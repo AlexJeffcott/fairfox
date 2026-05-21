@@ -84,9 +84,14 @@ jobs:
       # such drift gets caught at the tag that introduced it.
       #
       # The refresh response carries the tag the server settled on.
-      # Assert it matches this release: if propagation still raced
-      # the wait step above, fail loudly here rather than leave the
-      # deploy quietly serving the previous bundle.
+      # `fetchApp()` reads GitHub's releases list, which lags the
+      # release creation by a few seconds (sometimes longer than the
+      # surface-wait step above tolerates — observed failing three
+      # consecutive releases). So poll the refresh: re-POST until the
+      # server reports this tag, spacing attempts past the server's
+      # 5s refresh debounce. Only a sustained mismatch — the list
+      # still not carrying this release after ~1min — is a genuine
+      # failure worth stopping the workflow for.
       - name: Refresh deployed server bundle
         env:
           FAIRFOX_REFRESH_TOKEN: ${{ secrets.FAIRFOX_REFRESH_TOKEN }}
@@ -97,13 +102,22 @@ jobs:
             echo "::warning::FAIRFOX_REFRESH_TOKEN secret not set — skipping server refresh"
             exit 0
           fi
-          response=$(curl -fsS -X POST \
-            -H "Authorization: Bearer $FAIRFOX_REFRESH_TOKEN" \
-            "$FAIRFOX_SERVER_URL/admin/refresh-web-bundle")
-          echo "refresh response: $response"
-          served=$(printf '%s' "$response" | jq -r '.tag')
-          if [ "$served" != "$EXPECTED_TAG" ]; then
-            echo "::error::server refreshed to '$served', expected '$EXPECTED_TAG' — GitHub release propagation raced the refresh"
-            exit 1
-          fi
-          echo "server is now serving $served"
+          served=""
+          for i in $(seq 1 12); do
+            response=$(curl -fsS -X POST \
+              -H "Authorization: Bearer $FAIRFOX_REFRESH_TOKEN" \
+              "$FAIRFOX_SERVER_URL/admin/refresh-web-bundle") || {
+                echo "attempt $i: refresh request failed, retrying"
+                sleep 6
+                continue
+              }
+            served=$(printf '%s' "$response" | jq -r '.tag')
+            echo "attempt $i: server settled on '$served' (want '$EXPECTED_TAG')"
+            if [ "$served" = "$EXPECTED_TAG" ]; then
+              echo "server is now serving $served"
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "::error::server still serving '$served' after ~1min of retries, expected '$EXPECTED_TAG' — refresh pipeline or GitHub release propagation is broken"
+          exit 1
