@@ -28,6 +28,7 @@ import {
   meshMetaState,
   setMeshName,
 } from '@fairfox/shared/mesh-meta-state';
+import { encryptPairingPayload, generateAckKey } from '@fairfox/shared/pairing-payload';
 import {
   $meshState,
   applyPairingToken,
@@ -73,6 +74,7 @@ import {
   loadUserIdentityFile,
   USER_IDENTITY_PATH,
 } from '#src/user-identity-node.ts';
+import { isVerbose } from '#src/verbose.ts';
 
 const DEVICES_INITIAL: DevicesDoc = { devices: {} };
 
@@ -141,8 +143,8 @@ export async function meshInit(rest: readonly string[]): Promise<number> {
   const args = parseInitArgs(rest);
   if (!args.admin || !args.admin.trim()) {
     process.stderr.write(
-      'fairfox mesh init: --admin <name> is required. Example:\n' +
-        '  fairfox mesh init --admin "Alex" --user "Leo:guest"\n'
+      'fairfox init: --admin <name> is required. Example:\n' +
+        '  fairfox init "Holm household" --admin "Alex" --user "Leo:guest"\n'
     );
     return 1;
   }
@@ -153,7 +155,7 @@ export async function meshInit(rest: readonly string[]): Promise<number> {
   if ((keyringExists || userIdentityExists) && !args.force) {
     process.stderr.write(
       [
-        'fairfox mesh init: local state already exists.',
+        'fairfox init: local state already exists.',
         `  keyring:       ${KEYRING_PATH}${keyringExists ? ' (present)' : ''}`,
         `  user identity: ${USER_IDENTITY_PATH}${userIdentityExists ? ' (present)' : ''}`,
         '',
@@ -286,14 +288,14 @@ export async function meshInit(rest: readonly string[]): Promise<number> {
         `  ${recovery}`,
         '',
         storedInvites.length === 0
-          ? 'No additional users requested. Use `fairfox users invite` later.'
+          ? 'No additional users requested. Invite people later with `fairfox pair open --user`.'
           : `${storedInvites.length} invite${storedInvites.length === 1 ? '' : 's'} ready:`,
         ...storedInvites.map(
           (i) => `  ${i.name.padEnd(16, ' ')}  ${i.role.padEnd(8, ' ')}  ${i.userId.slice(0, 16)}`
         ),
         '',
-        storedInvites.length === 0 ? '' : 'Open each QR with:',
-        ...storedInvites.map((i) => `  fairfox mesh invite open ${i.name.toLowerCase()}`),
+        storedInvites.length === 0 ? '' : 'Show each join QR with:',
+        ...storedInvites.map((i) => `  fairfox pair open --user "${i.name}:${i.role}"`),
         '',
         "Admin's UserEntry landed in mesh:users. Invites are signed",
         'and ready; each invitee gets paired + identified in one scan.',
@@ -352,47 +354,145 @@ async function loadPeerId(): Promise<string> {
   const storage = keyringStorage();
   const keyring = await storage.load();
   if (!keyring) {
-    throw new Error('no keyring — run `fairfox mesh init` first');
+    throw new Error('no keyring — run `fairfox init` first');
   }
   return derivePeerId(keyring.identity.publicKey);
 }
 
-interface InviteOpenArgs {
-  name: string | undefined;
+// --- pair open ----------------------------------------------------
+//
+// `fairfox pair open` shows a join QR. With no flag it adds another of
+// the local user's own devices; with `--user "Name:role"` it invites a
+// new person. Either way the QR carries transport only — pair token,
+// session id, and one ephemeral key `k`. The identity blob (the local
+// user's recovery blob, or the invitee's admin-signed invite blob) is
+// encrypted under `k` and handed to the scanner over the relay's
+// pair-ack frame once the handshake completes, so it never rides the
+// QR. See packages/shared/src/pairing-payload.ts.
+
+interface PairOpenArgs {
+  user: string | undefined;
+  role: Role;
+  queueOnly: boolean;
   reopen: boolean;
 }
 
-function parseInviteOpenArgs(rest: readonly string[]): InviteOpenArgs {
-  const out: InviteOpenArgs = { name: undefined, reopen: false };
-  for (const arg of rest) {
-    if (arg === '--reopen') {
+function parsePairOpenArgs(rest: readonly string[]): PairOpenArgs {
+  const out: PairOpenArgs = { user: undefined, role: 'member', queueOnly: false, reopen: false };
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i];
+    if (arg === undefined) {
+      continue;
+    }
+    if (arg === '--user') {
+      out.user = rest[i + 1];
+      i += 1;
+    } else if (arg === '--role') {
+      const v = rest[i + 1];
+      i += 1;
+      if (v && isValidRole(v)) {
+        out.role = v;
+      }
+    } else if (arg === '--queue-only') {
+      out.queueOnly = true;
+    } else if (arg === '--reopen') {
       out.reopen = true;
-    } else if (!out.name) {
-      out.name = arg;
     }
   }
   return out;
 }
 
-export async function meshInviteOpen(rest: readonly string[]): Promise<number> {
-  const args = parseInviteOpenArgs(rest);
-  if (!args.name) {
-    process.stderr.write('fairfox mesh invite open: expected a name.\n');
+/** Mint (or reuse) an invite for `name`, write the invitee's UserEntry
+ * into mesh:users, and stash the blob locally. Returns the stored invite,
+ * or a numeric exit code on failure. */
+async function ensureInvite(name: string, role: Role): Promise<StoredInvite | number> {
+  const existing = findInvite(name);
+  if (existing) {
+    return existing;
+  }
+  const adminIdentity = loadUserIdentityFile();
+  if (!adminIdentity) {
+    process.stderr.write(
+      'fairfox pair open --user: no local user identity — run `fairfox init` or pair first.\n'
+    );
     return 1;
   }
-  const stored = findInvite(args.name);
-  if (!stored) {
-    process.stderr.write(`fairfox mesh invite open: no invite named "${args.name}".\n`);
-    return 1;
+  const peerId = await loadPeerId();
+  const client = await openMeshClient({ peerId });
+  try {
+    await waitForPeer(client, 8000);
+    await usersState.loaded;
+    const adminEntry = usersState.value.users[adminIdentity.userId];
+    if (!adminEntry || !adminEntry.roles.includes('admin')) {
+      process.stderr.write('fairfox pair open --user: this user is not an admin in mesh:users.\n');
+      return 1;
+    }
+    const { blob, payload } = createInvite({
+      displayName: name,
+      roles: [role],
+      adminUserKey: adminIdentity.keypair,
+      adminUserId: adminIdentity.userId,
+    });
+    // Pre-write the invitee's UserEntry so the row is present on every
+    // peer. CRDT merge with the invitee's post-pair write lands
+    // last-write-wins on identical content.
+    upsertUser({
+      entry: {
+        userId: payload.userId,
+        displayName: payload.displayName,
+        roles: payload.roles,
+        grants: payload.grants,
+        createdByUserId: payload.createdByUserId,
+        createdAt: payload.createdAt,
+        signature: payload.signature,
+      },
+    });
+    const stored: StoredInvite = {
+      name,
+      userId: payload.userId,
+      role,
+      createdAt: payload.createdAt,
+      blob,
+    };
+    addInvite(stored);
+    await flushOutgoing(2000);
+    return stored;
+  } finally {
+    await closeMesh(client);
   }
+}
 
+interface PairCeremony {
+  /** Identity blob handed to the scanner over the encrypted pair-ack —
+   * a recovery blob or an invite blob. Null when this CLI has nothing
+   * to share; the scanner then lands on the join wizard. */
+  identityBlob: string | null;
+  /** userId the scanner's device is owned by, written onto its
+   * mesh:devices row by the issuer. Null when identityBlob is null. */
+  ownerUserId: string | null;
+  /** Human label for the success line. */
+  label: string;
+  /** Lines printed under the QR before the "waiting for scan" prompt. */
+  intro: readonly string[];
+  /** When set, refuse the open if this user already has a paired
+   * device, unless `reopen` is true. */
+  consumedCheck?: { userId: string; name: string; reopen: boolean };
+}
+
+/** Open a transport-only join QR and hold it until ctrl-c. On a
+ * pair-return, accept the scanner's token and hand back the encrypted
+ * identity blob (if any) over pair-ack. */
+async function holdPairCeremony(ceremony: PairCeremony): Promise<number> {
   const peerId = await loadPeerId();
   const storage = keyringStorage();
   const keyring = await storage.load();
   if (!keyring) {
-    throw new Error('no keyring');
+    process.stderr.write('fairfox pair open: no keyring — run `fairfox init` first.\n');
+    return 1;
   }
   const sessionId = randomBase64(16);
+  const ackKey = generateAckKey();
+  const { identityBlob, ownerUserId, label } = ceremony;
 
   const client = await openMeshClient({
     peerId,
@@ -406,44 +506,49 @@ export async function meshInviteOpen(rest: readonly string[]): Promise<number> {
       }
       const agentHint = typeof frame.agent === 'string' ? frame.agent : undefined;
       const nameHint = typeof frame.name === 'string' ? frame.name : undefined;
-      const userIdHint = typeof frame.userId === 'string' ? frame.userId : undefined;
       // Mutate polly's keyring instance directly, not our local
       // `storage.load()` copy — they are different objects, and the
-      // MeshNetworkAdapter sitting under this client reads through the
-      // polly-side one for `tryUnwrap` signature verification. Writing
-      // only to the local copy left the running adapter with a stale
-      // map and made it silently drop the scanner's first sync ops.
+      // MeshNetworkAdapter reads through the polly-side one for
+      // `tryUnwrap` signature verification. The userId comes from the
+      // issuer's own context (the identity we are about to push), not
+      // from the scanner — the scanner does not know its identity yet.
       void acceptReturnToken(returnToken, client.keyring, storage, client, {
         ...(agentHint ? { agent: agentHint } : {}),
         ...(nameHint ? { name: nameHint } : {}),
-        ...(userIdHint ? { userId: userIdHint } : {}),
+        ...(ownerUserId ? { userId: ownerUserId } : {}),
       }).then(() => {
-        // Send a pair-ack so the scanner knows the issuer applied the
-        // token and wrote its mesh:devices row.
-        client.signaling.sendCustom('pair-ack', { sessionId });
-        process.stdout.write(`\n✓ "${stored.name}" paired. Close with ctrl-c, or stay open.\n`);
+        const ack: Record<string, unknown> = { sessionId };
+        if (identityBlob) {
+          try {
+            ack.payload = encryptPairingPayload(identityBlob, ackKey);
+          } catch {
+            // Leave payload off — the scanner falls back to the join
+            // wizard rather than receiving a corrupt identity.
+          }
+        }
+        client.signaling.sendCustom('pair-ack', ack);
+        process.stdout.write(`\n✓ ${label} paired. Close with ctrl-c, or stay open.\n`);
       });
     },
   });
   try {
     await waitForPeer(client, 4000);
 
-    // Check if the invite has already been consumed, refuse unless --reopen.
-    const devices = $meshState<DevicesDoc>('mesh:devices', DEVICES_INITIAL);
-    await devices.loaded;
-    const consumed = Object.values(devices.value.devices).some((d) =>
-      (d.ownerUserIds ?? []).includes(stored.userId)
-    );
-    if (consumed && !args.reopen) {
-      process.stderr.write(
-        `fairfox mesh invite open: "${stored.name}" is already paired on a device. Pass --reopen to issue another QR for this user (allows adding more devices under the same identity).\n`
+    const check = ceremony.consumedCheck;
+    if (check) {
+      const devices = $meshState<DevicesDoc>('mesh:devices', DEVICES_INITIAL);
+      await devices.loaded;
+      const consumed = Object.values(devices.value.devices).some((d) =>
+        (d.ownerUserIds ?? []).includes(check.userId)
       );
-      return 1;
+      if (consumed && !check.reopen) {
+        process.stderr.write(
+          `fairfox pair open: "${check.name}" is already paired on a device. Pass --reopen to add another device under the same identity.\n`
+        );
+        return 1;
+      }
     }
 
-    // Fresh pair-token for THIS open. Session id was already
-    // generated above so the onCustomFrame callback has it in
-    // closure.
     const documentKey = keyring.documentKeys.get(DEFAULT_MESH_KEY_ID);
     const pairToken = encodePairingToken(
       createPairingToken({
@@ -454,38 +559,48 @@ export async function meshInviteOpen(rest: readonly string[]): Promise<number> {
       })
     );
 
-    // Register with the signalling relay. Best-effort: the scanner's
-    // one-scan flow needs our socket to be listening for pair-return
-    // frames. If sendCustom returns false, fall through — the
-    // manual-paste fallback still lets the invitee join.
+    // Register with the signalling relay so the scanner's pair-return
+    // reaches us. Best-effort: the encrypted hand-off rides the relay,
+    // so when it is down we print the identity blob as a last resort.
     const registered = client.signaling.sendCustom('pair-issue', { sessionId });
     if (!registered) {
-      process.stderr.write(
-        'fairfox mesh invite open: signalling relay unavailable; scanner will have to paste back manually.\n'
-      );
+      process.stderr.write('fairfox pair open: signalling relay unavailable.\n');
+      if (identityBlob) {
+        process.stderr.write(
+          'The encrypted hand-off cannot run without the relay. As a last\n' +
+            'resort, give the other device this identity blob by hand — treat\n' +
+            'it like a password:\n\n' +
+            `  ${identityBlob}\n\n`
+        );
+      }
     }
 
     const base = process.env.FAIRFOX_URL ?? 'https://fairfox.fly.dev';
-    const fragment = `pair=${encodeURIComponent(pairToken)}&s=${encodeURIComponent(sessionId)}&invite=${encodeURIComponent(stored.blob)}`;
+    const fragment = `pair=${encodeURIComponent(pairToken)}&s=${encodeURIComponent(sessionId)}&k=${ackKey}`;
     const shareUrl = `${base.replace(/\/$/, '')}/#${fragment}`;
 
-    const qr = await QRCode.toString(shareUrl, { type: 'terminal', small: true });
+    const qr = await QRCode.toString(shareUrl, {
+      type: 'terminal',
+      small: true,
+      errorCorrectionLevel: 'L',
+    });
     process.stdout.write(`\n${qr}\n`);
-    process.stdout.write(`${shareUrl}\n\n`);
-    process.stdout.write('Individual fields (if you want to inspect or paste by hand):\n\n');
-    process.stdout.write(`  pair token:  ${pairToken}\n`);
-    process.stdout.write(`  session id:  ${sessionId}\n`);
-    process.stdout.write(`  invite blob: ${stored.blob}\n\n`);
-    process.stdout.write('Paste-box fragment (everything after the `#` of the URL above):\n\n');
-    process.stdout.write(`  ${fragment}\n\n`);
-    process.stdout.write(
-      `Invite open for "${stored.name}" (${stored.role}). Waiting for scan — ctrl-c to close.\n`
-    );
+    for (const line of ceremony.intro) {
+      process.stdout.write(`${line}\n`);
+    }
+    process.stdout.write(`\nCan't scan? Open this link on the other device:\n\n  ${shareUrl}\n\n`);
+    if (isVerbose()) {
+      process.stdout.write('Fields (for inspection / manual paste):\n\n');
+      process.stdout.write(`  pair token:  ${pairToken}\n`);
+      process.stdout.write(`  session id:  ${sessionId}\n`);
+      process.stdout.write(`  ack key:     ${ackKey}\n`);
+      process.stdout.write(`  fragment:    ${fragment}\n\n`);
+    }
+    process.stdout.write('Waiting for scan — ctrl-c to close.\n');
 
-    // Hold the process alive until the user hits ctrl-c.
     await new Promise<void>((resolve) => {
       const done = (): void => {
-        process.stdout.write('\nInvite closed.\n');
+        process.stdout.write('\nClosed.\n');
         resolve();
       };
       process.on('SIGINT', done);
@@ -495,6 +610,56 @@ export async function meshInviteOpen(rest: readonly string[]): Promise<number> {
   } finally {
     await closeMesh(client);
   }
+}
+
+/** `fairfox pair open [--user "Name:role"] [--queue-only] [--reopen]` —
+ * the one verb for bringing a device or person onto the mesh. */
+export async function meshPairOpen(rest: readonly string[]): Promise<number> {
+  const args = parsePairOpenArgs(rest);
+
+  if (args.user !== undefined) {
+    const [rawName, rawRole] = args.user.split(':');
+    const name = (rawName ?? '').trim();
+    if (!name) {
+      process.stderr.write('fairfox pair open --user: expected "Name" or "Name:role".\n');
+      return 1;
+    }
+    const role: Role = rawRole && isValidRole(rawRole) ? rawRole : args.role;
+    const invite = await ensureInvite(name, role);
+    if (typeof invite === 'number') {
+      return invite;
+    }
+    if (args.queueOnly) {
+      process.stdout.write(`Queued invite for "${invite.name}" as ${invite.role}.\n`);
+      return 0;
+    }
+    return holdPairCeremony({
+      identityBlob: invite.blob,
+      ownerUserId: invite.userId,
+      label: `"${invite.name}"`,
+      intro: [`Inviting "${invite.name}" (${invite.role}) — they scan to join.`],
+      consumedCheck: { userId: invite.userId, name: invite.name, reopen: args.reopen },
+    });
+  }
+
+  const identity = loadUserIdentityFile();
+  if (!identity) {
+    return holdPairCeremony({
+      identityBlob: null,
+      ownerUserId: null,
+      label: 'a new device',
+      intro: [
+        'Device-pair only — this CLI has no user identity to share.',
+        'The scanner lands on the join screen to recover or be invited.',
+      ],
+    });
+  }
+  return holdPairCeremony({
+    identityBlob: exportRecoveryBlob(identity),
+    ownerUserId: identity.userId,
+    label: `another device for "${identity.displayName}"`,
+    intro: [`Adding another device for "${identity.displayName}".`],
+  });
 }
 
 interface AcceptReturnHints {
@@ -554,7 +719,7 @@ export async function meshWhoami(): Promise<number> {
   const storage = keyringStorage();
   const keyring = await storage.load();
   if (!keyring) {
-    process.stderr.write('fairfox mesh whoami: no keyring — run `fairfox mesh init` first.\n');
+    process.stderr.write('fairfox whoami: no keyring — run `fairfox init` first.\n');
     return 1;
   }
   const documentKey = keyring.documentKeys.get(DEFAULT_MESH_KEY_ID);
@@ -580,234 +745,6 @@ export async function meshWhoami(): Promise<number> {
     return 0;
   } finally {
     await mesh.close();
-  }
-}
-
-/** `fairfox add user <name> [--role X] [--queue-only]` —
- * Idempotent queue-and-open. Looks up an existing invite by name; if
- * none exists, mints a fresh one with the given role (defaults to
- * member), writes the UserEntry into mesh:users so the row is
- * everywhere, and stashes the blob in invites.json. Then opens the
- * live QR via meshInviteOpen unless --queue-only is set. Re-running
- * with the same name reopens the existing invite without minting a
- * new blob — the QR's pair-token + session id rotate per open, but
- * the underlying invite blob is stable. */
-export async function meshAddUser(rest: readonly string[]): Promise<number> {
-  let name = '';
-  let role: Role = 'member';
-  let queueOnly = false;
-  for (let i = 0; i < rest.length; i += 1) {
-    const arg = rest[i];
-    if (arg === undefined) {
-      continue;
-    }
-    if (arg === '--role') {
-      const v = rest[i + 1];
-      i += 1;
-      if (!v || !isValidRole(v)) {
-        process.stderr.write('fairfox add user: --role must be admin, member, guest, or llm.\n');
-        return 1;
-      }
-      role = v;
-    } else if (arg === '--queue-only') {
-      queueOnly = true;
-    } else if (!arg.startsWith('-') && !name) {
-      name = arg;
-    }
-  }
-  if (!name) {
-    process.stderr.write(
-      'fairfox add user: usage: fairfox add user <name> [--role admin|member|guest|llm] [--queue-only]\n'
-    );
-    return 1;
-  }
-
-  // Already queued? Reopen rather than mint a duplicate.
-  const existing = findInvite(name);
-  if (existing) {
-    process.stdout.write(`existing invite for "${name}" found (${existing.role}); reopening.\n`);
-  } else {
-    const adminIdentity = loadUserIdentityFile();
-    if (!adminIdentity) {
-      process.stderr.write(
-        'fairfox add user: no local user identity — `fairfox init` or `fairfox pair <recovery-blob>` first.\n'
-      );
-      return 1;
-    }
-    const peerId = await loadPeerId();
-    const client = await openMeshClient({ peerId });
-    try {
-      await waitForPeer(client, 8000);
-      await usersState.loaded;
-      const adminEntry = usersState.value.users[adminIdentity.userId];
-      if (!adminEntry || !adminEntry.roles.includes('admin')) {
-        process.stderr.write('fairfox add user: this user is not an admin in mesh:users.\n');
-        return 1;
-      }
-      const { blob, payload } = createInvite({
-        displayName: name,
-        roles: [role],
-        adminUserKey: adminIdentity.keypair,
-        adminUserId: adminIdentity.userId,
-      });
-      upsertUser({
-        entry: {
-          userId: payload.userId,
-          displayName: payload.displayName,
-          roles: payload.roles,
-          grants: payload.grants,
-          createdByUserId: payload.createdByUserId,
-          createdAt: payload.createdAt,
-          signature: payload.signature,
-        },
-      });
-      addInvite({
-        name,
-        userId: payload.userId,
-        role,
-        createdAt: payload.createdAt,
-        blob,
-      });
-      await flushOutgoing(2000);
-    } finally {
-      try {
-        await closeMesh(client);
-      } catch {
-        // intentional
-      }
-    }
-    process.stdout.write(`queued invite for "${name}" as ${role}.\n`);
-  }
-
-  if (queueOnly) {
-    return 0;
-  }
-  return meshInviteOpen([name]);
-}
-
-export async function meshAddDevice(): Promise<number> {
-  const peerId = await loadPeerId();
-  const storage = keyringStorage();
-  const keyring = await storage.load();
-  if (!keyring) {
-    process.stderr.write(
-      [
-        'fairfox mesh add-device: no keyring on this machine. Either:',
-        '',
-        '  fairfox mesh init --admin <name>   (start a new mesh)',
-        '  curl -fsSL https://…/cli/install?token=<token>  (join an existing one)',
-        '',
-      ].join('\n')
-    );
-    return 1;
-  }
-  const identity = loadUserIdentityFile();
-  const sessionId = randomBase64(16);
-
-  const client = await openMeshClient({
-    peerId,
-    onCustomFrame: (frame) => {
-      if (frame.type !== 'pair-return' || frame.sessionId !== sessionId) {
-        return;
-      }
-      const returnToken = typeof frame.token === 'string' ? frame.token : null;
-      if (!returnToken) {
-        return;
-      }
-      const agentHint = typeof frame.agent === 'string' ? frame.agent : undefined;
-      const nameHint = typeof frame.name === 'string' ? frame.name : undefined;
-      const userIdHint = typeof frame.userId === 'string' ? frame.userId : undefined;
-      // See comment in meshInviteOpen — pass the polly-side keyring
-      // (the same instance the MeshNetworkAdapter reads on every
-      // `tryUnwrap`), not our local `storage.load()` snapshot.
-      void acceptReturnToken(returnToken, client.keyring, storage, client, {
-        ...(agentHint ? { agent: agentHint } : {}),
-        ...(nameHint ? { name: nameHint } : {}),
-        ...(userIdHint ? { userId: userIdHint } : {}),
-      }).then(() => {
-        const label = identity?.displayName ?? 'a new device';
-        process.stdout.write(`\n✓ Paired ${label}. Close with ctrl-c, or stay open.\n`);
-      });
-    },
-  });
-  try {
-    await waitForPeer(client, 4000);
-
-    const documentKey = keyring.documentKeys.get(DEFAULT_MESH_KEY_ID);
-    const pairToken = encodePairingToken(
-      createPairingToken({
-        identity: keyring.identity,
-        issuerPeerId: peerId,
-        documentKey,
-        documentKeyId: DEFAULT_MESH_KEY_ID,
-      })
-    );
-
-    const registered = client.signaling.sendCustom('pair-issue', { sessionId });
-    if (!registered) {
-      process.stderr.write(
-        'fairfox mesh add-device: signalling relay unavailable; scanner will have to paste back manually.\n'
-      );
-    }
-
-    // Embed the local user's recovery blob in the share URL when
-    // we have one — that gives the scanner a one-tap "pair +
-    // adopt my identity" experience. Without a local user
-    // identity we still emit a valid pair URL; the scanner lands
-    // on the Who-Are-You wizard afterwards to import their own
-    // identity or create a new one.
-    const recovery = identity ? exportRecoveryBlob(identity) : null;
-    const base = process.env.FAIRFOX_URL ?? 'https://fairfox.fly.dev';
-    const fragmentParts = [
-      `pair=${encodeURIComponent(pairToken)}`,
-      `s=${encodeURIComponent(sessionId)}`,
-    ];
-    if (recovery) {
-      fragmentParts.push(`recovery=${encodeURIComponent(recovery)}`);
-    }
-    const fragment = fragmentParts.join('&');
-    const shareUrl = `${base.replace(/\/$/, '')}/#${fragment}`;
-
-    const qr = await QRCode.toString(shareUrl, { type: 'terminal', small: true });
-    process.stdout.write(`\n${qr}\n`);
-    process.stdout.write(`${shareUrl}\n\n`);
-    process.stdout.write('Individual fields (if you want to inspect or paste by hand):\n\n');
-    process.stdout.write(`  pair token:    ${pairToken}\n`);
-    process.stdout.write(`  session id:    ${sessionId}\n`);
-    if (recovery) {
-      process.stdout.write(`  recovery blob: ${recovery}\n`);
-    } else {
-      process.stdout.write('  recovery blob: (none — this CLI has no local user identity)\n');
-    }
-    process.stdout.write('\nPaste-box fragment (everything after the `#` of the URL above):\n\n');
-    process.stdout.write(`  ${fragment}\n\n`);
-    if (identity) {
-      process.stdout.write(
-        `Add-device open for "${identity.displayName}". Waiting for scan — ctrl-c to close.\n\n`
-      );
-      process.stdout.write(
-        'Treat the URL and recovery blob above like a password — they carry\n' +
-          'your user secret key. Anyone who uses them becomes another device of yours.\n'
-      );
-    } else {
-      process.stdout.write(
-        'Add-device open (device-pair only — no user identity on this CLI).\n' +
-          'The scanner will land on the "Who are you?" screen after pairing and\n' +
-          'can import their own recovery blob or create a new user. Ctrl-c to close.\n'
-      );
-    }
-
-    await new Promise<void>((resolve) => {
-      const done = (): void => {
-        process.stdout.write('\nAdd-device closed.\n');
-        resolve();
-      };
-      process.on('SIGINT', done);
-      process.on('SIGTERM', done);
-    });
-    return 0;
-  } finally {
-    await closeMesh(client);
   }
 }
 
@@ -839,7 +776,7 @@ export async function meshServe(): Promise<number> {
   const keyring = await storage.load();
   if (!keyring) {
     process.stderr.write(
-      'fairfox mesh serve: no keyring — run `fairfox mesh init` or pair first.\n'
+      'fairfox mesh serve: no keyring — run `fairfox init` or `fairfox pair join` first.\n'
     );
     return 1;
   }
@@ -1319,11 +1256,11 @@ export function mesh(rest: readonly string[]): Promise<number> {
       return meshInviteList();
     }
     if (subverb === 'open') {
-      return meshInviteOpen(subargs);
+      return meshPairOpen(['--user', ...subargs]);
     }
   }
   if (verb === 'add-device') {
-    return meshAddDevice();
+    return meshPairOpen([]);
   }
   if (verb === 'whoami') {
     return meshWhoami();

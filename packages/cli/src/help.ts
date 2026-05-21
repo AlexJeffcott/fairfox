@@ -60,60 +60,62 @@ invites and start fresh. Other paired devices are unaffected — if you
 want them to join the new mesh too, re-pair them after.`,
   },
   {
-    name: 'add device',
-    summary: 'Add another device for YOU (your phone, another laptop, …).',
-    body: `Add another device for YOU.
+    name: 'pair open',
+    summary: 'Show a join QR — add your own device, or invite a person.',
+    body: `Show a join QR for another device to scan.
 
-Opens a live QR + share URL that carries your recovery blob, so the
-new device pairs into the mesh AND adopts your identity in one tap.
-Holds the signalling socket open until the new device finishes
-pairing or you ctrl-c.
+With no flag it adds another of YOUR devices (your phone, a second
+laptop): the new device pairs into the mesh and adopts your identity.
+With --user it invites a new person with the given role.
+
+The QR carries transport only — pair token, session id, and one
+ephemeral key. Your identity (or the invitee's admin-signed invite) is
+encrypted under that key and handed to the new device over the relay
+once the handshake completes, so it never rides the QR. Holds the
+signalling socket open until the other device finishes or you ctrl-c.
 
 Usage:
-  fairfox add device
+  fairfox pair open
+  fairfox pair open --user "Elisa:member"
+  fairfox pair open --user "Leo" --role guest
+  fairfox pair open --user "Sam:member" --queue-only
 
-The share URL contains your private key — only share it with yourself.`,
+Pass --queue-only to mint the invite without opening the QR; open it
+later by running the same command without the flag. Pass --reopen to
+show a QR for a user who already has a paired device.`,
   },
   {
-    name: 'add user',
-    summary: 'Invite a new user to the mesh and open a live QR for them.',
-    body: `Invite a new user to the mesh.
+    name: 'pair join',
+    summary: 'Join a mesh from a join URL or pairing token.',
+    body: `Join a mesh that someone else opened.
 
-Creates a signed invite blob with the given role, queues it under the
-name you choose, and opens a live QR + share URL for it. Hold the
-socket open until the invitee scans, or ctrl-c to dismiss (the queued
-invite stays around — re-open it later with the same name).
+The receiving side of \`fairfox pair open\`. Paste the join URL (or the
+bare pair token) shown on the other device. This CLI applies the token,
+publishes its device row, and completes the reciprocal handshake; the
+identity it should adopt arrives encrypted over the relay and is
+written to ~/.fairfox/user-identity.json.
+
+A bare \`fairfox-user-v1:…\` recovery blob is also accepted — the
+break-glass "put my identity on this machine" path.
 
 Usage:
-  fairfox add user <name> [--role admin|member|guest|llm]
-                          [--queue-only]
+  fairfox pair join <url-or-token-or-blob>
 
 Examples:
-  fairfox add user Elisa --role member
-  fairfox add user Leo                       # default role: member
-
-Pass --queue-only to write the invite blob without opening the QR;
-useful when bootstrapping a mesh ahead of time. Open it later with
-\`fairfox add user <name>\`.`,
+  fairfox pair join "https://fairfox.fly.dev/#pair=…&s=…&k=…"
+  fairfox pair join $(pbpaste)`,
   },
   {
-    name: 'pair',
-    summary: 'Receive a pairing token, share URL, or recovery blob.',
-    body: `Receive a pairing token, share URL, or recovery blob.
+    name: 'pair list',
+    summary: 'Show pending and consumed invites queued on this machine.',
+    body: `Show pending and consumed invites queued on this machine.
 
-The receiving side of every onboarding flow. Sniffs the input — pair
-tokens, share URLs (\`#pair=…&invite=…\`), and recovery blobs all
-route to the right handler. Use this when someone else ran
-\`fairfox add device\`, \`fairfox add user\`, or sent you a recovery
-blob to import.
+Reads ~/.fairfox/invites.json. Pending invites can be reopened with
+\`fairfox pair open --user <name>\`. Consumed invites are kept for
+record-keeping; remove the file to forget them.
 
 Usage:
-  fairfox pair <token-or-url-or-blob>
-
-Examples:
-  fairfox pair https://fairfox.example/#pair=abc&invite=xyz
-  fairfox pair eyJ2IjoxLCJ1c2VySWQiOi…
-  fairfox pair $(pbpaste)`,
+  fairfox pair list`,
   },
   {
     name: 'whoami',
@@ -201,9 +203,10 @@ Usage:
     summary: 'Show pending and consumed invites queued on this machine.',
     body: `Show pending and consumed invites queued on this machine.
 
-Reads ~/.fairfox/invites.json. Pending invites can be re-opened with
-\`fairfox add user <name>\`. Consumed invites are kept for record-
-keeping; remove the file to forget them.
+Reads ~/.fairfox/invites.json. Pending invites can be reopened with
+\`fairfox pair open --user <name>\`. Consumed invites are kept for
+record-keeping; remove the file to forget them. Same output as
+\`fairfox pair list\`.
 
 Usage:
   fairfox invites`,

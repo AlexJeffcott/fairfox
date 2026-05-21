@@ -26,12 +26,12 @@ import '#src/preload.ts';
 
 // fairfox — CLI peer for the fairfox mesh.
 //
-// Verb-first command surface. Goals map to single verbs; sub-verbs
-// only appear where the distinction matters (`add device` vs
-// `add user` carry different semantics — recovery-blob included
-// vs not). Every command accepts `--help` / `-h` and `--verbose` /
-// `-v`; `--verbose` is stripped early and turned into a global flag
-// the rest of the codebase reads via `isVerbose()` / `vlog()`.
+// Verb-first command surface. Onboarding lives under two verbs:
+// `fairfox init` starts a brand-new mesh, and `fairfox pair` connects
+// devices — `pair open` shows a join QR, `pair join` consumes one,
+// `pair list` shows pending invites. Every command accepts `--help` /
+// `-h` and `--verbose` / `-v`; `--verbose` is stripped early and turned
+// into a global flag the rest of the codebase reads via `isVerbose()`.
 
 import { agendaAdd, agendaList } from '#src/commands/agenda.ts';
 import { chatDump, chatSend, chatServe } from '#src/commands/chat.ts';
@@ -40,13 +40,12 @@ import { deploy } from '#src/commands/deploy.ts';
 import { doctor } from '#src/commands/doctor.ts';
 import { exportCmd } from '#src/commands/export.ts';
 import {
-  meshAddDevice,
-  meshAddUser,
   meshCleanupSealed,
   meshCompact,
   meshFingerprintCmd,
   meshInit,
   meshInviteList,
+  meshPairOpen,
   meshReconcile,
 } from '#src/commands/mesh.ts';
 import { pair } from '#src/commands/pair.ts';
@@ -108,30 +107,32 @@ function main(): Promise<number> {
     return meshInit(rest);
   }
 
-  if (subcommand === 'add') {
-    const [kind, ...kindArgs] = rest;
-    if (kind === 'device') {
-      const help = helpFor('add device', kindArgs);
-      if (help !== null) {
-        return Promise.resolve(help);
-      }
-      return meshAddDevice();
-    }
-    if (kind === 'user') {
-      const help = helpFor('add user', kindArgs);
-      if (help !== null) {
-        return Promise.resolve(help);
-      }
-      return meshAddUser(kindArgs);
-    }
-    process.stderr.write(
-      'fairfox add: expected `device` or `user`. Try `fairfox add device --help`.\n'
-    );
-    return Promise.resolve(1);
-  }
-
   if (subcommand === 'pair') {
-    const help = helpFor('pair', rest);
+    const [verb, ...verbArgs] = rest;
+    if (verb === 'open') {
+      const help = helpFor('pair open', verbArgs);
+      if (help !== null) {
+        return Promise.resolve(help);
+      }
+      return meshPairOpen(verbArgs);
+    }
+    if (verb === 'join') {
+      const help = helpFor('pair join', verbArgs);
+      if (help !== null) {
+        return Promise.resolve(help);
+      }
+      return pair(verbArgs);
+    }
+    if (verb === 'list') {
+      const help = helpFor('pair list', verbArgs);
+      if (help !== null) {
+        return Promise.resolve(help);
+      }
+      return meshInviteList();
+    }
+    // Bare `fairfox pair <url|token>` still joins — keeps
+    // `fairfox pair $(pbpaste)` ergonomic.
+    const help = helpFor('pair join', rest);
     if (help !== null) {
       return Promise.resolve(help);
     }

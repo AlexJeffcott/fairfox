@@ -35,24 +35,33 @@ env var is no longer required.
 ## Starting / resetting a mesh
 
 There is **one** canonical way to create a new fairfox mesh:
-`fairfox mesh init --admin "Name" [--user "Other:role"]…`. It
-generates the device keyring + admin user key, writes the admin
+`fairfox init "<mesh-name>" --admin "Name" [--user "Other:role"]…`.
+It generates the device keyring + admin user key, writes the admin
 `UserEntry` into `mesh:users`, and stashes per-user invite blobs
 locally. Roles: `admin`, `member`, `guest`, `llm`. Pass `--force`
 to wipe this machine's keyring + user identity + pending invites
 and start fresh (affects only the local machine; other paired
 devices stay on the old mesh until they wipe their own state).
 
-Invites are onboarded with `fairfox mesh invite open <name>`
-which renders a terminal QR and holds the signalling socket open
-until ctrl-c. The pair-token + session id are ephemeral (born
-when the QR opens, die when it closes); the admin-signed invite
-blob persists across re-opens. Re-emit with `--reopen` to let an
-already-paired user add another device.
+Every other device gets on with **`fairfox pair`**. From a device
+already on the mesh, `fairfox pair open` shows a join QR — with no
+flag it adds another of your own devices, with `--user "Name:role"`
+it invites a new person. The QR carries transport only: a pair
+token, a session id, and one ephemeral key `k`. The identity the
+new device adopts (the issuer's recovery blob, or the invitee's
+admin-signed invite blob) is encrypted under `k` and handed over
+the relay's pair-ack frame once the handshake completes — it never
+rides the QR, so the QR stays small enough to scan. `--reopen`
+re-emits a QR for a user who already has a paired device;
+`--queue-only` mints an invite without opening a QR. The receiving
+side is `fairfox pair open`'s scan target, or `fairfox pair join
+<url>` on another CLI. `fairfox pair list` shows pending invites.
 
-Full walkthrough: `packages/cli/README.md`. The browser's
-WhoAreYou wizard accepts an existing recovery blob but no longer
-bootstraps a fresh admin — that path lives in the CLI.
+See `packages/shared/src/pairing-payload.ts` for the encrypted
+hand-off. Full walkthrough: `packages/cli/README.md`. The browser's
+WhoAreYou wizard offers one door — Join a mesh — plus a
+de-emphasised Recover path; starting a brand-new mesh is CLI-only
+(`fairfox init`) so the admin root lives in durable storage.
 
 ## Architecture
 

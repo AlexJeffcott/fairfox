@@ -1,17 +1,20 @@
 /** @jsxImportSource preact */
 // Login page — full-screen gate the mesh shows before any sub-app
 // content can render. An unpaired device isn't really "using fairfox
-// with a warning banner"; it's pre-fairfox. The page walks the user
-// through one of three choices: share a pairing link (this device
-// issues first), consume a link they already have (this device scans
-// first), or declare this device solo (first-device bootstrap, no
-// peer required).
+// with a warning banner"; it's pre-fairfox.
 //
-// The page reuses the same pairingMode wizard the earlier banner ran.
-// Steps drain pairingStepsRemaining as they succeed, so either entry
-// order finishes with mutual trust. A `#pair=<token>` fragment in the
-// URL on mount short-circuits the idle screen and auto-submits the
-// scanned token.
+// Onboarding has one everyday door: Join a mesh — scan a QR or open a
+// link from a device already on the mesh, which pairs this device in
+// and hands it an identity. Starting a brand-new mesh is a deliberate
+// CLI act (`fairfox init`) so the admin root lives in durable storage,
+// not clearable browser state; the wizard just points there. A
+// de-emphasised Recover path covers the break-glass case of bringing
+// an existing identity onto fresh hardware.
+//
+// The page reuses the pairingMode wizard. Steps drain
+// pairingStepsRemaining as they succeed, so the ceremony finishes with
+// mutual trust. A `#pair=<token>` fragment in the URL on mount
+// short-circuits the idle screen and auto-submits the scanned token.
 
 import { ActionInput, Button, Layout } from '@fairfox/polly/ui';
 import {
@@ -32,7 +35,6 @@ import {
 import { PwaInstallPrompt } from '#src/pwa-install.tsx';
 import { canScanWithCamera, QrImageDropzone, QrScanDialog } from '#src/qr-scan.tsx';
 import {
-  displayNameDraft,
   pendingRecoveryBlob,
   recoveryBlobDraft,
   userIdentity,
@@ -406,152 +408,118 @@ function WhoAreYouHeader(): preact.JSX.Element {
     <div style={{ textAlign: 'center', marginBottom: 'var(--polly-space-md, 1rem)' }}>
       <h1 style={{ margin: '0 0 0.5rem', fontSize: '1.5rem' }}>fairfox</h1>
       <p style={{ margin: 0, color: 'var(--polly-text-muted, #57534e)', fontSize: '0.95rem' }}>
-        First, tell fairfox who you are. This is the identity every device you pair will act under.
+        This device isn't on a mesh yet. Join one to get started.
       </p>
     </div>
   );
 }
 
+const SECTION_HEADING_STYLE = {
+  margin: '0 0 var(--polly-space-xs, 0.25rem)',
+  fontSize: '0.9rem',
+  fontWeight: 600,
+};
+
+const SECTION_BODY_STYLE = {
+  margin: '0 0 var(--polly-space-sm, 0.5rem)',
+  fontSize: '0.85rem',
+  color: 'var(--polly-text-muted, #57534e)',
+};
+
+// The onboarding wizard for an unpaired device. Two doors: Join a mesh
+// (the everyday path — scan a QR or open a link from a device already
+// on the mesh) and, de-emphasised, Recover (break-glass: bring an
+// existing identity onto this device when no device of yours survives).
+// Starting a brand-new mesh is a CLI-only act (`fairfox init`) so the
+// admin root always lives in durable storage — the wizard just points
+// there.
 function WhoAreYouView(): preact.JSX.Element {
   return (
-    <Layout rows="auto auto auto" gap="var(--polly-space-md, 1rem)">
+    <Layout rows="auto auto auto auto" gap="var(--polly-space-md, 1rem)">
       <div>
-        <p
-          style={{
-            margin: '0 0 var(--polly-space-xs, 0.25rem)',
-            fontSize: '0.9rem',
-            fontWeight: 600,
-          }}
-        >
-          New user
+        <p style={SECTION_HEADING_STYLE}>Join a mesh</p>
+        <p style={SECTION_BODY_STYLE}>
+          Scan the QR or open the join link from a device that's already on the mesh. This device
+          pairs in and picks up its identity automatically.
         </p>
-        <p
-          style={{
-            margin: '0 0 var(--polly-space-sm, 0.5rem)',
-            fontSize: '0.85rem',
-            color: 'var(--polly-text-muted, #57534e)',
-          }}
-        >
-          Pick a display name. fairfox will generate a keypair and show you a one-time recovery blob
-          you can use to bring this identity onto another device later.
-        </p>
-        <ActionInput
-          value={displayNameDraft.value}
-          variant="single"
-          action="users.display-name-input"
-          saveOn="blur"
-          placeholder="Your name"
-          ariaLabel="Your display name"
-        />
         <Layout
           columns="1fr"
           gap="var(--polly-space-sm, 0.5rem)"
           padding="var(--polly-space-sm, 0.5rem) 0 0 0"
         >
           <Button
-            label="Create my identity"
+            label="Join a mesh"
             tier="primary"
-            fullWidth={true}
-            data-action="users.create-bootstrap"
-          />
-        </Layout>
-      </div>
-      <div>
-        <p
-          style={{
-            margin: '0 0 var(--polly-space-xs, 0.25rem)',
-            fontSize: '0.9rem',
-            fontWeight: 600,
-          }}
-        >
-          Existing user — import recovery blob
-        </p>
-        <p
-          style={{
-            margin: '0 0 var(--polly-space-sm, 0.5rem)',
-            fontSize: '0.85rem',
-            color: 'var(--polly-text-muted, #57534e)',
-          }}
-        >
-          Already have a recovery blob from another device? Scan the QR it printed, drop in a
-          screenshot, or paste the blob as text.
-        </p>
-        {canScanWithCamera() && (
-          <Layout
-            columns="1fr"
-            gap="var(--polly-space-sm, 0.5rem)"
-            padding="0 0 var(--polly-space-sm, 0.5rem) 0"
-          >
-            <Button
-              label="Scan with camera"
-              tier="primary"
-              fullWidth={true}
-              data-action="users.open-recovery-camera"
-            />
-          </Layout>
-        )}
-        <Layout
-          columns="1fr"
-          gap="var(--polly-space-sm, 0.5rem)"
-          padding="0 0 var(--polly-space-sm, 0.5rem) 0"
-        >
-          <QrImageDropzone mode="recovery" />
-        </Layout>
-        <ActionInput
-          value={recoveryBlobDraft.value}
-          variant="single"
-          action="users.recovery-blob-input"
-          saveOn="blur"
-          placeholder="…or paste fairfox-user-v1:…"
-          ariaLabel="Recovery blob"
-        />
-        <Layout
-          columns="1fr"
-          gap="var(--polly-space-sm, 0.5rem)"
-          padding="var(--polly-space-sm, 0.5rem) 0 0 0"
-        >
-          <Button
-            label="Import"
-            tier="secondary"
-            fullWidth={true}
-            data-action="users.import-recovery"
-          />
-        </Layout>
-      </div>
-      <div>
-        <p
-          style={{
-            margin: '0 0 var(--polly-space-xs, 0.25rem)',
-            fontSize: '0.9rem',
-            fontWeight: 600,
-          }}
-        >
-          Pair device — accept an invite
-        </p>
-        <p
-          style={{
-            margin: '0 0 var(--polly-space-sm, 0.5rem)',
-            fontSize: '0.85rem',
-            color: 'var(--polly-text-muted, #57534e)',
-          }}
-        >
-          An admin already ran <code>fairfox mesh invite open &lt;name&gt;</code> (or{' '}
-          <code>mesh add-device</code>) and showed you a QR. Scan it to join their mesh as this
-          device — the invite carries your user identity.
-        </p>
-        <Layout
-          columns="1fr"
-          gap="var(--polly-space-sm, 0.5rem)"
-          padding="0 0 var(--polly-space-sm, 0.5rem) 0"
-        >
-          <Button
-            label="Pair this device"
-            tier="secondary"
             fullWidth={true}
             data-action="pairing.start-scan"
           />
         </Layout>
       </div>
+
+      <p style={{ ...SECTION_BODY_STYLE, margin: 0, textAlign: 'center' }}>
+        Starting fresh? Run <code>fairfox init</code> on a computer to create a new mesh, then come
+        back here and join it.
+      </p>
+
+      <details>
+        <summary
+          style={{
+            cursor: 'pointer',
+            fontSize: '0.85rem',
+            color: 'var(--polly-text-muted, #57534e)',
+          }}
+        >
+          Used this identity before? Recover it
+        </summary>
+        <div style={{ paddingTop: 'var(--polly-space-sm, 0.5rem)' }}>
+          <p style={SECTION_BODY_STYLE}>
+            Bring an existing identity onto this device with its recovery blob — scan the QR, drop
+            in a screenshot, or paste the blob as text.
+          </p>
+          {canScanWithCamera() && (
+            <Layout
+              columns="1fr"
+              gap="var(--polly-space-sm, 0.5rem)"
+              padding="0 0 var(--polly-space-sm, 0.5rem) 0"
+            >
+              <Button
+                label="Scan with camera"
+                tier="secondary"
+                fullWidth={true}
+                data-action="users.open-recovery-camera"
+              />
+            </Layout>
+          )}
+          <Layout
+            columns="1fr"
+            gap="var(--polly-space-sm, 0.5rem)"
+            padding="0 0 var(--polly-space-sm, 0.5rem) 0"
+          >
+            <QrImageDropzone mode="recovery" />
+          </Layout>
+          <ActionInput
+            value={recoveryBlobDraft.value}
+            variant="single"
+            action="users.recovery-blob-input"
+            saveOn="blur"
+            placeholder="…or paste fairfox-user-v1:…"
+            ariaLabel="Recovery blob"
+          />
+          <Layout
+            columns="1fr"
+            gap="var(--polly-space-sm, 0.5rem)"
+            padding="var(--polly-space-sm, 0.5rem) 0 0 0"
+          >
+            <Button
+              label="Recover"
+              tier="secondary"
+              fullWidth={true}
+              data-action="users.import-recovery"
+            />
+          </Layout>
+        </div>
+      </details>
+
       {userSetupError.value && (
         <p style={{ color: '#b91c1c', fontSize: '0.85rem' }}>{userSetupError.value}</p>
       )}

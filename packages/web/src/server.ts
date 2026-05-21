@@ -208,7 +208,11 @@ function handlePairReturn(
   }
 }
 
-function handlePairAck(ws: ServerWebSocket<WsData>, sessionId: string): void {
+function handlePairAck(
+  ws: ServerWebSocket<WsData>,
+  sessionId: string,
+  payload: string | undefined
+): void {
   sweepExpiredPairSessions(Date.now());
   const session = pairSessions.get(sessionId);
   if (!session) {
@@ -221,8 +225,16 @@ function handlePairAck(ws: ServerWebSocket<WsData>, sessionId: string): void {
   }
   const scanner = session.scannerSocket;
   if (scanner) {
+    // `payload`, when present, is the issuer's identity blob (recovery
+    // or invite) encrypted under the ephemeral key carried only in the
+    // QR — the relay never sees that key, so it forwards ciphertext it
+    // cannot read. The scanner decrypts it to finish onboarding.
+    const ack: Record<string, unknown> = { type: 'pair-ack', sessionId };
+    if (typeof payload === 'string') {
+      ack.payload = payload;
+    }
     try {
-      scanner.send(JSON.stringify({ type: 'pair-ack', sessionId }));
+      scanner.send(JSON.stringify(ack));
     } catch {
       // scanner already closed; nothing further to do.
     }
@@ -263,7 +275,11 @@ function handleSignalingMessage(ws: ServerWebSocket<WsData>, msg: string): void 
       return;
     }
     if (parsed.type === 'pair-ack' && typeof parsed.sessionId === 'string') {
-      handlePairAck(ws, parsed.sessionId);
+      handlePairAck(
+        ws,
+        parsed.sessionId,
+        typeof parsed.payload === 'string' ? parsed.payload : undefined
+      );
     }
   } catch {
     // Malformed messages are silently dropped.

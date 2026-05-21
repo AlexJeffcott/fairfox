@@ -1,27 +1,37 @@
 /**
- * Two-device mesh sync verification, driven by puppeteer against a live
- * fairfox deployment. Proves the full flow end-to-end:
+ * Two-device mesh sync verification — the CLI-originated pairing flow.
  *
- *   1. Two Chrome instances with separate profiles (so each has its own
- *      IndexedDB keyring and localStorage) load the agenda sub-app.
- *   2. Device A shares a pairing link.
- *   3. Device B opens the link; the mesh-gate hash consumer advances it
- *      to its own issue step and returns a reply link.
- *   4. Device A opens B's reply link to complete the asymmetric ceremony.
- *   5. Both devices reload themselves on ceremony completion; the mesh
- *      client reconstructs against the freshly-paired keyring.
- *   6. Device A creates a chore; device B sees it within a few seconds
- *      through the real WebRTC data channel.
+ * @covers: agenda:main, mesh:users, mesh:devices, mesh:meta
  *
- * Screenshots of both devices with the synced chore land in
- * scripts/artifacts/. Exits non-zero on failure.
+ * Since the pairing redesign, starting a mesh is a CLI-only act and the
+ * browser's only onboarding door is "Join a mesh". This script proves
+ * the whole flow end-to-end, the way a real user hits it:
+ *
+ *   1. `fairfox init` on a disposable HOME creates a fresh mesh + admin.
+ *   2. `fairfox pair open` shows a transport-only join QR and holds the
+ *      signalling socket open as a live mesh peer.
+ *   3. A headless Chrome opens the join URL printed by the CLI. Its
+ *      hash consumer pairs, receives the admin identity *encrypted over
+ *      the relay's pair-ack* (never on the QR), and reloads into the
+ *      paired agenda.
+ *   4. The browser creates a chore.
+ *   5. The chore reaches the CLI peer over the real WebRTC data channel;
+ *      `fairfox agenda list` (read-only, safe alongside `pair open`)
+ *      confirms it. After SIGINT-ing `pair open`, a final list read is
+ *      the authoritative post-flush assertion.
+ *
+ * This exercises the CLI-issuer → browser-scanner half of the redesign
+ * plus the encrypted identity hand-off and real cross-process WebRTC
+ * sync. A screenshot of the synced chore lands in scripts/artifacts/.
+ * Exits non-zero on failure.
  *
  *   bun scripts/e2e-two-device-sync.ts                # prod
  *   TARGET_URL=http://localhost:3000/agenda bun scripts/e2e-two-device-sync.ts
  *   HEADLESS=false bun scripts/e2e-two-device-sync.ts # watch it run
  */
 
-import { mkdirSync, rmSync } from 'node:fs';
+import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import puppeteer, { type Browser, type Page } from 'puppeteer';
 import {
@@ -32,36 +42,61 @@ import {
   waitFor,
   waitForText,
 } from './e2e-config.ts';
-import { createIdentity } from './e2e-identity.ts';
 
-const URL = process.env.TARGET_URL ?? 'https://fairfox.fly.dev/agenda';
+const TARGET_URL = process.env.TARGET_URL ?? 'https://fairfox.fly.dev/agenda';
+const ORIGIN = new URL(TARGET_URL).origin;
 const HEADLESS = process.env.HEADLESS !== 'false';
 const ARTIFACTS = resolve(import.meta.dir, 'artifacts');
-const PROFILES = resolve(import.meta.dir, 'artifacts', 'profiles');
+const PROFILES = resolve(ARTIFACTS, 'profiles');
+const TEST_HOME = '/tmp/fairfox-test-e2e-sync';
+// The bundled fairfox.js collapses @fairfox/polly to one instance, the
+// way prod does; running from source can produce two copies. Always
+// rebuild fresh — see packages/cli/CLAUDE.md.
+const BUILT_BUNDLE = resolve(import.meta.dir, '..', 'packages', 'cli', 'dist', 'fairfox.js');
 
 const TRACE = (label: string, msg: string): void => {
   console.log(`[${label}] ${msg}`);
 };
 
 rmSync(PROFILES, { recursive: true, force: true });
+rmSync(TEST_HOME, { recursive: true, force: true });
 mkdirSync(ARTIFACTS, { recursive: true });
+mkdirSync(TEST_HOME, { recursive: true });
 
-async function clickByText(page: Page, text: string): Promise<void> {
-  const handle = await page.evaluateHandle((t) => {
-    const candidates = Array.from(document.querySelectorAll('button, a')) as HTMLElement[];
-    return candidates.find((el) => (el.innerText || '').trim() === t) ?? null;
-  }, text);
-  const element = handle.asElement();
-  if (!element) {
-    throw new Error(`no clickable element with text "${text}"`);
+function buildBundle(): string {
+  TRACE('cli', 'building packages/cli/dist/fairfox.js');
+  const build = spawnSync('bun', ['run', 'build.ts'], {
+    cwd: resolve(import.meta.dir, '..', 'packages', 'cli'),
+    stdio: 'inherit',
+  });
+  if (build.status !== 0) {
+    throw new Error(`cli build failed (exit ${build.status ?? '?'})`);
   }
-  await element.click();
+  if (!existsSync(BUILT_BUNDLE)) {
+    throw new Error(`cli build did not produce ${BUILT_BUNDLE}`);
+  }
+  return BUILT_BUNDLE;
 }
 
-// Browser console messages we have triaged as benign and accept on
-// purpose. Anything not matched here at warning or error level fails
-// the run — the wasm-MIME regression shipped silently because nothing
-// was looking at the console.
+const CLI_ENV = {
+  ...process.env,
+  HOME: TEST_HOME,
+  FAIRFOX_URL: ORIGIN,
+  NODE_NO_WARNINGS: '1',
+};
+
+function runCli(args: string[]): { stdout: string; stderr: string; status: number } {
+  const result = spawnSync('bun', [BUILT_BUNDLE, ...args], {
+    env: CLI_ENV,
+    encoding: 'utf8',
+  });
+  return {
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? '',
+    status: result.status ?? 1,
+  };
+}
+
 const CONSOLE_NOISE_ALLOWLIST: RegExp[] = [];
 
 interface DeviceHandle {
@@ -70,7 +105,7 @@ interface DeviceHandle {
   consoleProblems: { level: 'warning' | 'error'; text: string }[];
 }
 
-async function launch(label: string): Promise<DeviceHandle> {
+async function launchBrowser(label: string): Promise<DeviceHandle> {
   const browser = await puppeteer.launch({
     headless: HEADLESS,
     userDataDir: resolve(PROFILES, label),
@@ -98,218 +133,157 @@ async function launch(label: string): Promise<DeviceHandle> {
   return { browser, page, consoleProblems };
 }
 
-const desktop = await launch('desktop');
-const phone = await launch('phone');
+buildBundle();
+
+// 1 — fresh mesh on the disposable HOME.
+TRACE('cli', `init mesh (origin ${ORIGIN})`);
+const init = runCli(['init', 'e2e sync mesh', '--admin', 'Desktop']);
+if (init.status !== 0) {
+  TRACE('cli', init.stdout.trim());
+  TRACE('cli', init.stderr.trim());
+  throw new Error('fairfox init failed');
+}
+TRACE('cli', 'mesh created, admin "Desktop"');
+
+// 2 — `pair open` as a long-lived peer; capture the join URL it prints.
+TRACE('cli', 'pair open — holding a join QR');
+const pairOpen: ChildProcess = spawn('bun', [BUILT_BUNDLE, 'pair', 'open'], { env: CLI_ENV });
+let pairOpenOut = '';
+pairOpen.stdout?.on('data', (chunk: Buffer) => {
+  pairOpenOut += chunk.toString();
+});
+pairOpen.stderr?.on('data', (chunk: Buffer) => {
+  pairOpenOut += chunk.toString();
+});
+
+let pairOpenExited = false;
+pairOpen.on('exit', () => {
+  pairOpenExited = true;
+});
+
+const desktopBrowser = await launchBrowser('desktop');
 let ok = false;
 
 try {
-  // Only the desktop bootstraps a user — fairfox's design is "admin
-  // bootstraps first, invites everyone else." Two fresh devices each
-  // self-bootstrapping creates two independent `mesh:users` docs that
-  // don't cleanly merge on pair; the CRDT keeps one and drops the
-  // other, leaving the replaced device without a UserEntry and with
-  // no permissions. Desktop issues the phone an invite baked into the
-  // share URL; the phone adopts that identity through
-  // `consumePairingHash` without ever needing its own WhoAreYou.
-  TRACE('desktop', `navigate ${URL}`);
-  await desktop.page.goto(URL, { waitUntil: 'domcontentloaded' });
-  await createIdentity(desktop.page, 'Desktop', (m) => TRACE('desktop', m));
-  await waitForText(desktop.page, "This device isn't connected to your mesh yet.");
-
-  // One-scan ceremony with an invite: desktop shares a pair link,
-  // flips the invite toggle, names the invitee. The share URL now
-  // carries both the pair token and an invite blob. The phone opens
-  // the URL directly — its mesh-gate hash consumer pairs, adopts the
-  // invited identity, and both sides reload into the paired home
-  // within ~1s through the signalling-relay pair-return.
-  TRACE('desktop', 'share a pairing link');
-  await clickByText(desktop.page, 'Share a pairing link');
-  // Wait for the issue view (and its invite panel) to render before
-  // driving the invite toggle. The invite panel is inside a <details>
-  // collapsed by default — open it first so the toggle button is
-  // hit-testable.
-  await waitForText(desktop.page, 'Also invite a new user', SHORT_TIMEOUT_MS);
-  await desktop.page.evaluate(() => {
-    const details = Array.from(document.querySelectorAll('details')) as HTMLDetailsElement[];
-    const hit = details.find((d) => d.innerText.includes('Also invite a new user'));
-    if (hit) {
-      hit.open = true;
-    }
-  });
-  await clickByText(desktop.page, 'Invite: OFF');
-  await desktop.page.waitForSelector(
-    'button[data-action="invite.toggle"][data-polly-button][data-tier="primary"], ' +
-      'button[data-action="invite.toggle"]',
-    { timeout: SHORT_TIMEOUT_MS }
+  const joinUrl = await waitFor(
+    () => {
+      const match = pairOpenOut.match(/https?:\/\/\S*#pair=\S+/);
+      return match ? match[0] : undefined;
+    },
+    { timeoutMs: SHORT_TIMEOUT_MS, description: 'join URL from `pair open`' }
   );
-  // Fill the invitee's display name so the invite blob lands in the
-  // share URL (`invite.name-input` regenerates the share URL).
-  const inviteInput = await desktop.page.$(
-    '[data-polly-action-input][aria-label="Invitee display name"]'
-  );
-  if (!inviteInput) {
-    throw new Error('invite name input not found');
-  }
-  await inviteInput.click();
-  await desktop.page.waitForSelector(
-    'input[data-polly-action-input][aria-label="Invitee display name"]',
-    { timeout: SHORT_TIMEOUT_MS }
-  );
-  const inviteInputEl = await desktop.page.$(
-    'input[data-polly-action-input][aria-label="Invitee display name"]'
-  );
-  if (!inviteInputEl) {
-    throw new Error('invite name editable input not found');
-  }
-  await inviteInputEl.type('Phone');
-  await inviteInputEl.press('Tab');
-  // Poll for the share URL to update with the `invite=` fragment —
-  // `invite.name-input` regenerates asynchronously.
-  const desktopShare = await waitFor(
-    () =>
-      desktop.page.evaluate(() => {
-        const links = Array.from(document.querySelectorAll('a')) as HTMLAnchorElement[];
-        const hit = links.find((el) => el.href.includes('#pair=') && el.href.includes('invite='));
-        return hit?.href;
-      }),
-    { timeoutMs: SHORT_TIMEOUT_MS, description: 'share URL with invite fragment' }
-  );
-  TRACE('desktop', `share url with invite (${desktopShare.length} chars)`);
+  // The CLI builds the URL at the origin root; point the browser at the
+  // agenda route so it lands there after the post-pair reload.
+  const browserJoinUrl = joinUrl.replace(/\/#pair=/, '/agenda#pair=');
+  TRACE('cli', `join URL captured (${joinUrl.length} chars)`);
 
-  // Start watching for the desktop's own reload BEFORE the phone
-  // consumes the hash — the pair-return frame arrives shortly after
-  // and triggers advanceAfter, which reloads the desktop without any
-  // click in between.
-  const desktopNav = desktop.page.waitForNavigation({
-    waitUntil: 'domcontentloaded',
-    timeout: PAIR_CEREMONY_TIMEOUT_MS,
-  });
+  // 3 — the browser joins. consumePairingHash pairs, waits for the
+  // encrypted identity over pair-ack, applies it, and reloads.
+  TRACE('browser', 'open the join URL');
+  await desktopBrowser.page.goto(browserJoinUrl, { waitUntil: 'domcontentloaded' });
+  await waitForText(desktopBrowser.page, 'Agenda', PAIR_CEREMONY_TIMEOUT_MS);
+  TRACE('browser', 'paired — agenda visible');
 
-  TRACE('phone', 'open desktop share link');
-  const phoneNav = phone.page.waitForNavigation({
-    waitUntil: 'domcontentloaded',
-    timeout: PAIR_CEREMONY_TIMEOUT_MS,
-  });
-  await phone.page.goto(desktopShare, { waitUntil: 'domcontentloaded' });
-
-  // Scanner may land on the paired home without firing a distinct nav
-  // event when the initial load already sits through the 1s reload
-  // fence; swallow timeouts and fall through to the DOM assertion.
-  await phoneNav.catch(() => undefined);
-  await desktopNav.catch(() => undefined);
-  TRACE('both', 'both sides reloaded — waiting for paired home');
-
-  await waitForText(desktop.page, 'Agenda', PAIR_CEREMONY_TIMEOUT_MS);
-  await waitForText(phone.page, 'Agenda', PAIR_CEREMONY_TIMEOUT_MS);
-  TRACE('both', 'agenda visible on both devices');
-
-  // Give the mesh a moment to complete its initial sync handshake over
-  // the newly-opened WebRTC data channel before the test writes.
+  // Let the WebRTC data channel to the CLI peer settle before writing.
   await sleep(5000);
 
-  // Switch both sides to the Items tab. polly's ActionInput starts in a
-  // view-mode div (data-polly-action-input, role=button); a click
-  // promotes it into an editable input we can type into.
-  const switchToItems = async (page: Page): Promise<void> => {
-    await page.click('button[data-action="agenda.tab"][data-action-id="items"]');
-    await page.waitForSelector('[data-polly-action-input]', { timeout: SHORT_TIMEOUT_MS });
-  };
-  await switchToItems(desktop.page);
-  await switchToItems(phone.page);
-
+  // 4 — create a chore. polly's ActionInput starts as a view-mode div;
+  // a click promotes it into an editable input.
+  await desktopBrowser.page.click('button[data-action="agenda.tab"][data-action-id="items"]');
+  await desktopBrowser.page.waitForSelector('[data-polly-action-input]', {
+    timeout: SHORT_TIMEOUT_MS,
+  });
   const chore = `e2e-sync-${Date.now()}`;
-  TRACE('desktop', `add chore "${chore}"`);
-  // The first ActionInput in the Items-tab form is the chore-name
-  // field (`draft.name`, saveOn="blur"). Promote it to an editable
-  // input, type the name, Tab out to commit the draft, then click
-  // the "Add" button — the form's submit is a separate action
-  // (`item.create-from-draft`), Enter on the name field only blurs.
-  await desktop.page.click('[data-polly-action-input][data-state="empty"]');
-  await desktop.page.waitForSelector(
+  TRACE('browser', `add chore "${chore}"`);
+  await desktopBrowser.page.click('[data-polly-action-input][data-state="empty"]');
+  await desktopBrowser.page.waitForSelector(
     'input[data-polly-action-input], textarea[data-polly-action-input]',
     { timeout: SHORT_TIMEOUT_MS }
   );
-  const input = await desktop.page.$(
+  const input = await desktopBrowser.page.$(
     'input[data-polly-action-input], textarea[data-polly-action-input]'
   );
   if (!input) {
-    throw new Error('no add-chore input on desktop');
+    throw new Error('no add-chore input');
   }
-  // Preact re-renders the view-mode div into an <input> on click; the
-  // first character otherwise lands in the unmounting div and is
-  // dropped. Focus the new input and let the commit settle before
-  // typing.
   await input.focus();
   await sleep(100);
-  await desktop.page.keyboard.type(chore);
-  await desktop.page.keyboard.press('Tab');
-  // Give the blur-commit a moment to flush the draft before firing
-  // the create action — the draft.name handler runs through the same
-  // event loop, so a microtask-order gap is enough.
+  await desktopBrowser.page.keyboard.type(chore);
+  await desktopBrowser.page.keyboard.press('Tab');
   await sleep(200);
-  await desktop.page.click('button[data-action="item.create-from-draft"]');
+  await desktopBrowser.page.click('button[data-action="item.create-from-draft"]');
   await sleep(500);
-  const itemCreated = await desktop.page.evaluate(
+  const localVisible = await desktopBrowser.page.evaluate(
     (name) => document.body.innerText.includes(name),
     chore
   );
-  TRACE('desktop', `local item visible: ${itemCreated}`);
+  TRACE('browser', `local item visible: ${localVisible}`);
 
-  TRACE('phone', 'wait for chore to converge');
+  // 5 — the chore must reach the CLI peer over WebRTC. `agenda list` is
+  // read-only (openMeshClientReadOnly) so it is safe to poll while
+  // `pair open` still holds the mesh.
+  TRACE('cli', 'wait for chore to converge to the CLI peer');
   try {
-    await waitForText(phone.page, chore, MESH_SYNC_TIMEOUT_MS);
+    await waitFor(() => runCli(['agenda', 'list']).stdout.includes(chore), {
+      timeoutMs: MESH_SYNC_TIMEOUT_MS,
+      intervalMs: 1000,
+      description: 'chore in `fairfox agenda list`',
+    });
     ok = true;
   } catch {
     ok = false;
   }
 
-  await desktop.page.screenshot({
+  await desktopBrowser.page.screenshot({
     path: resolve(ARTIFACTS, 'desktop.png'),
     fullPage: true,
   });
-  await phone.page.screenshot({
-    path: resolve(ARTIFACTS, 'phone.png'),
-    fullPage: true,
+
+  // Close the live peer; on SIGINT it flushes storage on the way out.
+  TRACE('cli', 'closing `pair open`');
+  pairOpen.kill('SIGINT');
+  await waitFor(() => pairOpenExited, {
+    timeoutMs: SHORT_TIMEOUT_MS,
+    description: '`pair open` exit',
+  }).catch(() => {
+    pairOpen.kill('SIGKILL');
   });
 
-  if (!ok) {
-    throw new Error(`chore "${chore}" did not appear on phone within 20s`);
+  // Authoritative post-flush read.
+  const finalList = runCli(['agenda', 'list']);
+  if (!finalList.stdout.includes(chore)) {
+    ok = false;
+    TRACE('cli', `final agenda list:\n${finalList.stdout.trim()}`);
+    throw new Error(`chore "${chore}" never reached the CLI peer`);
   }
+  ok = true;
 
-  const consoleProblems = [
-    ...desktop.consoleProblems.map((p) => ({ ...p, label: 'desktop' })),
-    ...phone.consoleProblems.map((p) => ({ ...p, label: 'phone' })),
-  ];
+  const consoleProblems = desktopBrowser.consoleProblems;
   if (consoleProblems.length > 0) {
     ok = false;
-    const summary = consoleProblems.map((p) => `  [${p.label} ${p.level}] ${p.text}`).join('\n');
+    const summary = consoleProblems.map((p) => `  [${p.level}] ${p.text}`).join('\n');
     throw new Error(
-      `chore synced but ${consoleProblems.length} unexpected console message(s) appeared — extend CONSOLE_NOISE_ALLOWLIST in this script if a match is genuinely benign:\n${summary}`
+      `chore synced but ${consoleProblems.length} unexpected console message(s) appeared — extend CONSOLE_NOISE_ALLOWLIST if a match is genuinely benign:\n${summary}`
     );
   }
 
-  TRACE('result', `SUCCESS — "${chore}" synced`);
-  TRACE(
-    'result',
-    `screenshots at ${resolve(ARTIFACTS, 'desktop.png')}, ${resolve(ARTIFACTS, 'phone.png')}`
-  );
+  TRACE('result', `SUCCESS — "${chore}" synced browser → CLI over WebRTC`);
+  TRACE('result', `screenshot at ${resolve(ARTIFACTS, 'desktop.png')}`);
 } catch (err) {
   TRACE('result', `FAILURE — ${err instanceof Error ? err.message : String(err)}`);
   try {
-    await desktop.page.screenshot({
+    await desktopBrowser.page.screenshot({
       path: resolve(ARTIFACTS, 'desktop-error.png'),
       fullPage: true,
     });
-    await phone.page.screenshot({
-      path: resolve(ARTIFACTS, 'phone-error.png'),
-      fullPage: true,
-    });
   } catch {
-    // best effort on error screenshots
+    // best effort on the error screenshot
   }
 } finally {
-  await desktop.browser.close();
-  await phone.browser.close();
+  if (!pairOpenExited) {
+    pairOpen.kill('SIGKILL');
+  }
+  await desktopBrowser.browser.close();
 }
 
 process.exit(ok ? 0 : 1);

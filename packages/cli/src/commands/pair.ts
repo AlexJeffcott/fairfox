@@ -1,22 +1,23 @@
-// `fairfox pair <token> [--session <sid>]` — apply a pairing token to
-// the CLI keyring, publish this device's row into the mesh, and
-// (optionally) send the issuer a pair-return frame so their browser
-// tab learns the CLI's identity.
+// `fairfox pair join <url-or-token>` — apply a pairing token to the CLI
+// keyring, publish this device's row into the mesh, and complete the
+// reciprocal handshake so the issuer trusts this device back.
 //
-// The token argument accepts either a bare base64 payload or a
-// `#pair=<encoded>` fragment lifted from a share URL; either shape
-// round-trips through `decodePairingToken` after a URL-decode.
+// The join QR/URL carries transport only: `pair=<token>&s=<session>&k=<key>`.
+// The identity this device should adopt — a recovery blob for "another of
+// my own devices", or an admin-signed invite blob for "a new person" — is
+// NOT in the URL. The issuer encrypts it under the ephemeral key `k` and
+// hands it back over the relay's pair-ack frame once the handshake
+// completes; this CLI decrypts it with `k` and writes user-identity.json.
 //
-// Why the pair-return matters: pairing is asymmetric. The token the
-// issuer emits carries only the issuer's identity, so after the CLI
-// applies it the *CLI* trusts the laptop but the laptop knows nothing
-// about the CLI. Until the laptop learns the CLI's device pubkey, it
-// rejects every op the CLI signs at sync — the CLI stays invisible in
-// the laptop's peers list, even though the pair "succeeded". The
-// pair-return path mirrors the browser-to-browser ceremony: the CLI
-// mints its own pair token, sends it back through the signalling
-// relay against the issuer's session id, and the issuer's
-// pair-return handler calls applyPairingToken on that token.
+// Why the pair-return matters: pairing is asymmetric. The issuer's token
+// carries only the issuer's identity, so until the issuer learns this
+// CLI's device pubkey it rejects every op the CLI signs at sync. The
+// pair-return frame ships this CLI's own token back through the relay so
+// the issuer can applyPairingToken on it.
+//
+// A bare `fairfox-user-v1:…` recovery blob passed as the argument is
+// routed straight to the recovery-import path — the break-glass "I have
+// my identity, put it on this machine" entry point.
 
 import { hostname } from 'node:os';
 import {
@@ -24,6 +25,7 @@ import {
   type InvitePayload,
   verifyInviteSignature,
 } from '@fairfox/shared/invite';
+import { decryptPairingPayload } from '@fairfox/shared/pairing-payload';
 import {
   applyPairingToken,
   createPairingToken,
@@ -45,19 +47,24 @@ import {
   keyringStorage,
   openMeshClient,
 } from '#src/mesh.ts';
-import { saveUserIdentityFile } from '#src/user-identity-node.ts';
+import { decodeRecoveryBlob, saveUserIdentityFile } from '#src/user-identity-node.ts';
 
 interface ShareParts {
   readonly pair: string;
   readonly sessionId?: string;
+  /** Ephemeral key for decrypting the issuer's pair-ack payload. */
+  readonly ackKey?: string;
+  /** Legacy / manual fallback: an identity blob carried inline in the
+   * URL. New issuers never emit this — they hand identity over the
+   * encrypted pair-ack instead. */
   readonly invite?: string;
 }
 
 function parseShareInput(input: string): ShareParts {
   const trimmed = input.trim();
-  // The fragment portion after `#`, or the raw string if it's
-  // already just key=value pairs. Falls through to "treat as raw
-  // base64 token" if no `=` is present.
+  // The fragment portion after `#`, or the raw string if it's already
+  // just key=value pairs. Falls through to "treat as raw base64 token"
+  // if no `=` is present.
   const fragment = (() => {
     const hashIdx = trimmed.indexOf('#');
     if (hashIdx >= 0) {
@@ -74,15 +81,16 @@ function parseShareInput(input: string): ShareParts {
   const params = new URLSearchParams(fragment);
   const pair = params.get('pair');
   const sessionId = params.get('s') ?? undefined;
+  const ackKey = params.get('k') ?? undefined;
   const invite = params.get('invite') ?? undefined;
   if (!pair) {
-    // No `pair=` field — treat the whole fragment as the bare
-    // token (the older single-value form `pair=XXX`).
+    // No `pair=` field — treat the whole fragment as the bare token.
     return { pair: decodeURIComponent(fragment) };
   }
   return {
     pair,
     ...(sessionId ? { sessionId } : {}),
+    ...(ackKey ? { ackKey } : {}),
     ...(invite ? { invite } : {}),
   };
 }
@@ -102,49 +110,44 @@ async function loadOrCreateKeyring(storage: KeyringStorage): Promise<MeshKeyring
   return fresh;
 }
 
-interface InviteApplyOk {
-  readonly kind: 'ok';
-  readonly displayName: string;
-  readonly payload: InvitePayload;
-}
-interface InviteApplyError {
-  readonly kind: 'error';
-  readonly message: string;
-}
-
-/** Mirror of pairing-actions.ts:`acceptInviteBlob` for the CLI.
- * Decodes the admin-signed invite blob, verifies the signature
- * against the admin's pubkey embedded in the payload, imports the
- * invitee's user key as this device's identity, and writes
- * user-identity.json. The corresponding UserEntry write into
- * mesh:users happens when openMeshClient runs below — we can't
- * upsertUser here because polly's $meshState needs the Repo
- * configured. */
-function applyInviteBlob(blob: string): InviteApplyOk | InviteApplyError {
+/** Decode an admin-signed invite blob, verify its signature against the
+ * admin pubkey embedded in the payload, and write the invitee's user key
+ * as this device's identity. Returns the display name on success. */
+function applyInviteBlob(blob: string): string {
   let payload: InvitePayload;
   try {
     payload = decodeInviteBlob(blob);
   } catch (err) {
-    return {
-      kind: 'error',
-      message: `decode failed: ${err instanceof Error ? err.message : String(err)}`,
-    };
+    throw new Error(`invite decode failed: ${err instanceof Error ? err.message : String(err)}`);
   }
   const adminPublicKey = decodeUserPublicKey(payload.createdByUserId);
   if (!adminPublicKey) {
-    return { kind: 'error', message: 'admin user id malformed' };
+    throw new Error('invite admin user id malformed');
   }
   if (!verifyInviteSignature(payload, adminPublicKey)) {
-    return { kind: 'error', message: 'invite signature invalid' };
+    throw new Error('invite signature invalid');
   }
-  const secretKey = new Uint8Array(payload.secretKey);
-  const keypair = signingKeyPairFromSecret(secretKey);
+  const keypair = signingKeyPairFromSecret(new Uint8Array(payload.secretKey));
   saveUserIdentityFile({
     userId: payload.userId,
     displayName: payload.displayName,
     keypair,
   });
-  return { kind: 'ok', displayName: payload.displayName, payload };
+  return payload.displayName;
+}
+
+/** Apply whatever identity blob the issuer handed back — a recovery blob
+ * (`fairfox-user-v1:…`) or an admin-signed invite blob. Writes
+ * user-identity.json. Returns a short human description. Throws on a
+ * malformed or unverifiable blob. */
+function applyIdentityBlob(blob: string): string {
+  const trimmed = blob.trim();
+  if (trimmed.startsWith('fairfox-user-v1')) {
+    const identity = decodeRecoveryBlob(trimmed);
+    saveUserIdentityFile(identity);
+    return `recovered identity "${identity.displayName}"`;
+  }
+  return `adopted invited identity "${applyInviteBlob(trimmed)}"`;
 }
 
 function parseArgs(rest: readonly string[]): {
@@ -169,27 +172,23 @@ export async function pair(tokenInputOrArgs: string | readonly string[]): Promis
   const rest = typeof tokenInputOrArgs === 'string' ? [tokenInputOrArgs] : tokenInputOrArgs;
   const { token: tokenInput, sessionId: sessionIdArg } = parseArgs(rest);
   if (!tokenInput) {
-    process.stderr.write('fairfox pair: expected a pairing token, share URL, or recovery blob.\n');
+    process.stderr.write(
+      'fairfox pair join: expected a join URL, pairing token, or recovery blob.\n'
+    );
     return 1;
   }
 
-  // Recovery blobs are the user-facing "I lost my device, here's my
-  // identity" payload — `fairfox-user-v1:<hex>:<name>`, possibly
-  // URL-encoded. Sniff and route to the recovery import path so a
-  // single verb covers every onboarding entry point.
+  // A bare recovery blob is the break-glass "I have my identity, put it
+  // on this machine" path — route it to the recovery import directly.
   const trimmed = tokenInput.trim();
   if (trimmed.startsWith('fairfox-user-v1:') || trimmed.startsWith('fairfox-user-v1%3A')) {
     const { usersImport } = await import('#src/commands/users.ts');
     return usersImport(trimmed);
   }
 
-  // Share URLs from `mesh invite open` carry pair=, s=, and invite=
-  // chained with `&` after the `#`. parseShareInput extracts each so
-  // a single positional argument carries the full ceremony — matching
-  // the browser flow where the URL hash drives everything.
   const shareParts = parseShareInput(tokenInput);
   const sessionId = sessionIdArg ?? shareParts.sessionId;
-  const inviteBlob = shareParts.invite;
+  const ackKey = shareParts.ackKey;
 
   const storage = keyringStorage();
   const keyring = await loadOrCreateKeyring(storage);
@@ -199,7 +198,7 @@ export async function pair(tokenInputOrArgs: string | readonly string[]): Promis
     decoded = decodePairingToken(shareParts.pair);
   } catch (err) {
     process.stderr.write(
-      `fairfox pair: could not decode token — ${err instanceof Error ? err.message : String(err)}\n`
+      `fairfox pair join: could not decode token — ${err instanceof Error ? err.message : String(err)}\n`
     );
     return 1;
   }
@@ -207,61 +206,37 @@ export async function pair(tokenInputOrArgs: string | readonly string[]): Promis
   applyPairingToken(decoded, keyring);
   await storage.save(keyring);
 
-  // If the share URL also carried an invite blob, apply it: import
-  // the invitee's user key as this CLI's identity and mint the
-  // corresponding UserEntry. Mirrors `acceptInviteBlob` in the
-  // browser pairing-actions.ts. Without this the CLI is paired but
-  // has no user identity, and `chat send` / `users invite` /
-  // anything that signs as a user fails.
-  let inviteIdentity:
-    | {
-        readonly userId: string;
-        readonly displayName: string;
-        readonly keypair: ReturnType<typeof signingKeyPairFromSecret>;
-      }
-    | undefined;
-  if (inviteBlob) {
-    const inviteResult = applyInviteBlob(inviteBlob);
-    if (inviteResult.kind === 'error') {
-      process.stderr.write(`fairfox pair: invite blob rejected — ${inviteResult.message}\n`);
+  // Legacy / manual fallback: an identity blob carried inline in the URL.
+  // New issuers never do this, but a hand-pasted old URL still works.
+  let identityApplied: string | null = null;
+  if (shareParts.invite) {
+    try {
+      identityApplied = `adopted invited identity "${applyInviteBlob(shareParts.invite)}"`;
+    } catch (err) {
+      process.stderr.write(
+        `fairfox pair join: invite blob rejected — ${err instanceof Error ? err.message : String(err)}\n`
+      );
       return 1;
     }
-    inviteIdentity = {
-      userId: inviteResult.payload.userId,
-      displayName: inviteResult.payload.displayName,
-      keypair: signingKeyPairFromSecret(new Uint8Array(inviteResult.payload.secretKey)),
-    };
-    process.stdout.write(`fairfox pair: adopted invitee identity "${inviteResult.displayName}"\n`);
   }
 
-  // Mint our own pair token BEFORE we open the mesh. We'll both
-  // print it (for manual paste) and, if we have a session id, ship
-  // it to the issuer as a pair-return frame so they add us to
-  // *their* keyring. Without that reciprocal apply the laptop stays
-  // blind to the CLI's identity and every op we sign gets rejected
-  // at sync.
+  // Mint our own pair token. We ship it to the issuer as a pair-return
+  // frame so they add us to *their* keyring — without that reciprocal
+  // apply the issuer rejects every op we sign at sync.
   const ownPeerId = derivePeerId(keyring.identity.publicKey);
   const documentKey = keyring.documentKeys.get(DEFAULT_MESH_KEY_ID);
-  const ownToken = createPairingToken({
-    identity: keyring.identity,
-    issuerPeerId: ownPeerId,
-    documentKey,
-    documentKeyId: DEFAULT_MESH_KEY_ID,
-  });
-  const ownEncoded = encodePairingToken(ownToken);
+  const ownEncoded = encodePairingToken(
+    createPairingToken({
+      identity: keyring.identity,
+      issuerPeerId: ownPeerId,
+      documentKey,
+      documentKeyId: DEFAULT_MESH_KEY_ID,
+    })
+  );
 
-  // Open the mesh, publish the CLI's mesh:devices row, and ship the
-  // pair-return frame. Then wait for an explicit `pair-ack` from the
-  // issuer's tab rather than a blind timer: the ack fires in the
-  // issuer's `subscribeToPairReturn` after it calls
-  // applyScannedToken, so when the CLI sees it we know the issuer
-  // has added our identity to its keyring and the handshake is
-  // complete. The safety-net timeout is there only for the case
-  // where signalling is unreachable or the issuer's tab was closed —
-  // it's not the happy path.
-  //
-  // `openMeshClient` awaits devicesState.loaded and writes the self-
-  // row as a side effect on open.
+  // Open the mesh, ship the pair-return, and wait for the issuer's
+  // pair-ack. The ack both confirms the handshake completed and (for a
+  // fresh join) carries the encrypted identity blob.
   const ACK_TIMEOUT_MS = 12000;
   try {
     let gotAck = false;
@@ -272,50 +247,42 @@ export async function pair(tokenInputOrArgs: string | readonly string[]): Promis
     const client = await openMeshClient({
       peerId: ownPeerId,
       onCustomFrame: (frame) => {
-        if (frame.type === 'pair-ack' && frame.sessionId === sessionId) {
-          gotAck = true;
-          ackResolve?.();
+        if (frame.type !== 'pair-ack' || frame.sessionId !== sessionId) {
+          return;
         }
+        gotAck = true;
+        const payload = typeof frame.payload === 'string' ? frame.payload : null;
+        if (payload && ackKey && identityApplied === null) {
+          try {
+            identityApplied = applyIdentityBlob(decryptPairingPayload(payload, ackKey));
+          } catch (err) {
+            process.stderr.write(
+              `fairfox pair join: identity hand-off failed — ${err instanceof Error ? err.message : String(err)}\n`
+            );
+          }
+        }
+        ackResolve?.();
       },
     });
     try {
-      // If we adopted an invitee identity, ship the userId through the
-      // pair-return frame so the issuer can record the
-      // peerId↔userId binding directly on its mesh:devices write. We
-      // can't write a SIGNED endorsement here and have it survive the
-      // mesh:devices CRDT merge (mesh:devices is a top-level map
-      // replace via `applyTopLevel`, so concurrent writes from issuer
-      // and scanner compete and last-write-wins) — that needs a
-      // separate per-key fix to the devices-state write path. For now
-      // the unsigned ownerUserIds binding is enough for `users revoke`
-      // to look up which peerIds belong to a user.
       if (sessionId) {
-        const framePayload: Record<string, unknown> = {
+        const sent = client.signaling.sendCustom('pair-return', {
           sessionId,
           token: ownEncoded,
           agent: 'cli',
           name: hostname(),
-        };
-        if (inviteIdentity) {
-          framePayload.userId = inviteIdentity.userId;
-        }
-        const sent = client.signaling.sendCustom('pair-return', framePayload);
+        });
         if (!sent) {
           process.stderr.write(
-            'fairfox pair: could not reach the signalling relay — the issuer will have to paste your token manually (printed below).\n'
+            'fairfox pair join: could not reach the signalling relay — the issuer will have to paste your token manually (printed below).\n'
           );
         }
       }
-      // Wait for ack (proof the issuer applied our token and wrote
-      // our mesh:devices row). No arbitrary hold after that — the
-      // issuer's row-write is what matters, and it's already done by
-      // the time the ack arrives. A small flush lets any pending
-      // local Automerge writes settle before teardown.
       const timeout = new Promise<void>((r) => setTimeout(r, ACK_TIMEOUT_MS));
       await Promise.race([ackWait, timeout]);
       if (!gotAck && sessionId) {
         process.stderr.write(
-          'fairfox pair: no pair-ack from the issuer — closing anyway. If their pair tab was open, the row may still land.\n'
+          'fairfox pair join: no pair-ack from the issuer — closing anyway. The keyring is paired; if an identity was expected, ask the issuer to reopen the QR.\n'
         );
       }
       await flushOutgoing(500);
@@ -323,26 +290,20 @@ export async function pair(tokenInputOrArgs: string | readonly string[]): Promis
       await closeMesh(client);
     }
   } catch {
-    // Pair already succeeded — the self-row publish and pair-return
-    // are convenience; a later command will re-publish and the user
-    // can still hand-paste the printed token.
+    // Pairing already succeeded — the self-row publish and pair-return
+    // are convenience; a later command re-publishes.
   }
 
-  process.stdout.write(
-    [
-      `Paired. Keyring written to ${KEYRING_PATH}.`,
-      '',
-      sessionId
-        ? "Sent a pair-return frame to the issuer. If their tab was open and the signalling relay was up, they've already added this CLI to their keyring."
-        : 'Now give the other device this URL so it can scan you back:',
-      '',
-      `  #pair=${encodeURIComponent(ownEncoded)}`,
-      '',
-      'Or the raw token, if you prefer:',
-      '',
-      `  ${ownEncoded}`,
-      '',
-    ].join('\n')
-  );
+  const lines = [
+    `Paired. Keyring written to ${KEYRING_PATH}.`,
+    identityApplied ? `Identity: ${identityApplied}.` : '',
+    '',
+    sessionId
+      ? 'Sent a pair-return frame to the issuer.'
+      : 'Now give the other device this URL so it can scan you back:',
+    '',
+    `  #pair=${encodeURIComponent(ownEncoded)}`,
+  ].filter((line) => line !== '');
+  process.stdout.write(`${lines.join('\n')}\n`);
   return 0;
 }

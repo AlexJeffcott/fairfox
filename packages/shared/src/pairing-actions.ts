@@ -32,6 +32,11 @@ import { loadOrCreateKeyring } from '#src/keyring.ts';
 import { awaitLoadedBudget } from '#src/loaded-budget.ts';
 import { completePairing, initiatePairing } from '#src/pairing.ts';
 import {
+  decryptPairingPayload,
+  encryptPairingPayload,
+  generateAckKey,
+} from '#src/pairing-payload.ts';
+import {
   cameraScanMode,
   type InviteRole,
   inviteDraftEnabled,
@@ -116,7 +121,12 @@ function unsubscribePairReturn(): void {
   }
 }
 
-function subscribeToPairReturn(sessionId: string): void {
+function subscribeToPairReturn(
+  sessionId: string,
+  ackKey: string,
+  identityBlob: string | null,
+  ownerUserId: string | null
+): void {
   unsubscribePairReturn();
   pairReturnUnsubscribe = subscribeCustomFrames((frame: CustomFrame) => {
     if (frame.type === 'pair-error' && frame.sessionId === sessionId) {
@@ -137,16 +147,24 @@ function subscribeToPairReturn(sessionId: string): void {
     // The scanner's reciprocal token completes the ceremony from the
     // issuer's side. Apply it, write a mesh:devices row for the
     // scanner directly (so the UI shows them without waiting for a
-    // post-reload WebRTC sync), drain both steps, advance — the
-    // remaining logic is identical to the manual-paste path. Before
-    // we do `advanceAfter` (which reloads this tab), send the scanner
-    // a `pair-ack` frame so a listener like the CLI knows the
-    // handshake is complete.
+    // post-reload WebRTC sync), then hand back the identity blob —
+    // encrypted under the ephemeral ack key the scanner read from the
+    // QR — on the pair-ack frame. The relay forwards ciphertext it
+    // cannot read; the scanner decrypts with its copy of `k`.
     (async () => {
       try {
         await applyScannedToken(token);
-        await writeScannerDeviceRow(token, agentHint, nameHint);
-        mesh?.signaling.sendCustom('pair-ack', { sessionId });
+        await writeScannerDeviceRow(token, agentHint, nameHint, ownerUserId);
+        const ack: Record<string, unknown> = { sessionId };
+        if (identityBlob) {
+          try {
+            ack.payload = encryptPairingPayload(identityBlob, ackKey);
+          } catch {
+            // Leave payload off — the scanner falls back to the join
+            // wizard rather than receiving a corrupt identity.
+          }
+        }
+        mesh?.signaling.sendCustom('pair-ack', ack);
         drainStep('issue');
         advanceAfter('scan');
       } catch (err) {
@@ -164,18 +182,15 @@ function drainStep(step: PairingStep): ReadonlySet<PairingStep> {
   return next;
 }
 
-function shareUrlForToken(
-  token: string,
-  sessionId: string | null,
-  inviteBlob: string | null
-): string {
+function shareUrlForToken(token: string, sessionId: string | null, ackKey: string | null): string {
   const encoded = encodeURIComponent(token);
   const parts: string[] = [`pair=${encoded}`];
   if (sessionId) {
     parts.push(`s=${encodeURIComponent(sessionId)}`);
   }
-  if (inviteBlob) {
-    parts.push(`invite=${encodeURIComponent(inviteBlob)}`);
+  if (ackKey) {
+    // base64url — drops into the fragment without escaping.
+    parts.push(`k=${ackKey}`);
   }
   const fragment = parts.join('&');
   if (typeof window === 'undefined') {
@@ -191,27 +206,31 @@ function shareUrlForToken(
  * not-admin. Safe to call on every pairing regen — does not mutate
  * mesh state yet; the invitee's UserEntry is only written once they
  * actually accept. */
-function maybeCreateInviteBlob(): { blob: string | null; invitedName: string | null } {
+function maybeCreateInviteBlob(): {
+  blob: string | null;
+  invitedName: string | null;
+  userId: string | null;
+} {
   if (!inviteDraftEnabled.value) {
-    return { blob: null, invitedName: null };
+    return { blob: null, invitedName: null, userId: null };
   }
   const identity = userIdentity.value;
   if (!identity) {
     pairingError.value = 'Set up your own identity before inviting someone else.';
     inviteDraftEnabled.value = false;
-    return { blob: null, invitedName: null };
+    return { blob: null, invitedName: null, userId: null };
   }
   const adminEntry = usersState.value.users[identity.userId];
   const adminRoles = adminEntry?.roles ?? [];
   if (!adminRoles.includes('admin')) {
     pairingError.value = 'Only admins can invite new users.';
     inviteDraftEnabled.value = false;
-    return { blob: null, invitedName: null };
+    return { blob: null, invitedName: null, userId: null };
   }
   const name = inviteDraftName.value.trim();
   if (!name) {
     pairingError.value = 'Pick a display name for the person you are inviting.';
-    return { blob: null, invitedName: null };
+    return { blob: null, invitedName: null, userId: null };
   }
   const role: Role = inviteDraftRole.value;
   const { blob, payload } = createInvite({
@@ -241,7 +260,7 @@ function maybeCreateInviteBlob(): { blob: string | null; invitedName: string | n
   });
   inviteIssuedBlob.value = blob;
   inviteIssuedName.value = payload.displayName;
-  return { blob, invitedName: payload.displayName };
+  return { blob, invitedName: payload.displayName, userId: payload.userId };
 }
 
 async function generateIssueArtefacts(): Promise<void> {
@@ -250,21 +269,41 @@ async function generateIssueArtefacts(): Promise<void> {
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
   const token = initiatePairing(keyring, peerId);
+
+  // The identity the scanner adopts once the handshake lands. With the
+  // invite draft on, that is the invitee's admin-signed invite blob;
+  // otherwise it is this user's own recovery blob, so the new device
+  // becomes another device of the issuing user. Either way it is
+  // delivered encrypted over pair-ack, never on the QR.
+  let identityBlob: string | null = null;
+  let ownerUserId: string | null = null;
+  if (inviteDraftEnabled.value) {
+    const invite = maybeCreateInviteBlob();
+    identityBlob = invite.blob;
+    ownerUserId = invite.userId;
+  } else {
+    const identity = userIdentity.value;
+    if (identity) {
+      identityBlob = exportRecoveryBlob(identity);
+      ownerUserId = identity.userId;
+    }
+  }
+
   // Register with the server's pair-return relay under a fresh session
-  // id, then bake that id into the share URL so the scanner can echo
-  // it back through the relay. The mesh signalling connection may not
-  // be ready on brand-new devices; if it isn't, fall through with a
-  // null sessionId and the manual-paste fallback still covers the
-  // ceremony.
+  // id, then bake that id (and the ephemeral ack key) into the share
+  // URL so the scanner can echo the id back and decrypt the identity
+  // hand-off. The mesh signalling connection may not be ready on
+  // brand-new devices; if it isn't, fall through with a null sessionId
+  // and the manual-paste fallback still covers the transport half.
   const sessionId = generateSessionId();
+  const ackKey = generateAckKey();
   const sent = mesh?.signaling.sendCustom('pair-issue', { sessionId }) ?? false;
   pairingSessionId.value = sent ? sessionId : null;
   issuerWaitingForReturn.value = sent;
   if (sent) {
-    subscribeToPairReturn(sessionId);
+    subscribeToPairReturn(sessionId, ackKey, identityBlob, ownerUserId);
   }
-  const { blob: inviteBlob } = maybeCreateInviteBlob();
-  const shareUrl = shareUrlForToken(token, pairingSessionId.value, inviteBlob);
+  const shareUrl = shareUrlForToken(token, pairingSessionId.value, sent ? ackKey : null);
   issuedToken.value = token;
   issuedShareUrl.value = shareUrl;
   try {
@@ -286,7 +325,8 @@ async function generateIssueArtefacts(): Promise<void> {
 async function writeScannerDeviceRow(
   returnToken: string,
   agentHint: string | null,
-  nameHint: string | null
+  nameHint: string | null,
+  ownerUserId: string | null
 ): Promise<void> {
   let decoded: ReturnType<typeof decodePairingToken>;
   try {
@@ -303,6 +343,13 @@ async function writeScannerDeviceRow(
   };
   if (nameHint) {
     patch.name = nameHint;
+  }
+  if (ownerUserId) {
+    // The issuer knows which user this device is being paired under —
+    // it is the identity we are about to hand over on pair-ack. Record
+    // the binding so `users revoke` can map the userId back to peerIds
+    // without waiting for the scanner's own row to sync.
+    patch.ownerUserIds = [ownerUserId];
   }
   // upsertDeviceEntry throws "handle not bridged" if the devices
   // $meshState wrapper has not hydrated yet; fence on it the same way
@@ -390,12 +437,14 @@ function advanceAfter(step: PairingStep): void {
 interface ParsedHash {
   token: string;
   sessionId: string | null;
-  /** Admin-signed invite blob (new user joining the mesh). */
+  /** Ephemeral key for decrypting the issuer's pair-ack identity
+   * hand-off. base64url; null on a transport-only or legacy URL. */
+  ackKey: string | null;
+  /** Admin-signed invite blob — legacy / hand-pasted inline form only.
+   * New issuers deliver this encrypted over pair-ack instead. */
   invite: string | null;
-  /** Recovery blob of an existing user (a new device joining THIS
-   * user — the "add my phone to my mesh" flow). Mutually exclusive
-   * with `invite` at consumption time; if both are present, invite
-   * wins because it carries additional role/grant info. */
+  /** Recovery blob — legacy / hand-pasted inline form only. New
+   * issuers deliver this encrypted over pair-ack instead. */
   recovery: string | null;
 }
 
@@ -450,18 +499,20 @@ function parseScanPaste(raw: string): ParsedHash {
   } catch {
     token = tokenPart;
   }
-  // Collect sessionId / invite / recovery suffixes if they're
+  // Collect sessionId / ackKey / invite / recovery suffixes if they're
   // present after the first `&`.
   let sessionId: string | null = null;
+  let ackKey: string | null = null;
   let invite: string | null = null;
   let recovery: string | null = null;
   if (ampIdx !== -1) {
     const rest = trimmed.slice(ampIdx);
     sessionId = readHashParam(rest, 's');
+    ackKey = readHashParam(rest, 'k');
     invite = readHashParam(rest, 'invite');
     recovery = readHashParam(rest, 'recovery');
   }
-  return { token, sessionId, invite, recovery };
+  return { token, sessionId, ackKey, invite, recovery };
 }
 
 function parsePairingHash(hash: string): ParsedHash | null {
@@ -475,6 +526,7 @@ function parsePairingHash(hash: string): ParsedHash | null {
   return {
     token,
     sessionId: readHashParam(body, 's'),
+    ackKey: readHashParam(body, 'k'),
     invite: readHashParam(body, 'invite'),
     recovery: readHashParam(body, 'recovery'),
   };
@@ -498,16 +550,60 @@ export function installPairingHashListener(): void {
   });
 }
 
-// Consume a `#pair=<token>[&s=<sessionId>][&invite=<blob>]` hash on
-// banner mount. Returns true if a token was present and submitted.
-// Always clears the fragment from the URL so it doesn't leak further
-// into history or bookmarks. When the fragment carries a session id,
-// the scanner sends its reciprocal token back through the
-// signalling-relayed pair-return frame so the issuer's wizard can
-// auto-complete. When it carries an invite, the scanner imports the
-// invitee's user key and writes the signed UserEntry into
-// `mesh:users` before the post-scan reload — both halves land
-// together so the post-reload state is "paired AND known as <name>".
+/** Wait for the issuer's encrypted identity hand-off and apply it.
+ *
+ * The QR carries transport only; the issuer encrypts the identity blob
+ * (recovery or invite) under the ephemeral key `k` and sends it on the
+ * pair-ack frame once it has applied our pair-return. We subscribe,
+ * decrypt with our copy of `k`, and adopt the identity. A bounded wait:
+ * if no pair-ack arrives the scanner proceeds without an identity and
+ * lands on the join wizard's Recover path. */
+async function awaitIdentityHandoff(sessionId: string, ackKey: string): Promise<void> {
+  const payload = await new Promise<string | null>((resolve) => {
+    let settled = false;
+    const finish = (value: string | null): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      unsub();
+      resolve(value);
+    };
+    const unsub = subscribeCustomFrames((frame: CustomFrame) => {
+      if (frame.type === 'pair-ack' && frame.sessionId === sessionId) {
+        finish(typeof frame.payload === 'string' ? frame.payload : null);
+      }
+    });
+    setTimeout(() => finish(null), 10000);
+  });
+  if (!payload) {
+    return;
+  }
+  let blob: string;
+  try {
+    blob = decryptPairingPayload(payload, ackKey);
+  } catch (err) {
+    pairingError.value = err instanceof Error ? err.message : String(err);
+    return;
+  }
+  // A recovery blob has the `fairfox-user-v1:` prefix; anything else is
+  // an admin-signed invite blob.
+  if (blob.startsWith('fairfox-user-v1')) {
+    await acceptRecoveryBlob(blob);
+  } else {
+    await acceptInviteBlob(blob);
+  }
+}
+
+// Consume a `#pair=<token>[&s=<sessionId>][&k=<ackKey>]` hash on banner
+// mount. Returns true if a token was present and submitted. Always
+// clears the fragment from the URL so it doesn't leak into history or
+// bookmarks. When the fragment carries a session id, the scanner sends
+// its reciprocal token back through the signalling-relayed pair-return
+// frame so the issuer can auto-complete — then waits for the issuer's
+// encrypted identity hand-off on pair-ack so the post-reload state is
+// "paired AND known as <name>". Legacy `invite=` / `recovery=` fragments
+// (hand-pasted old URLs) are still honoured inline.
 export async function consumePairingHash(): Promise<boolean> {
   if (typeof window === 'undefined') {
     return false;
@@ -524,15 +620,12 @@ export async function consumePairingHash(): Promise<boolean> {
   try {
     await applyScannedToken(parsed.token);
     // Fire the pair-return as soon as the keyring has the issuer's
-    // pubkey, *before* the recovery/invite branch can hang on
-    // `$meshState.loaded` for `mesh:users`. The frame is independent
-    // signalling state — it tells the issuer "I have your token, here's
-    // mine" — and gating it behind the doc-hydration awaits caused
-    // real-Chrome scanners to never reach the send and leave the
-    // issuer's keyring without the scanner's pubkey, which then
-    // dropped every wrapped sync envelope on the way back. See
-    // fairfox#19. `void` so sendPairReturnForSession's own internal
-    // awaits don't extend the surrounding try-block either.
+    // pubkey, *before* the identity-handoff wait. The frame is
+    // independent signalling state — it tells the issuer "I have your
+    // token, here's mine" — and gating it behind doc-hydration awaits
+    // caused real-Chrome scanners to never reach the send. See
+    // fairfox#19. `void` so its internal awaits don't extend the
+    // surrounding try-block either.
     if (parsed.sessionId) {
       void sendPairReturnForSession(parsed.sessionId);
     }
@@ -540,6 +633,8 @@ export async function consumePairingHash(): Promise<boolean> {
       await acceptInviteBlob(parsed.invite);
     } else if (parsed.recovery) {
       await acceptRecoveryBlob(parsed.recovery);
+    } else if (parsed.sessionId && parsed.ackKey) {
+      await awaitIdentityHandoff(parsed.sessionId, parsed.ackKey);
     }
     if (parsed.sessionId) {
       // One-scan completion: when we send a pair-return through the
@@ -686,6 +781,8 @@ export async function submitScannedValue(raw: string): Promise<void> {
       await acceptInviteBlob(parsed.invite);
     } else if (parsed.recovery) {
       await acceptRecoveryBlob(parsed.recovery);
+    } else if (parsed.sessionId && parsed.ackKey) {
+      await awaitIdentityHandoff(parsed.sessionId, parsed.ackKey);
     }
     if (parsed.sessionId) {
       drainStep('issue');
