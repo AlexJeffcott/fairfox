@@ -598,12 +598,17 @@ async function awaitIdentityHandoff(sessionId: string, ackKey: string): Promise<
   console.log(`[handoff] decrypted blob prefix=${blob.slice(0, 16)}`);
   // A recovery blob has the `fairfox-user-v1:` prefix; anything else is
   // an admin-signed invite blob.
-  if (blob.startsWith('fairfox-user-v1')) {
-    await acceptRecoveryBlob(blob);
-  } else {
-    await acceptInviteBlob(blob);
+  try {
+    if (blob.startsWith('fairfox-user-v1')) {
+      await acceptRecoveryBlob(blob);
+    } else {
+      await acceptInviteBlob(blob);
+    }
+    console.log('[handoff] identity applied');
+  } catch (err) {
+    console.log(`[handoff] apply threw: ${err instanceof Error ? err.stack : String(err)}`);
+    throw err;
   }
-  console.log('[handoff] identity applied');
 }
 
 // Consume a `#pair=<token>[&s=<sessionId>][&k=<ackKey>]` hash on banner
@@ -692,8 +697,11 @@ async function sendPairReturnForSession(sessionId: string): Promise<void> {
  * exists in `mesh:users`, and this device joining under the same
  * identity doesn't add a new user row. */
 async function acceptRecoveryBlob(blob: string): Promise<void> {
+  console.log('[handoff] acceptRecovery: decoding');
   const identity = decodeRecoveryBlob(blob);
+  console.log(`[handoff] acceptRecovery: decoded userId=${identity.userId.slice(0, 12)}, saving`);
   await saveUserIdentity(identity);
+  console.log('[handoff] acceptRecovery: saved to IDB');
   userIdentity.value = identity;
   // If mesh:users doesn't yet know about this user locally, write a
   // self-signed UserEntry. Two situations hit this:
@@ -713,6 +721,7 @@ async function acceptRecoveryBlob(blob: string): Promise<void> {
   // in mesh-gate writes the bootstrap entry once sync arrives.
   // See fairfox#20.
   const hydrated = await awaitLoadedBudget(usersState.loaded, 3000);
+  console.log(`[handoff] acceptRecovery: users hydrated=${hydrated}`);
   if (hydrated && !usersState.value.users[identity.userId]) {
     upsertUser({
       entry: createBootstrapUser({
@@ -721,7 +730,9 @@ async function acceptRecoveryBlob(blob: string): Promise<void> {
       }),
     });
   }
+  console.log('[handoff] acceptRecovery: self-endorsing');
   await selfEndorseDevice(identity);
+  console.log('[handoff] acceptRecovery: done');
 }
 
 /** Accept an invite blob arriving from the URL fragment. Imports the
