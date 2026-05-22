@@ -183,13 +183,13 @@ async function main(): Promise<void> {
   );
   if (!openedMesh) {
     daemon.kill('SIGTERM');
-    await delay(500);
     fail(`no "Holding the mesh open" within ${FOREGROUND_TIMEOUT_MS}ms`);
   }
 
   // The heartbeat interval is 15s. Rather than make the test wait 15s
   // for the first tick, we just prove the supervisor is alive via the
-  // open-mesh line and the process staying up for a beat.
+  // open-mesh line and the process staying up for a beat. This dwell
+  // is deliberate: "the daemon did not crash" has no event to poll.
   await delay(500);
   assert(daemon.exitCode === null, `daemon died unexpectedly with exit ${daemon.exitCode}`);
 
