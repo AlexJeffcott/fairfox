@@ -14,10 +14,12 @@
 import { mkdirSync, rmSync } from 'node:fs';
 import { delay } from '@fairfox/shared/timers';
 import {
-  bootstrapAndOpenInvite,
   buildBundleIfMissing,
   fail,
+  interruptAndWait,
   killAndWait,
+  lastHeartbeatLine,
+  pairWithShare,
   pass,
   runCli,
   spawnCli,
@@ -27,6 +29,7 @@ import {
 
 const ADMIN_HOME = '/tmp/fairfox-e2e-archive-admin';
 const PHONE_HOME = '/tmp/fairfox-e2e-archive-phone';
+const JOIN_URL_RE = /(https?:\/\/\S*#pair=\S+)/;
 
 for (const h of [ADMIN_HOME, PHONE_HOME]) {
   rmSync(h, { recursive: true, force: true });
@@ -34,21 +37,27 @@ for (const h of [ADMIN_HOME, PHONE_HOME]) {
 }
 buildBundleIfMissing();
 
-const invite = await bootstrapAndOpenInvite({
-  adminHome: ADMIN_HOME,
-  adminName: 'Admin',
-  invitees: [{ name: 'Phone' }],
-  inviteToOpen: 'phone',
-});
-await runCli(['pair', invite.shareUrl], PHONE_HOME);
-await delay(4000);
-await invite.close();
+const init = await runCli(
+  ['init', 'e2e mesh', '--admin', 'Admin', '--user', 'Phone:member'],
+  ADMIN_HOME
+);
+if (init.status !== 0) {
+  fail(`mesh init failed: ${init.stderr.slice(0, 200)}`);
+}
+const inviteOpen = spawnCli('invite-phone', ['pair', 'open', '--user', 'phone'], ADMIN_HOME);
+const joinMatch = await waitForLine(inviteOpen.stdout, JOIN_URL_RE, 15_000, 'join URL for phone');
+const shareUrl = (joinMatch[1] ?? '').replace(/[)\].,]+$/, '');
+await pairWithShare(PHONE_HOME, shareUrl, inviteOpen);
+await interruptAndWait(inviteOpen);
 
 const relay = spawnCli('relay', ['chat', 'serve'], ADMIN_HOME, {
   FAIRFOX_CLAUDE_STUB: 'archive-test reply',
 });
 try {
   await waitForLine(relay.stdout, /\[chat serve\] chat:main loaded/, 30_000, 'relay ready');
+  // Slack for the relay's mesh client to finish subscribing to
+  // chat:main before the phone's one-shot write. No peer is live to
+  // poll for — the phone only connects briefly during `chat send`.
   await delay(5000);
 
   const send = await runCli(['chat', 'send', `archive me ${Date.now()}`], PHONE_HOME);
@@ -57,10 +66,17 @@ try {
   if (!chatId) {
     fail(`couldn't read chatId from send output:\n${send.stdout}`);
   }
+  const probeId = send.stdout.match(/wrote message (\S+)/)?.[1] ?? '';
   trace('phone', `created chat ${chatId}`);
-  // Wait for processing so the chat has both messages and won't
-  // be pruned by anything.
-  await delay(8000);
+  // Wait for the relay to actually reply to the pending so the chat
+  // has both messages and won't be pruned by anything.
+  await waitForLine(
+    relay.stdout,
+    new RegExp(`\\[chat serve\\] replied to ${probeId.replace(/-/g, '\\-')}`),
+    30_000,
+    'relay reply',
+    () => lastHeartbeatLine(relay.stdout)
+  );
 
   // Currently the CLI doesn't have a `chat archive` verb. Use
   // the chat:main JSON storage directly is too brittle, so verify
