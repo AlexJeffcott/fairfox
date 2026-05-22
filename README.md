@@ -16,8 +16,7 @@ There are three ways to come at it:
   for the design.
 - **I want to help with the code.** `bun typecheck`, `bun check`,
   `bun test` should all stay green. Mesh-sync changes must pass
-  `bun scripts/e2e-two-device-sync.ts` and
-  `bun scripts/e2e-users-and-permissions.ts`.
+  `bun scripts/e2e-two-device-sync.ts`.
 
 ## Quick start
 
