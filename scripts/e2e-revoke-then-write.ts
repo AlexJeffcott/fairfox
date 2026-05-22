@@ -66,6 +66,7 @@
 // @covers: chat:main, chat:health, daemon:leader, mesh:users, mesh:devices, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
+import { delay } from '@fairfox/shared/timers';
 import {
   bootstrapAndOpenInvite,
   buildBundleIfMissing,
@@ -95,7 +96,7 @@ const invite = await bootstrapAndOpenInvite({
   inviteToOpen: 'member',
 });
 await runCli(['pair', invite.shareUrl], MEMBER_HOME);
-await new Promise((r) => setTimeout(r, 4000));
+await delay(4000);
 await invite.close();
 trace('member', 'paired');
 
@@ -155,7 +156,7 @@ try {
     await waitForLine(memberServer2.stdout, /peers=1/, 30_000, 'member-serve(2) reconnects', () =>
       lastHeartbeatLine(memberServer2.stdout)
     );
-    await new Promise((r) => setTimeout(r, 6000));
+    await delay(6000);
   } finally {
     await killAndWait(memberServer2).catch(() => undefined);
   }
@@ -200,7 +201,7 @@ try {
     );
     // Sync window — admin pushes the revocation to member, both
     // sides reach a stable post-revocation state.
-    await new Promise((r) => setTimeout(r, 8000));
+    await delay(8000);
   } finally {
     await killAndWait(memberServer3).catch(() => undefined);
   }
@@ -222,7 +223,7 @@ try {
     FAIRFOX_CLAUDE_STUB: 'member-stub-reply',
   });
   try {
-    await new Promise((r) => setTimeout(r, 8000));
+    await delay(8000);
   } finally {
     await killAndWait(memberServer4).catch(() => undefined);
   }

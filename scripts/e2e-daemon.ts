@@ -34,6 +34,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { delay } from '@fairfox/shared/timers';
 
 const TEST_HOME = '/tmp/fairfox-test-daemon';
 // Same dedup reason as scripts/e2e-chat-relay.ts: bun's workspace
@@ -108,7 +109,7 @@ async function waitForLine(chunks: string[], needle: RegExp, timeoutMs: number):
     if (needle.test(chunks.join(''))) {
       return true;
     }
-    await new Promise((r) => setTimeout(r, 200));
+    await delay(200);
   }
   return false;
 }
@@ -182,14 +183,14 @@ async function main(): Promise<void> {
   );
   if (!openedMesh) {
     daemon.kill('SIGTERM');
-    await new Promise((r) => setTimeout(r, 500));
+    await delay(500);
     fail(`no "Holding the mesh open" within ${FOREGROUND_TIMEOUT_MS}ms`);
   }
 
   // The heartbeat interval is 15s. Rather than make the test wait 15s
   // for the first tick, we just prove the supervisor is alive via the
   // open-mesh line and the process staying up for a beat.
-  await new Promise((r) => setTimeout(r, 500));
+  await delay(500);
   assert(daemon.exitCode === null, `daemon died unexpectedly with exit ${daemon.exitCode}`);
 
   const exited = new Promise<number>((done) => {

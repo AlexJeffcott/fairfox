@@ -12,6 +12,7 @@
         "@automerge/automerge-repo-storage-nodefs": "catalog:",
         "@biomejs/biome": "catalog:",
         "@fairfox/polly": "catalog:",
+        "@fairfox/shared": "workspace:*",
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
         "fflate": "catalog:",

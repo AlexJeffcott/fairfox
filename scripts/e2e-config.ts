@@ -25,6 +25,7 @@
 // flaky step — e.g. `MESH_SYNC_TIMEOUT_MS=60000 bun scripts/...`.
 // Every script that imports from here picks up the override.
 
+import { delay } from '@fairfox/shared/timers';
 import type { Page } from 'puppeteer';
 
 function env(name: string, fallback: number): number {
@@ -43,9 +44,10 @@ export const PAIR_CEREMONY_TIMEOUT_MS = env('E2E_PAIR_CEREMONY_TIMEOUT_MS', 30_0
 export const MESH_SYNC_TIMEOUT_MS = env('E2E_MESH_SYNC_TIMEOUT_MS', 30_000);
 export const SETTLE_MS = env('E2E_SETTLE_MS', 500);
 
-export async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
-}
+// `delay` is the sanctioned fixed wait (see @fairfox/shared/timers);
+// `sleep` is kept as an alias for the e2e scripts that already call it.
+export { delay };
+export const sleep = delay;
 
 /** Poll an arbitrary predicate until it returns truthy or the deadline
  * elapses. The predicate may be synchronous or async. Returns the
@@ -68,7 +70,7 @@ export async function waitFor<T>(
     } catch (err) {
       lastError = err;
     }
-    await sleep(intervalMs);
+    await delay(intervalMs);
   }
   const suffix = lastError instanceof Error ? ` (last error: ${lastError.message})` : '';
   throw new Error(`waitFor timed out after ${timeoutMs}ms: ${description}${suffix}`);

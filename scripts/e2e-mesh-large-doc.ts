@@ -15,6 +15,7 @@
 // @covers: chat:main, chat:health, daemon:leader, todo:tasks, todo:projects, agenda:main, mesh:users, mesh:devices, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
+import { delay } from '@fairfox/shared/timers';
 import {
   bootstrapAndOpenInvite,
   buildBundleIfMissing,
@@ -46,7 +47,7 @@ const phoneInvite = await bootstrapAndOpenInvite({
   inviteToOpen: 'phone',
 });
 await runCli(['pair', phoneInvite.shareUrl], PHONE_HOME);
-await new Promise((r) => setTimeout(r, 4000));
+await delay(4000);
 await phoneInvite.close();
 trace('phone', 'paired');
 
@@ -57,7 +58,7 @@ trace('phone', 'paired');
 // at the end to verify sync from admin's accumulated chat:main.
 const lateInvite = await openExistingInvite(ADMIN_HOME, 'late');
 await runCli(['pair', lateInvite.shareUrl], LATE_HOME);
-await new Promise((r) => setTimeout(r, 4000));
+await delay(4000);
 await lateInvite.close();
 trace('late', 'paired (offline)');
 
@@ -94,7 +95,7 @@ try {
   trace('phone', `${N_MESSAGES} messages written in ${writeMs}ms`);
 
   // Wait for sync to admin so admin's chat:main has every message.
-  await new Promise((r) => setTimeout(r, 10_000));
+  await delay(10_000);
 
   trace('late', 'now coming online to sync existing chat:main');
 
@@ -115,7 +116,7 @@ try {
       }
     }
     trace('late', `seen ${lateCount}/${N_MESSAGES} so far…`);
-    await new Promise((r) => setTimeout(r, 3000));
+    await delay(3000);
   }
 
   if (lateCount < N_MESSAGES) {

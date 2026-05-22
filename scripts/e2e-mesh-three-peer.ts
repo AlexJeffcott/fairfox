@@ -9,6 +9,7 @@
 // @covers: chat:main, chat:health, daemon:leader, mesh:users, mesh:devices, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
+import { delay } from '@fairfox/shared/timers';
 import {
   bootstrapAndOpenInvite,
   buildBundleIfMissing,
@@ -52,13 +53,13 @@ try {
   await runCli(['pair', phone1Invite.shareUrl], PHONE1_HOME);
   // Drain the pair ack from invite-phone1 by waiting briefly then
   // closing.
-  await new Promise((r) => setTimeout(r, 5000));
+  await delay(5000);
   await phone1Invite.close();
   trace('phone1', 'paired');
 
   const phone2Invite = await openExistingInvite(ADMIN_HOME, 'phone2');
   await runCli(['pair', phone2Invite.shareUrl], PHONE2_HOME);
-  await new Promise((r) => setTimeout(r, 5000));
+  await delay(5000);
   await phone2Invite.close();
   trace('phone2', 'paired');
 
@@ -69,7 +70,7 @@ try {
   await waitForLine(chatServe.stdout, /\[chat serve\] chat:main loaded/, 30_000, 'relay ready');
   // Slack so both phones can complete WebRTC handshakes with the
   // relay before the first phone1 write lands.
-  await new Promise((r) => setTimeout(r, 8000));
+  await delay(8000);
 
   // phone1 sends. The relay must process; phone2 must see both
   // messages (user + assistant) via mesh sync.
@@ -109,7 +110,7 @@ try {
         }
       }
     }
-    await new Promise((r) => setTimeout(r, 2000));
+    await delay(2000);
   }
   if (!phone2Sees) {
     fail("phone2 never saw phone1's user message + the assistant reply");

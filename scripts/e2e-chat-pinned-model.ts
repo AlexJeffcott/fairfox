@@ -10,6 +10,7 @@
 // @covers: chat:main, chat:health, daemon:leader, mesh:users, mesh:devices, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
+import { delay } from '@fairfox/shared/timers';
 import {
   bootstrapAndOpenInvite,
   buildBundleIfMissing,
@@ -37,7 +38,7 @@ const invite = await bootstrapAndOpenInvite({
   inviteToOpen: 'phone',
 });
 await runCli(['pair', invite.shareUrl], PHONE_HOME);
-await new Promise((r) => setTimeout(r, 4000));
+await delay(4000);
 await invite.close();
 
 const relay = spawnCli('relay', ['chat', 'serve'], ADMIN_HOME, {
@@ -45,7 +46,7 @@ const relay = spawnCli('relay', ['chat', 'serve'], ADMIN_HOME, {
 });
 try {
   await waitForLine(relay.stdout, /\[chat serve\] chat:main loaded/, 30_000, 'relay ready');
-  await new Promise((r) => setTimeout(r, 5000));
+  await delay(5000);
 
   // A short message would normally route to sonnet (haiku is
   // disabled). With pinnedModel = opus, the relay should log

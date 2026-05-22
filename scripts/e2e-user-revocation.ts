@@ -11,6 +11,7 @@
 // @covers: chat:main, chat:health, daemon:leader, mesh:users, mesh:devices, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
+import { delay } from '@fairfox/shared/timers';
 import {
   bootstrapAndOpenInvite,
   buildBundleIfMissing,
@@ -39,7 +40,7 @@ const invite = await bootstrapAndOpenInvite({
   inviteToOpen: 'phone',
 });
 await runCli(['pair', invite.shareUrl], PHONE_HOME);
-await new Promise((r) => setTimeout(r, 4000));
+await delay(4000);
 await invite.close();
 trace('phone', 'paired');
 
@@ -140,7 +141,7 @@ try {
   const phoneDeadline = Date.now() + 30_000;
   let phoneList = await runCli(['users'], PHONE_HOME);
   while (!phoneList.stdout.includes('[revoked]') && Date.now() < phoneDeadline) {
-    await new Promise((r) => setTimeout(r, 2000));
+    await delay(2000);
     phoneList = await runCli(['users'], PHONE_HOME);
   }
   if (!phoneList.stdout.includes('[revoked]')) {

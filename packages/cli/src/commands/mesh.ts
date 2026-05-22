@@ -41,6 +41,7 @@ import {
   type MeshClient,
   type MeshKeyring,
 } from '@fairfox/shared/polly';
+import { delay } from '@fairfox/shared/timers';
 import { signEndorsement } from '@fairfox/shared/user-identity';
 import {
   createBootstrapUser,
@@ -266,9 +267,9 @@ export async function meshInit(rest: readonly string[]): Promise<number> {
     // again — this is the redundant safety net for the case where
     // a fresh handle is in 'ready' transition right when we
     // started writing.
-    await new Promise((r) => setTimeout(r, 1000));
+    await delay(1000);
     await client.repo.flush();
-    await new Promise((r) => setTimeout(r, 500));
+    await delay(500);
 
     // Tell the user what just happened. Plain text, not JSON — the
     // admin reads this once.

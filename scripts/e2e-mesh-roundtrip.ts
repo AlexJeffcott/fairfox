@@ -35,6 +35,7 @@
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { delay } from '@fairfox/shared/timers';
 
 const REPO_ROOT = resolve(import.meta.dir, '..');
 const BUNDLE_PATH = resolve(REPO_ROOT, 'packages', 'cli', 'dist', 'fairfox.js');
@@ -168,7 +169,7 @@ async function waitForLine(
     if (match) {
       return match;
     }
-    await new Promise((r) => setTimeout(r, 250));
+    await delay(250);
   }
   throw new Error(`${label}: pattern ${pattern} did not appear within ${timeoutMs}ms`);
 }
@@ -266,7 +267,7 @@ try {
   // over WebRTC before the phone writes. The first sync handshake
   // is async — without this slack, the phone's chat:main write
   // can land before the relay's repo has subscribed to the doc.
-  await new Promise((r) => setTimeout(r, 5000));
+  await delay(5000);
 
   // 6. Phone sends a probe. This is the actual round-trip.
   const probeText = `roundtrip ${new Date().toISOString().slice(11, 19)}`;
@@ -311,7 +312,7 @@ try {
       ok = true;
       break;
     }
-    await new Promise((r) => setTimeout(r, 2000));
+    await delay(2000);
   }
 
   if (!ok) {

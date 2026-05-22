@@ -12,6 +12,7 @@
 // @covers: chat:main, chat:health, daemon:leader, mesh:users, mesh:devices, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
+import { delay } from '@fairfox/shared/timers';
 import {
   bootstrapAndOpenInvite,
   buildBundleIfMissing,
@@ -40,7 +41,7 @@ const invite = await bootstrapAndOpenInvite({
   inviteToOpen: 'phone',
 });
 await runCli(['pair', invite.shareUrl], PHONE_HOME);
-await new Promise((r) => setTimeout(r, 4000));
+await delay(4000);
 await invite.close();
 
 const relay = spawnCli('relay', ['chat', 'serve'], ADMIN_HOME, {
@@ -48,7 +49,7 @@ const relay = spawnCli('relay', ['chat', 'serve'], ADMIN_HOME, {
 });
 try {
   await waitForLine(relay.stdout, /\[chat serve\] chat:main loaded/, 30_000, 'relay ready');
-  await new Promise((r) => setTimeout(r, 5000));
+  await delay(5000);
 
   const send = await runCli(['chat', 'send', `archive me ${Date.now()}`], PHONE_HOME);
   const chatIdMatch = send.stdout.match(/in chat (\S+)/);
@@ -59,7 +60,7 @@ try {
   trace('phone', `created chat ${chatId}`);
   // Wait for processing so the chat has both messages and won't
   // be pruned by anything.
-  await new Promise((r) => setTimeout(r, 8000));
+  await delay(8000);
 
   // Currently the CLI doesn't have a `chat archive` verb. Use
   // the chat:main JSON storage directly is too brittle, so verify

@@ -20,6 +20,7 @@ import {
   registerRedirectDetector,
 } from '@fairfox/shared/polly';
 import { getSealedSentinel } from '@fairfox/shared/sealed-sentinel';
+import { delay } from '@fairfox/shared/timers';
 import { RTCPeerConnection } from 'werift';
 import { fairfoxPath } from '#src/paths.ts';
 
@@ -215,7 +216,7 @@ export async function waitForPeer(client: MeshClient, timeoutMs: number): Promis
     if (client.repo.peers.length > 0) {
       return true;
     }
-    await new Promise((r) => setTimeout(r, 200));
+    await delay(200);
   }
   return client.repo.peers.length > 0;
 }
@@ -225,7 +226,7 @@ export async function waitForPeer(client: MeshClient, timeoutMs: number): Promis
  * a chance to reach every connected peer before the process exits.
  */
 export async function flushOutgoing(ms = 1500): Promise<void> {
-  await new Promise((r) => setTimeout(r, ms));
+  await delay(ms);
 }
 
 /**
@@ -320,7 +321,7 @@ export async function closeMesh(client: MeshClient): Promise<void> {
     // makes the flush skip the loaders cleanly.
     const readyIds = readyHandleIds(client.repo);
     await client.repo.flush(readyIds);
-    await new Promise((r) => setTimeout(r, 200));
+    await delay(200);
     await client.repo.flush(readyIds);
   } catch {
     // best-effort; even if flush throws, still close.

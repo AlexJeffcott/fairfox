@@ -23,6 +23,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { delay } from '@fairfox/shared/timers';
 
 const ARGS = new Set(process.argv.slice(2));
 const USE_STUB = ARGS.has('--stub');
@@ -148,7 +149,7 @@ async function main(): Promise<number> {
       messages = await dumpMessages();
     } catch (err) {
       console.error(`dump failed: ${err instanceof Error ? err.message : String(err)}`);
-      await new Promise((r) => setTimeout(r, 3000));
+      await delay(3000);
       continue;
     }
     const probe = messages.find((m) => m.id === probeId);
@@ -171,7 +172,7 @@ async function main(): Promise<number> {
       lastSeenPending = probe.pending;
       console.log(`  [${Math.round((Date.now() - start) / 1000)}s] pending=${probe.pending}`);
     }
-    await new Promise((r) => setTimeout(r, 3000));
+    await delay(3000);
   }
 
   // Timeout — print a focused diagnostic.

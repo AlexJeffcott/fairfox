@@ -22,6 +22,7 @@
 
 import { mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { delay } from '@fairfox/shared/timers';
 import { type Subprocess, spawn } from 'bun';
 import puppeteer, { type Browser, type Page } from 'puppeteer';
 
@@ -64,7 +65,7 @@ async function startDev(hash: string): Promise<Subprocess> {
     } catch {
       // keep polling
     }
-    await new Promise((r) => setTimeout(r, 200));
+    await delay(200);
   }
   proc.kill();
   throw new Error('dev server never became healthy');
@@ -74,7 +75,7 @@ async function stopDev(proc: Subprocess): Promise<void> {
   proc.kill();
   await proc.exited;
   // Let the port actually release.
-  await new Promise((r) => setTimeout(r, 500));
+  await delay(500);
 }
 
 async function launchBrowser(): Promise<{ browser: Browser; page: Page }> {
@@ -129,7 +130,7 @@ try {
   }
 
   // Let the client tick against the same hash a few times. No banner.
-  await new Promise((r) => setTimeout(r, 1500));
+  await delay(1500);
   if (await bannerVisible(page)) {
     throw new Error('banner showed even though server and tab hashes matched');
   }
@@ -147,7 +148,7 @@ try {
     if (await bannerVisible(page)) {
       break;
     }
-    await new Promise((r) => setTimeout(r, 200));
+    await delay(200);
   }
   if (!(await bannerVisible(page))) {
     throw new Error('banner did not appear after deploy');

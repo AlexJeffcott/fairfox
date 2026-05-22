@@ -12,6 +12,7 @@
 // @covers: chat:main, chat:health, daemon:leader, todo:tasks, todo:projects, agenda:main, mesh:users, mesh:devices, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
+import { delay } from '@fairfox/shared/timers';
 import {
   bootstrapAndOpenInvite,
   buildBundleIfMissing,
@@ -40,7 +41,7 @@ const invite = await bootstrapAndOpenInvite({
   inviteToOpen: 'phone',
 });
 await runCli(['pair', invite.shareUrl], PHONE_HOME);
-await new Promise((r) => setTimeout(r, 4000));
+await delay(4000);
 await invite.close();
 trace('phone', 'paired');
 
@@ -90,7 +91,7 @@ try {
     trace('relay', 'startup sweep fired');
 
     // Wait for the sweep write to propagate to phone-serve.
-    await new Promise((r) => setTimeout(r, 8000));
+    await delay(8000);
     await killAndWait(phoneServe);
 
     const dump = await runCli(['chat', 'dump'], PHONE_HOME);

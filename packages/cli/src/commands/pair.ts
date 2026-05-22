@@ -38,6 +38,7 @@ import {
   type MeshKeyring,
   signingKeyPairFromSecret,
 } from '@fairfox/shared/polly';
+import { delay } from '@fairfox/shared/timers';
 import { decodeUserPublicKey } from '@fairfox/shared/users-state';
 import {
   closeMesh,
@@ -278,7 +279,7 @@ export async function pair(tokenInputOrArgs: string | readonly string[]): Promis
           );
         }
       }
-      const timeout = new Promise<void>((r) => setTimeout(r, ACK_TIMEOUT_MS));
+      const timeout = delay(ACK_TIMEOUT_MS);
       await Promise.race([ackWait, timeout]);
       if (!gotAck && sessionId) {
         process.stderr.write(

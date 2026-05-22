@@ -11,6 +11,7 @@
  */
 
 import { mkdirSync, rmSync } from 'node:fs';
+import { delay } from '@fairfox/shared/timers';
 import {
   bootstrapAndOpenInvite,
   buildBundle,
@@ -45,13 +46,13 @@ const senderInvite = await bootstrapAndOpenInvite({
   inviteToOpen: 'Sender',
 });
 await runCli(['pair', 'join', senderInvite.shareUrl], SENDER_HOME);
-await new Promise((r) => setTimeout(r, 4000));
+await delay(4000);
 await senderInvite.close();
 trace('sender', 'paired');
 
 const relay2Invite = await openExistingInvite(ADMIN_HOME, 'Relay2');
 await runCli(['pair', 'join', relay2Invite.shareUrl], RELAY2_HOME);
-await new Promise((r) => setTimeout(r, 4000));
+await delay(4000);
 await relay2Invite.close();
 trace('relay2', 'paired');
 
@@ -59,7 +60,7 @@ const relayA = spawnCli('relayA', ['chat', 'serve'], ADMIN_HOME, {
   FAIRFOX_CLAUDE_STUB: 'reply from A',
 });
 await waitForLine(relayA.stdout, /\[chat serve\] chat:main loaded/, 30_000, 'relayA ready');
-await new Promise((r) => setTimeout(r, 4000));
+await delay(4000);
 const relayB = spawnCli('relayB', ['chat', 'serve'], RELAY2_HOME, {
   FAIRFOX_CLAUDE_STUB: 'reply from B',
 });
@@ -68,7 +69,7 @@ await waitForLine(relayB.stdout, /\[chat serve\] chat:main loaded/, 30_000, 'rel
 // negotiation has both candidates online.
 await waitForLine(relayA.stdout, /peers=1/, 30_000, 'relayA sees a peer');
 await waitForLine(relayB.stdout, /peers=1/, 30_000, 'relayB sees a peer');
-await new Promise((r) => setTimeout(r, 5000));
+await delay(5000);
 
 try {
   // First message — exactly one of the two relays should process it.
@@ -77,7 +78,7 @@ try {
   trace('sender', `sent ${id1}`);
   // Wait long enough that BOTH relays would have had a chance to
   // process. If both did, we'll see two replies.
-  await new Promise((r) => setTimeout(r, 15_000));
+  await delay(15_000);
   const dump1 = await runCli(['chat', 'dump'], SENDER_HOME);
   const doc1: { messages?: { sender: string; parentId?: string; text?: string }[] } = JSON.parse(
     dump1.stdout.slice(dump1.stdout.indexOf('{'))
@@ -99,12 +100,12 @@ try {
     trace('test', 'killed relayB, waiting for relayA to claim lease');
   }
   // Lease TTL is 30 s. Give the survivor a window to reclaim.
-  await new Promise((r) => setTimeout(r, 35_000));
+  await delay(35_000);
 
   const send2 = await runCli(['chat', 'send', `lease test 2 ${Date.now()}`], SENDER_HOME);
   const id2 = send2.stdout.match(/wrote message (\S+)/)?.[1] ?? '';
   trace('sender', `sent ${id2}`);
-  await new Promise((r) => setTimeout(r, 20_000));
+  await delay(20_000);
   const dump2 = await runCli(['chat', 'dump'], SENDER_HOME);
   const doc2: { messages?: { sender: string; parentId?: string; text?: string }[] } = JSON.parse(
     dump2.stdout.slice(dump2.stdout.indexOf('{'))

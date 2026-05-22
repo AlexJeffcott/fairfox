@@ -35,6 +35,7 @@
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { delay } from '@fairfox/shared/timers';
 
 const REPO_ROOT = resolve(import.meta.dir, '..');
 const BUNDLE_PATH = resolve(REPO_ROOT, 'packages', 'cli', 'dist', 'fairfox.js');
@@ -162,7 +163,7 @@ async function waitForLine(
     if (m) {
       return m;
     }
-    await new Promise((r) => setTimeout(r, 250));
+    await delay(250);
   }
   throw new Error(`${label}: pattern ${pattern} did not appear within ${timeoutMs}ms`);
 }
@@ -219,7 +220,7 @@ async function sendAndAwaitReply(text: string): Promise<string> {
       trace('phone', `received reply for ${probeId}: ${reply.text?.slice(0, 60) ?? ''}`);
       return probeId;
     }
-    await new Promise((r) => setTimeout(r, 2000));
+    await delay(2000);
   }
   throw new Error(`phone never saw reply for "${text}" (probe ${probeId})`);
 }
@@ -318,7 +319,7 @@ try {
   );
   // Slack for WebRTC handshake to actually settle so the first
   // phone write isn't lost to a not-yet-shared chat:main handle.
-  await new Promise((r) => setTimeout(r, 5000));
+  await delay(5000);
   trace('result', 'relay ready');
 
   // 3. Multi-turn: send three probes in sequence, each gets a reply.
@@ -430,7 +431,7 @@ try {
       restartOk = true;
       break;
     }
-    await new Promise((r) => setTimeout(r, 2000));
+    await delay(2000);
   }
   if (!restartOk) {
     throw new Error(`post-restart probe ${restartProbeId} never got a reply`);

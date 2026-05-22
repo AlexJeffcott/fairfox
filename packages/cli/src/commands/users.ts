@@ -19,6 +19,7 @@ import { createInvite } from '@fairfox/shared/invite';
 import { awaitLoadedBudget } from '@fairfox/shared/loaded-budget';
 import { permissionsForEntry } from '@fairfox/shared/policy';
 import { generateSigningKeyPair, type MeshClient, revokePeerLocally } from '@fairfox/shared/polly';
+import { delay } from '@fairfox/shared/timers';
 import {
   createBootstrapUser,
   type Role,
@@ -104,7 +105,7 @@ async function waitForMeshUsersConvergence(
         return true;
       }
     }
-    await new Promise((r) => setTimeout(r, 250));
+    await delay(250);
   }
   return false;
 }

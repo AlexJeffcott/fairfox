@@ -15,6 +15,7 @@
 // @covers: chat:main, chat:health, daemon:leader, todo:tasks, todo:projects, agenda:main, mesh:users, mesh:devices, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
+import { delay } from '@fairfox/shared/timers';
 import {
   bootstrapAndOpenInvite,
   buildBundleIfMissing,
@@ -43,7 +44,7 @@ const invite = await bootstrapAndOpenInvite({
   inviteToOpen: 'phone',
 });
 await runCli(['pair', invite.shareUrl], PHONE_HOME);
-await new Promise((r) => setTimeout(r, 4000));
+await delay(4000);
 await invite.close();
 trace('phone', 'paired');
 
@@ -82,7 +83,7 @@ try {
 
   // Sync window — let the task replicate to the relay before
   // phone sends the context-tagged chat message.
-  await new Promise((r) => setTimeout(r, 6000));
+  await delay(6000);
 
   // Phone sends a chat message with the task as context.
   const send = await runCli(['chat', 'send', 'tell me about this task'], PHONE_HOME, {
@@ -102,7 +103,7 @@ try {
 
   // Echo-prompt stub: the assistant reply text IS the prompt the
   // relay built. Assert it contains the task description string.
-  await new Promise((r) => setTimeout(r, 4000));
+  await delay(4000);
   const dump = await runCli(['chat', 'dump'], PHONE_HOME);
   const doc: { messages?: { sender: string; parentId?: string; text?: string }[] } = JSON.parse(
     dump.stdout.slice(dump.stdout.indexOf('{'))

@@ -39,6 +39,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { delay } from '@fairfox/shared/timers';
 
 const TEST_HOME = '/tmp/fairfox-test-chat';
 // Running the CLI via `bun packages/cli/src/bin.ts` fails under
@@ -114,7 +115,7 @@ async function waitForRelayReply(
     if (match) {
       return match[1] ?? null;
     }
-    await new Promise((r) => setTimeout(r, 500));
+    await delay(500);
   }
   return null;
 }
@@ -152,15 +153,15 @@ async function runRelayUntilReply(): Promise<RelayRun> {
   const replyTargetId = await waitForRelayReply(stdoutChunks, RELAY_TIMEOUT_MS);
   if (!replyTargetId) {
     relay.kill('SIGTERM');
-    await new Promise((r) => setTimeout(r, 500));
+    await delay(500);
     fail(`no "[chat serve] replied to …" within ${RELAY_TIMEOUT_MS}ms`);
   }
   console.log(`relay acknowledged reply to ${replyTargetId}`);
 
   // Let the outgoing sync + CRDT flush settle before closing.
-  await new Promise((r) => setTimeout(r, 2000));
+  await delay(2000);
   relay.kill('SIGTERM');
-  await new Promise((r) => setTimeout(r, 1500));
+  await delay(1500);
   return { stdout: stdoutChunks.join(''), replyTargetId };
 }
 

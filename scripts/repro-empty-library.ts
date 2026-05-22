@@ -17,6 +17,7 @@
 
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { delay } from '@fairfox/shared/timers';
 import puppeteer from 'puppeteer';
 
 const HEADLESS = process.env.HEADLESS !== 'false';
@@ -56,7 +57,7 @@ while (Date.now() < deadline) {
     shareUrl = m[0];
     break;
   }
-  await new Promise((r) => setTimeout(r, 200));
+  await delay(200);
 }
 if (!shareUrl) {
   console.log('[repro] FAIL: never got a share URL from add device');
@@ -95,17 +96,17 @@ try {
     } catch {
       // Page may be navigating after pair-induced reload — keep polling.
     }
-    await new Promise((r) => setTimeout(r, 500));
+    await delay(500);
   }
   // Let the post-pair reload settle fully before any further navigation.
-  await new Promise((r) => setTimeout(r, 3000));
+  await delay(3000);
 
   console.log('[repro] navigate /library');
   try {
     await page.goto('https://fairfox.fly.dev/library', { waitUntil: 'domcontentloaded' });
   } catch {
     // If the goto raced another in-flight nav, retry once after a beat.
-    await new Promise((r) => setTimeout(r, 2000));
+    await delay(2000);
     await page.goto('https://fairfox.fly.dev/library', { waitUntil: 'domcontentloaded' });
   }
 
@@ -138,7 +139,7 @@ try {
       stableTicks = 0;
     }
     lastNow = refsNow;
-    await new Promise((r) => setTimeout(r, 1000));
+    await delay(1000);
   }
   console.log(`[repro] refs rendered (final/max): ${refsNow}/${refsMax}`);
 

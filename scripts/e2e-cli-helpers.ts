@@ -8,6 +8,7 @@
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { delay } from '@fairfox/shared/timers';
 
 export const REPO_ROOT = resolve(import.meta.dir, '..');
 export const BUNDLE_PATH = resolve(REPO_ROOT, 'packages', 'cli', 'dist', 'fairfox.js');
@@ -177,7 +178,7 @@ export async function waitForLine(
     if (m) {
       return m;
     }
-    await new Promise((r) => setTimeout(r, 250));
+    await delay(250);
   }
   const ctx = context ? context() : '';
   const suffix = ctx ? `\n${ctx}` : '';
