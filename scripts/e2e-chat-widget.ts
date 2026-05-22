@@ -203,32 +203,36 @@ try {
   const targetPath = parsed.pathname || '/agenda';
   const cliEnv = { FAIRFOX_URL: targetOrigin };
 
-  trace('cli', 'mesh init --admin Laptop --user Phone:member');
-  const init = await runCli(['init', '--admin', 'Laptop', '--user', 'Phone:member'], cliEnv);
+  trace('cli', 'init e2e mesh --admin Laptop --user Phone:member');
+  const init = await runCli(
+    ['init', 'e2e mesh', '--admin', 'Laptop', '--user', 'Phone:member'],
+    cliEnv
+  );
   if (init.status !== 0) {
     throw new Error(
       `mesh init exited ${init.status}\nstdout:\n${init.stdout}\nstderr:\n${init.stderr}`
     );
   }
 
-  trace('cli', 'mesh invite open phone');
-  inviteOpen = spawnCli(['add', 'user', 'phone'], cliEnv);
+  trace('cli', 'pair open --user phone');
+  inviteOpen = spawnCli(['pair', 'open', '--user', 'phone'], cliEnv);
   const shareMatch = await waitForLine(
     inviteOpen.stdout,
-    /(https?:\/\/\S+#pair=\S+invite=\S+)/,
+    /(https?:\/\/\S*#pair=\S+)/,
     SHORT_TIMEOUT_MS,
-    'invite-open share URL'
+    'pair-open join URL'
   );
   const shareUrlRaw = shareMatch[1] ?? '';
-  // mesh invite open prints the URL inside terminal-formatted blocks
+  // `pair open` prints the join URL inside terminal-formatted blocks
   // sometimes followed by trailing punctuation; trim known suffixes.
   const shareUrl = shareUrlRaw.replace(/[)\].,]+$/, '');
-  trace('cli', `share url length ${shareUrl.length}`);
+  trace('cli', `join url length ${shareUrl.length}`);
 
-  // The phone navigates to TARGET's origin; the share URL fragment
-  // (pair token + invite blob) is what matters. Both sides — phone
-  // and CLI — connect through the same signalling origin via
-  // FAIRFOX_URL set on every CLI subprocess.
+  // The phone navigates to TARGET's origin; the join URL fragment
+  // (transport-only `#pair=<tok>&s=<sid>&k=<key>` — the identity rides
+  // the encrypted pair-ack) is what matters. Both sides — phone and
+  // CLI — connect through the same signalling origin via FAIRFOX_URL
+  // set on every CLI subprocess.
   const sharedFragment = shareUrl.split('#')[1] ?? '';
   const phoneShareUrl = `${targetOrigin}${targetPath}#${sharedFragment}`;
   trace('phone', `navigate ${phoneShareUrl.slice(0, 80)}…`);
@@ -252,8 +256,9 @@ try {
   trace('phone', 'wait for paired home (Agenda)');
   await waitForText(phone.page, 'Agenda', PAIR_CEREMONY_TIMEOUT_MS);
 
-  trace('cli', 'kill mesh invite open');
-  await killAndWait(inviteOpen);
+  // SIGINT so `pair open` flushes its synced mesh Repo to disk.
+  trace('cli', 'stop pair open');
+  await killAndWait(inviteOpen, 'SIGINT');
   inviteOpen = undefined;
 
   trace('cli', `chat serve (stub="${STUB_REPLY}")`);

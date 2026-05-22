@@ -137,11 +137,11 @@ function spawnCli(
   return { proc, stdout, stderr };
 }
 
-async function killAndWait(h: SubprocessHandle): Promise<void> {
+async function killAndWait(h: SubprocessHandle, signal: NodeJS.Signals = 'SIGTERM'): Promise<void> {
   if (h.proc.exitCode !== null) {
     return;
   }
-  h.proc.kill('SIGTERM');
+  h.proc.kill(signal);
   await new Promise<void>((res) => {
     const t = setTimeout(() => res(), 3000);
     h.proc.once('exit', () => {
@@ -282,28 +282,36 @@ let ok = false;
 let failureReason = '';
 
 try {
-  // 1. Pair laptop + phone.
-  trace('laptop', 'mesh init --admin Laptop --user Phone:member');
-  const init = await runCli(['init', '--admin', 'Laptop', '--user', 'Phone:member'], LAPTOP_HOME);
+  // 1. Pair laptop + phone via the current init → pair open → pair
+  //    join ceremony. `init` creates the mesh + admin and queues the
+  //    Phone invite; `pair open --user phone` holds a transport-only
+  //    join URL (`#pair=…`, no `invite=` segment — the identity rides
+  //    the encrypted pair-ack); `pair join` on the phone completes it.
+  trace('laptop', 'init e2e mesh --admin Laptop --user Phone:member');
+  const init = await runCli(
+    ['init', 'e2e mesh', '--admin', 'Laptop', '--user', 'Phone:member'],
+    LAPTOP_HOME
+  );
   if (init.status !== 0) {
     throw new Error(`mesh init failed: ${init.stderr.slice(0, 200)}`);
   }
 
-  inviteOpen = spawnCli('invite-open', ['add', 'user', 'phone'], LAPTOP_HOME);
+  inviteOpen = spawnCli('invite-open', ['pair', 'open', '--user', 'phone'], LAPTOP_HOME);
   const shareMatch = await waitForLine(
     inviteOpen.stdout,
-    /(https?:\/\/\S+#pair=\S+invite=\S+)/,
+    /(https?:\/\/\S*#pair=\S+)/,
     15_000,
-    'share URL'
+    'join URL for phone'
   );
   const shareUrl = (shareMatch[1] ?? '').replace(/[)\].,]+$/, '');
 
-  const phonePair = await runCli(['pair', shareUrl], PHONE_HOME);
+  const phonePair = await runCli(['pair', 'join', shareUrl], PHONE_HOME);
   if (phonePair.status !== 0) {
-    throw new Error(`phone pair failed: ${phonePair.stderr.slice(0, 200)}`);
+    throw new Error(`phone pair join failed: ${phonePair.stderr.slice(0, 200)}`);
   }
-  await waitForLine(inviteOpen.stdout, /✓\s+"phone"\s+paired/i, PAIR_TIMEOUT_MS, 'pair ack');
-  await killAndWait(inviteOpen);
+  await waitForLine(inviteOpen.stdout, /✓\s+"\S+"\s+paired/i, PAIR_TIMEOUT_MS, 'pair ack');
+  // SIGINT so `pair open` flushes its synced mesh Repo to disk.
+  await killAndWait(inviteOpen, 'SIGINT');
   inviteOpen = undefined;
   trace('result', 'paired');
 

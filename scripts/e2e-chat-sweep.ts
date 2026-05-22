@@ -12,21 +12,23 @@
 // @covers: chat:main, chat:health, daemon:leader, todo:tasks, todo:projects, agenda:main, mesh:users, mesh:devices, mesh:meta
 
 import { mkdirSync, rmSync } from 'node:fs';
-import { delay } from '@fairfox/shared/timers';
 import {
-  bootstrapAndOpenInvite,
   buildBundleIfMissing,
   fail,
+  interruptAndWait,
   killAndWait,
+  pairWithShare,
   pass,
   runCli,
   spawnCli,
   trace,
   waitForLine,
 } from './e2e-cli-helpers.ts';
+import { waitFor } from './e2e-config.ts';
 
 const ADMIN_HOME = '/tmp/fairfox-e2e-sweep-admin';
 const PHONE_HOME = '/tmp/fairfox-e2e-sweep-phone';
+const JOIN_URL_RE = /(https?:\/\/\S*#pair=\S+)/;
 
 for (const h of [ADMIN_HOME, PHONE_HOME]) {
   rmSync(h, { recursive: true, force: true });
@@ -34,15 +36,18 @@ for (const h of [ADMIN_HOME, PHONE_HOME]) {
 }
 buildBundleIfMissing();
 
-const invite = await bootstrapAndOpenInvite({
-  adminHome: ADMIN_HOME,
-  adminName: 'Admin',
-  invitees: [{ name: 'Phone' }],
-  inviteToOpen: 'phone',
-});
-await runCli(['pair', invite.shareUrl], PHONE_HOME);
-await delay(4000);
-await invite.close();
+const init = await runCli(
+  ['init', 'e2e mesh', '--admin', 'Admin', '--user', 'Phone:member'],
+  ADMIN_HOME
+);
+if (init.status !== 0) {
+  fail(`mesh init failed: ${init.stderr.slice(0, 200)}`);
+}
+const inviteOpen = spawnCli('invite-phone', ['pair', 'open', '--user', 'phone'], ADMIN_HOME);
+const joinMatch = await waitForLine(inviteOpen.stdout, JOIN_URL_RE, 15_000, 'join URL for phone');
+const shareUrl = (joinMatch[1] ?? '').replace(/[)\].,]+$/, '');
+await pairWithShare(PHONE_HOME, shareUrl, inviteOpen);
+await interruptAndWait(inviteOpen);
 trace('phone', 'paired');
 
 // Author the backdated pending BEFORE any relay runs. With no
@@ -90,21 +95,38 @@ try {
     );
     trace('relay', 'startup sweep fired');
 
-    // Wait for the sweep write to propagate to phone-serve.
-    await delay(8000);
+    // Wait for the sweep write to propagate to phone-serve: poll the
+    // phone's chat:main until the swept reply is visible, then kill
+    // phone-serve.
+    interface SweptMessage {
+      id: string;
+      sender: string;
+      pending: boolean;
+      parentId?: string;
+      error?: { kind: string };
+      text?: string;
+    }
+    const doc = await waitFor<{ messages?: SweptMessage[] }>(
+      async () => {
+        const probe = await runCli(['chat', 'dump'], PHONE_HOME);
+        const start = probe.stdout.indexOf('{');
+        if (start === -1) {
+          return undefined;
+        }
+        const parsed: { messages?: SweptMessage[] } = JSON.parse(probe.stdout.slice(start));
+        const swept = parsed.messages?.find(
+          (m) => m.sender === 'assistant' && m.parentId === probeId
+        );
+        return swept ? parsed : undefined;
+      },
+      {
+        timeoutMs: 30_000,
+        intervalMs: 1000,
+        description: `swept reply for ${probeId} visible on phone`,
+      }
+    );
     await killAndWait(phoneServe);
 
-    const dump = await runCli(['chat', 'dump'], PHONE_HOME);
-    const doc: {
-      messages?: {
-        id: string;
-        sender: string;
-        pending: boolean;
-        parentId?: string;
-        error?: { kind: string };
-        text?: string;
-      }[];
-    } = JSON.parse(dump.stdout.slice(dump.stdout.indexOf('{')));
     const userMsg = doc.messages?.find((m) => m.id === probeId);
     if (!userMsg) {
       fail('backdated user message missing from chat:main entirely');

@@ -153,21 +153,52 @@ async function runRelayUntilReply(): Promise<RelayRun> {
   const replyTargetId = await waitForRelayReply(stdoutChunks, RELAY_TIMEOUT_MS);
   if (!replyTargetId) {
     relay.kill('SIGTERM');
-    await delay(500);
     fail(`no "[chat serve] replied to …" within ${RELAY_TIMEOUT_MS}ms`);
   }
   console.log(`relay acknowledged reply to ${replyTargetId}`);
 
-  // Let the outgoing sync + CRDT flush settle before closing.
-  await delay(2000);
+  // Let the outgoing sync + CRDT flush settle before closing: poll the
+  // reply into the chat doc from a separate `chat dump` so the kill
+  // doesn't race the relay's outgoing sync write.
+  await waitForChatReply(replyTargetId, 15_000);
   relay.kill('SIGTERM');
-  await delay(1500);
+  await new Promise<void>((res) => {
+    relay.once('exit', () => res());
+  });
   return { stdout: stdoutChunks.join(''), replyTargetId };
 }
 
 interface DumpState {
   chats: Record<string, unknown>[];
   messages: Record<string, unknown>[];
+}
+
+/** Poll `chat dump` until an assistant reply parenting `userMessageId`
+ * is visible, so the relay can be killed once its outgoing sync has
+ * actually landed the reply rather than after a blind fixed wait.
+ * Tolerant of a transient dump failure mid-poll. */
+async function waitForChatReply(userMessageId: string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const dump = runCliSync(['chat', 'dump']);
+      const jsonStart = dump.stdout.indexOf('{');
+      if (jsonStart !== -1) {
+        const parsed = JSON.parse(dump.stdout.slice(jsonStart));
+        const messages: Record<string, unknown>[] = Array.isArray(parsed.messages)
+          ? parsed.messages
+          : [];
+        if (messages.some((m) => m.sender === 'assistant' && m.parentId === userMessageId)) {
+          return;
+        }
+      }
+    } catch {
+      // transient — retry on the next tick
+    }
+    await delay(500);
+  }
+  // No signal within budget — proceed to kill anyway; the dump
+  // assertions downstream will surface a genuine miss.
 }
 
 function dumpChat(): DumpState {
