@@ -61,8 +61,10 @@ const TESTS: readonly Test[] = [
   // long-lived relays dies, the survivor correctly tears the dead
   // slot down and claims `lease=self`, but never discovers a fresh
   // short-lived peer that joins afterwards (`peers=0` throughout),
-  // so post-failover work reaches nobody. Confirmed still failing on
-  // polly 0.73.1. The lease state-machine properties this e2e was
+  // so post-failover work reaches nobody. polly#134 (shipped in
+  // 0.74.1) did not close it — re-tested on 0.74.1, still failing;
+  // likely the roster-resync gap noted on polly#133. The lease
+  // state-machine properties this e2e was
   // meant to verify (mutual exclusion, eventual handoff after holder
   // death) are covered meanwhile by `specs/tla/LeaseHandoff.tla` —
   // model-checked with TLC via `bun run tla:check`, independent of
