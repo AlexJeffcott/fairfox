@@ -19,7 +19,7 @@ import { createInvite } from '@fairfox/shared/invite';
 import { awaitLoadedBudget } from '@fairfox/shared/loaded-budget';
 import { permissionsForEntry } from '@fairfox/shared/policy';
 import { generateSigningKeyPair, type MeshClient, revokePeerLocally } from '@fairfox/shared/polly';
-import { delay } from '@fairfox/shared/timers';
+import { pollUntil } from '@fairfox/shared/timers';
 import {
   createBootstrapUser,
   type Role,
@@ -80,34 +80,33 @@ async function loadOwnPeerId(): Promise<string> {
  * pending marker for cross-process resume; it's not used by this
  * inline path.
  */
-async function waitForMeshUsersConvergence(
+function waitForMeshUsersConvergence(
   client: MeshClient,
   targetDevicePeerId: string,
   _issuedAtIso: string,
   timeoutMs: number
 ): Promise<boolean> {
   const revokeStartedAt = performance.now();
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const snap = client.getPeerStateSnapshot();
-    const meshUsersDocId = snap.meshStateModule.lazyWrappers.find(
-      (w) => w.key === 'mesh:users'
-    )?.docId;
-    if (meshUsersDocId) {
+  return pollUntil(
+    () => {
+      const snap = client.getPeerStateSnapshot();
+      const meshUsersDocId = snap.meshStateModule.lazyWrappers.find(
+        (w) => w.key === 'mesh:users'
+      )?.docId;
+      if (!meshUsersDocId) {
+        return false;
+      }
       const peer = snap.peers.find((p) => p.peerId === targetDevicePeerId);
       const entry = peer?.slot?.handles?.[meshUsersDocId];
-      if (
-        entry &&
+      return (
+        entry !== undefined &&
         entry.peerDocumentStatus === 'has' &&
         entry.lastSyncMessageInAt !== undefined &&
         entry.lastSyncMessageInAt > revokeStartedAt
-      ) {
-        return true;
-      }
-    }
-    await delay(250);
-  }
-  return false;
+      );
+    },
+    { intervalMs: 250, timeoutMs, label: 'mesh:users convergence' }
+  ).catch(() => false);
 }
 
 function formatEntry(entry: UserEntry): string {

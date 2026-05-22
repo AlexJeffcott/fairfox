@@ -41,7 +41,6 @@ import {
   type MeshClient,
   type MeshKeyring,
 } from '@fairfox/shared/polly';
-import { delay } from '@fairfox/shared/timers';
 import { signEndorsement } from '@fairfox/shared/user-identity';
 import {
   createBootstrapUser,
@@ -258,18 +257,10 @@ export async function meshInit(rest: readonly string[]): Promise<number> {
       storedInvites.push(stored);
     }
     await flushOutgoing(2000);
-    // Belt-and-braces: an extra long settle plus an explicit
-    // repo.flush BEFORE the closeMesh() call. Polly's
-    // `signal.value = ...` triggers an effect that queues a
-    // handle.change op; we want every queued op to have hit the
-    // NodeFS storage adapter and been written to disk before we
-    // return. The closeMesh() in finally already calls repo.flush
-    // again — this is the redundant safety net for the case where
-    // a fresh handle is in 'ready' transition right when we
-    // started writing.
-    await delay(1000);
+    // Explicit repo.flush before the closeMesh() in finally: polly's
+    // `signal.value = ...` queues a handle.change op, and flush blocks
+    // until every queued op has hit the NodeFS storage adapter.
     await client.repo.flush();
-    await delay(500);
 
     // Tell the user what just happened. Plain text, not JSON — the
     // admin reads this once.

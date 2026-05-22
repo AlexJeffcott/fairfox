@@ -250,7 +250,6 @@ try {
     throw new Error('no add-chore input');
   }
   await input.focus();
-  await sleep(100);
   await desktopBrowser.page.keyboard.type(chore);
   await desktopBrowser.page.keyboard.press('Tab');
   await sleep(200);

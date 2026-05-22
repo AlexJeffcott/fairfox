@@ -20,7 +20,7 @@ import {
   registerRedirectDetector,
 } from '@fairfox/shared/polly';
 import { getSealedSentinel } from '@fairfox/shared/sealed-sentinel';
-import { delay } from '@fairfox/shared/timers';
+import { delay, pollUntil } from '@fairfox/shared/timers';
 import { RTCPeerConnection } from 'werift';
 import { fairfoxPath } from '#src/paths.ts';
 
@@ -210,15 +210,12 @@ export async function openMeshClient(options: ConnectOptions): Promise<MeshClien
  * can tolerate a zero-peer exit; callers that mutate should insist on
  * convergence.
  */
-export async function waitForPeer(client: MeshClient, timeoutMs: number): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (client.repo.peers.length > 0) {
-      return true;
-    }
-    await delay(200);
-  }
-  return client.repo.peers.length > 0;
+export function waitForPeer(client: MeshClient, timeoutMs: number): Promise<boolean> {
+  return pollUntil(() => client.repo.peers.length > 0, {
+    intervalMs: 200,
+    timeoutMs,
+    label: 'mesh peer',
+  }).catch(() => false);
 }
 
 /**
