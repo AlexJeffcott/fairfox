@@ -49,51 +49,24 @@ const TESTS: readonly Test[] = [
   { name: 'chat-sweep', file: 'e2e-chat-sweep.ts', timeoutMs: 180_000 },
   { name: 'mesh-large-doc', file: 'e2e-mesh-large-doc.ts', timeoutMs: 300_000 },
   { name: 'mesh-compact-reconcile', file: 'e2e-mesh-compact-reconcile.ts', timeoutMs: 120_000 },
+  { name: 'revoke-then-write', file: 'e2e-revoke-then-write.ts', timeoutMs: 300_000 },
+  { name: 'user-revocation', file: 'e2e-user-revocation.ts', timeoutMs: 300_000 },
+  // `e2e-revoke-then-write.ts` and `e2e-user-revocation.ts` were
+  // deferred while a polly docId-resolution divergence kept a fresh
+  // reader process from seeing a named doc a running serve held.
+  // Both pass again as of polly 0.73.1 and are back in the suite.
+  //
   // Still deferred — `e2e-chat-leader-lease.ts` exposes a polly
-  // mesh-rediscovery issue: when one of two long-lived relays dies,
-  // a brief CLI peer that reconnects after the kill cannot
-  // establish a WebRTC channel with the surviving relay (relayB
-  // reports `peers=0` throughout). The lease state machine itself
-  // is correct (relayB takes `lease=self` after TTL); the test
-  // infrastructure can't deliver a follow-up message to the
-  // survivor through signalling. Needs a polly fix before this can
-  // pass deterministically.
-  //
-  // Re-checked on polly 0.72.0: its slot-liveness watchdog
-  // (polly#109/#110) helps but does not close the gap — relayB now
-  // tears the dead slot down cleanly and drops to `peers=0` instead
-  // of staying wedged at `peers=1`, and still claims `lease=self`.
-  // But the surviving relay never rediscovers the brief `chat send`
-  // peer, so the post-failover message is delivered to nobody and
-  // the test fails with `got 0` replies. Rediscovery of a fresh
-  // short-lived peer after a topology change is the open polly item.
-  //
-  // The lease state-machine properties this e2e was meant to verify
-  // (mutual exclusion, eventual handoff after holder death) are now
-  // covered by `specs/tla/LeaseHandoff.tla` — model-checked with
-  // TLC via `bun run tla:check`, independent of WebRTC plumbing.
-  //
-  // Also deferred — `e2e-revoke-then-write.ts`. The fairfox-side
-  // wire-up calls polly's `revokeDevice` for each peerId tied to
-  // the target user in `mesh:devices.ownerUserIds`, but those
-  // bindings get dropped on convergence because mesh:devices
-  // updates use top-level map-replacement that races between
-  // peers. Closing the loop needs per-key writes in
-  // `upsertDeviceEntry`; out of scope for the mutation-coverage
-  // closure. See the file header for the full diagnosis.
-  //
-  // Also deferred — `e2e-user-revocation.ts`. Diagnostic in #26
-  // shows the failure is not a test flake: a fresh CLI process
-  // reading PHONE_HOME via `openMeshClientReadOnly` returns
-  // "(no users yet)" even while phone-serve's heartbeat reports
-  // `mesh:users=1/2` (sync received). The named doc is in
-  // phone-serve's in-memory Repo but never becomes visible to
-  // another process reading the same on-disk storage —
-  // docId-resolution divergence between the running serve and a
-  // fresh reader. Same failure reproduces on polly 0.64.0, so
-  // it's not a 0.65.0 regression. Needs a fix in polly's docId
-  // resolver / `mesh:document-index` hydration or in fairfox's
-  // `usersState` wrapper before this can pass deterministically.
+  // mesh-rediscovery bug, tracked as polly#133: when one of two
+  // long-lived relays dies, the survivor correctly tears the dead
+  // slot down and claims `lease=self`, but never discovers a fresh
+  // short-lived peer that joins afterwards (`peers=0` throughout),
+  // so post-failover work reaches nobody. Confirmed still failing on
+  // polly 0.73.1. The lease state-machine properties this e2e was
+  // meant to verify (mutual exclusion, eventual handoff after holder
+  // death) are covered meanwhile by `specs/tla/LeaseHandoff.tla` —
+  // model-checked with TLC via `bun run tla:check`, independent of
+  // WebRTC plumbing.
 ];
 
 const filtered = ONLY ? TESTS.filter((t) => t.name.includes(ONLY)) : TESTS;
