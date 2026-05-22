@@ -46,20 +46,17 @@ try {
     inviteToOpen: 'phone1',
   });
   trace('admin', 'mesh init done, invite for phone1 open');
-  // Pair phone1 against the open invite (it's still a SubprocessHandle
-  // internally — we don't have a direct ref, so use runCli + manually
-  // wait for the ack on the next opened invite. Simpler: close this,
-  // re-open per phone in turn.
+  // Pair phone1, then wait for the issuer's `✓ paired` ack before
+  // closing the invite — the real signal that both keyrings know
+  // each other.
   await runCli(['pair', phone1Invite.shareUrl], PHONE1_HOME);
-  // Drain the pair ack from invite-phone1 by waiting briefly then
-  // closing.
-  await delay(5000);
+  await phone1Invite.waitForPaired();
   await phone1Invite.close();
   trace('phone1', 'paired');
 
   const phone2Invite = await openExistingInvite(ADMIN_HOME, 'phone2');
   await runCli(['pair', phone2Invite.shareUrl], PHONE2_HOME);
-  await delay(5000);
+  await phone2Invite.waitForPaired();
   await phone2Invite.close();
   trace('phone2', 'paired');
 

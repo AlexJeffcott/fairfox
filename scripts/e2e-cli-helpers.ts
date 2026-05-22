@@ -217,6 +217,10 @@ export function trace(label: string, msg: string): void {
  * signalling socket is open). */
 export interface OpenedInvite {
   shareUrl: string;
+  /** Resolve once the issuer logs the `✓ "<name>" paired` ack — the
+   * real signal that the join completed and both keyrings know each
+   * other. Replaces a fixed post-`pair` drain sleep. */
+  waitForPaired: () => Promise<void>;
   close: () => Promise<void>;
 }
 
@@ -255,6 +259,9 @@ export async function bootstrapAndOpenInvite(opts: {
   const shareUrl = (m[1] ?? '').replace(/[)\].,]+$/, '');
   return {
     shareUrl,
+    waitForPaired: async () => {
+      await waitForLine(handle.stdout, /✓\s+"\S+"\s+paired/i, 30_000, 'pair ack');
+    },
     // SIGINT so `pair open` flushes its synced mesh Repo to disk.
     close: async () => {
       await interruptAndWait(handle);
@@ -294,6 +301,9 @@ export async function openExistingInvite(
   const shareUrl = (m[1] ?? '').replace(/[)\].,]+$/, '');
   return {
     shareUrl,
+    waitForPaired: async () => {
+      await waitForLine(handle.stdout, /✓\s+"\S+"\s+paired/i, 30_000, 'pair ack');
+    },
     close: async () => {
       await interruptAndWait(handle);
     },

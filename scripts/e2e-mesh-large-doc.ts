@@ -47,7 +47,7 @@ const phoneInvite = await bootstrapAndOpenInvite({
   inviteToOpen: 'phone',
 });
 await runCli(['pair', phoneInvite.shareUrl], PHONE_HOME);
-await delay(4000);
+await phoneInvite.waitForPaired();
 await phoneInvite.close();
 trace('phone', 'paired');
 
@@ -58,7 +58,7 @@ trace('phone', 'paired');
 // at the end to verify sync from admin's accumulated chat:main.
 const lateInvite = await openExistingInvite(ADMIN_HOME, 'late');
 await runCli(['pair', lateInvite.shareUrl], LATE_HOME);
-await delay(4000);
+await lateInvite.waitForPaired();
 await lateInvite.close();
 trace('late', 'paired (offline)');
 
