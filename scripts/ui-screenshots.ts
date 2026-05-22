@@ -27,7 +27,14 @@ import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import puppeteer, { type Browser, type Page } from 'puppeteer';
-import { PAIR_CEREMONY_TIMEOUT_MS, SHORT_TIMEOUT_MS, sleep, waitForText } from './e2e-config.ts';
+import {
+  delay,
+  PAIR_CEREMONY_TIMEOUT_MS,
+  POLL_INTERVAL_MS,
+  SHORT_TIMEOUT_MS,
+  waitFor,
+  waitForText,
+} from './e2e-config.ts';
 
 const LABEL = process.argv[2] ?? 'shot';
 const TARGET = process.env.TARGET_URL ?? 'http://localhost:3000';
@@ -40,16 +47,24 @@ const ARTIFACTS = resolve(import.meta.dir, 'artifacts', 'ui', LABEL);
 const PROFILE = resolve(import.meta.dir, 'artifacts', 'profile-ui');
 const BUILT_BUNDLE = resolve(import.meta.dir, '..', 'packages', 'cli', 'dist', 'fairfox.js');
 
+// `ready` is a CSS selector that only resolves once the route's own
+// UI has rendered — every sub-app with a Tabs strip exposes
+// `[data-polly-tabs]`; the two without one (docs, chat history) get a
+// route-unique `data-action` button instead.
 const ROUTES: readonly { path: string; name: string; ready: string }[] = [
-  { path: '/', name: 'hub', ready: 'fairfox' },
-  { path: '/todo-v2', name: 'todo-v2', ready: '' },
-  { path: '/agenda', name: 'agenda', ready: '' },
-  { path: '/library', name: 'library', ready: '' },
-  { path: '/docs', name: 'docs', ready: '' },
-  { path: '/chat', name: 'chat-history', ready: 'Chat history' },
-  { path: '/family-phone-admin', name: 'family-phone-admin', ready: '' },
-  { path: '/speakwell', name: 'speakwell', ready: '' },
-  { path: '/the-struggle', name: 'the-struggle', ready: '' },
+  { path: '/', name: 'hub', ready: '[data-action="home.tab"]' },
+  { path: '/todo-v2', name: 'todo-v2', ready: '[data-action="todo.tab"]' },
+  { path: '/agenda', name: 'agenda', ready: '[data-action="agenda.tab"]' },
+  { path: '/library', name: 'library', ready: '[data-action="library.tab"]' },
+  { path: '/docs', name: 'docs', ready: '[data-action="docs.create"]' },
+  { path: '/chat', name: 'chat-history', ready: '[data-action="chat.history-toggle-archived"]' },
+  {
+    path: '/family-phone-admin',
+    name: 'family-phone-admin',
+    ready: '[data-action="directory.tab"]',
+  },
+  { path: '/speakwell', name: 'speakwell', ready: '[data-action="speakwell.tab"]' },
+  { path: '/the-struggle', name: 'the-struggle', ready: '[data-action="game.tab"]' },
 ];
 
 function trace(label: string, msg: string): void {
@@ -264,7 +279,7 @@ async function waitForLine(
     if (match) {
       return match;
     }
-    await sleep(250);
+    await delay(POLL_INTERVAL_MS);
   }
   throw new Error(`${label}: pattern ${pattern} never appeared within ${timeoutMs}ms`);
 }
@@ -286,37 +301,57 @@ async function pairDevice(page: Page): Promise<void> {
   buildCliBundle();
   const cliEnv = { FAIRFOX_URL: TARGET };
 
-  trace('cli', 'mesh init --admin Laptop --user Phone:member');
-  const init = await runCli(['init', '--admin', 'Laptop', '--user', 'Phone:member'], cliEnv);
+  trace('cli', 'init "ui screenshots" --admin Laptop');
+  const init = await runCli(['init', 'ui screenshots', '--admin', 'Laptop'], cliEnv);
   if (init.status !== 0) {
-    throw new Error(`mesh init exited ${init.status}\n${init.stdout}\n${init.stderr}`);
+    throw new Error(`init exited ${init.status}\n${init.stdout}\n${init.stderr}`);
   }
 
-  trace('cli', 'add user phone (invite open)');
-  const inviteOpen = spawnCli(['add', 'user', 'phone'], cliEnv);
+  trace('cli', 'pair open — holding a join QR');
+  const pairOpen = spawnCli(['pair', 'open'], cliEnv);
   try {
-    const shareMatch = await waitForLine(
-      inviteOpen.stdout,
-      /(https?:\/\/\S+#pair=\S+invite=\S+)/,
+    const joinMatch = await waitForLine(
+      pairOpen.stdout,
+      /(https?:\/\/\S+#pair=\S+)/,
       SHORT_TIMEOUT_MS,
-      'invite share URL'
+      'join URL'
     );
-    const shareUrl = (shareMatch[1] ?? '').replace(/[)\].,]+$/, '');
-    const fragment = shareUrl.split('#')[1] ?? '';
-    const phoneUrl = `${TARGET}/#${fragment}`;
-    trace('phone', 'navigate share URL, pairing…');
-    await page.goto(phoneUrl, { waitUntil: 'domcontentloaded' });
+    const joinUrl = (joinMatch[1] ?? '').replace(/[)\].,]+$/, '');
+    trace('phone', 'navigate join URL, pairing…');
+    await page.goto(joinUrl, { waitUntil: 'domcontentloaded' });
 
-    await waitForLine(
-      inviteOpen.stdout,
-      /✓\s+"phone"\s+paired/i,
-      PAIR_CEREMONY_TIMEOUT_MS,
-      'pair ack'
+    // The ceremony writes the identity to IndexedDB and then reloads;
+    // poll the identity store, tolerating the reload tearing down the
+    // evaluation context mid-flight.
+    await waitFor(
+      async () => {
+        try {
+          return await page.evaluate(async () => {
+            const db = await new Promise<IDBDatabase>((res, rej) => {
+              const r = indexedDB.open('fairfox-user-identity');
+              r.onsuccess = () => res(r.result);
+              r.onerror = () => rej(r.error);
+            });
+            const val = await new Promise<{ displayName?: string } | null>((res, rej) => {
+              const rq = db
+                .transaction('user-identity', 'readonly')
+                .objectStore('user-identity')
+                .get('default');
+              rq.onsuccess = () => res(rq.result ?? null);
+              rq.onerror = () => rej(rq.error);
+            });
+            return val?.displayName ?? '';
+          });
+        } catch {
+          return '';
+        }
+      },
+      { timeoutMs: PAIR_CEREMONY_TIMEOUT_MS, intervalMs: 1000, description: 'paired identity' }
     );
     await waitForText(page, 'fairfox', PAIR_CEREMONY_TIMEOUT_MS);
     trace('phone', 'paired');
   } finally {
-    await killAndWait(inviteOpen);
+    await killAndWait(pairOpen);
   }
 }
 
@@ -334,6 +369,40 @@ function clickByText(page: Page, text: string): Promise<boolean> {
   }, text);
 }
 
+/** Navigate to a route and wait for its own UI to render — a CSS
+ * selector that only resolves once the sub-app shell has mounted,
+ * with a network-idle settle as a backstop. */
+async function gotoRoute(page: Page, path: string, readySelector: string): Promise<void> {
+  await page.goto(`${TARGET}${path}`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector(readySelector, { timeout: SHORT_TIMEOUT_MS }).catch(() => undefined);
+  await page.waitForNetworkIdle({ timeout: SHORT_TIMEOUT_MS }).catch(() => undefined);
+}
+
+/** Click a polly Tabs tab by its label, then wait for that tab to
+ * become the active one. The Tabs primitive marks the active button
+ * with `aria-current="page"`, so this is a real render signal that
+ * works for every sub-app's tab strip. Returns false if no tab with
+ * that label exists. */
+async function clickTab(page: Page, label: string): Promise<boolean> {
+  const clicked = await clickByText(page, label);
+  if (!clicked) {
+    return false;
+  }
+  await page
+    .waitForFunction(
+      (t) => {
+        const tabs = Array.from(document.querySelectorAll('[data-polly-tabs] button'));
+        return tabs.some(
+          (b) => (b.textContent ?? '').trim() === t && b.getAttribute('aria-current') === 'page'
+        );
+      },
+      { timeout: SHORT_TIMEOUT_MS },
+      label
+    )
+    .catch(() => undefined);
+  return true;
+}
+
 /** Probe + screenshot + record a named view. */
 async function capture(page: Page, name: string, reports: OverflowReport[]): Promise<void> {
   const report = await probeOverflow(page, name);
@@ -347,21 +416,23 @@ async function capture(page: Page, name: string, reports: OverflowReport[]): Pro
  * and weekday pickers — invisible on an empty route — get captured. */
 async function captureAgendaForm(page: Page, reports: OverflowReport[]): Promise<void> {
   trace('route', 'agenda Items tab + create form');
-  await page.goto(`${TARGET}/agenda`, { waitUntil: 'domcontentloaded' });
-  await sleep(1200);
-  await clickByText(page, 'Items');
-  await sleep(800);
+  await gotoRoute(page, '/agenda', '[data-action="agenda.tab"]');
+  await clickTab(page, 'Items');
+  // The Items tab renders the create form, whose first control is an
+  // ActionInput.
+  await page.waitForSelector('[data-polly-action-input]', { timeout: SHORT_TIMEOUT_MS });
   await capture(page, 'agenda-items', reports);
 
   // Reveal the 7-button weekday picker (recurrence = weekdays) and
   // the 4-button recurrence cluster — both wrap on a narrow phone.
   await clickByText(page, 'weekdays');
-  await sleep(600);
+  // The weekday picker appears as a row of `draft.weekday` buttons.
+  await page.waitForSelector('[data-action="draft.weekday"]', { timeout: SHORT_TIMEOUT_MS });
   await capture(page, 'agenda-create-weekdays', reports);
 
   // Fairness tab — window buttons + per-person score rows.
-  if (await clickByText(page, 'Fairness')) {
-    await sleep(700);
+  if (await clickTab(page, 'Fairness')) {
+    await page.waitForSelector('[data-action="fairness.window"]', { timeout: SHORT_TIMEOUT_MS });
     await capture(page, 'agenda-fairness', reports);
   }
 }
@@ -373,10 +444,8 @@ async function captureAgendaForm(page: Page, reports: OverflowReport[]): Promise
  * content, which a fresh test mesh has none of.) */
 async function captureStruggleSpeakwell(page: Page, reports: OverflowReport[]): Promise<void> {
   trace('route', 'the-struggle Memory tab');
-  await page.goto(`${TARGET}/the-struggle`, { waitUntil: 'domcontentloaded' });
-  await sleep(1000);
-  if (await clickByText(page, 'Memory')) {
-    await sleep(600);
+  await gotoRoute(page, '/the-struggle', '[data-action="game.tab"]');
+  if (await clickTab(page, 'Memory')) {
     await capture(page, 'the-struggle-memory', reports);
   }
 
@@ -384,24 +453,33 @@ async function captureStruggleSpeakwell(page: Page, reports: OverflowReport[]): 
   // passage editor (with a choice), each driven through the real
   // create flow.
   trace('route', 'the-struggle Edit tab');
-  if (await clickByText(page, 'Edit')) {
-    await sleep(700);
+  if (await clickTab(page, 'Edit')) {
+    // The Edit tab opens on the chapter list — its create button.
+    await page.waitForSelector('[data-action="chapter.create"]', { timeout: SHORT_TIMEOUT_MS });
     await capture(page, 'struggle-edit-chapters', reports);
     if (await clickByText(page, '+ New chapter')) {
-      await sleep(800);
+      // chapter.create opens the chapter editor; its title ActionInput
+      // is the marker.
+      await page.waitForSelector('[data-polly-action-input][aria-label="Chapter title"]', {
+        timeout: SHORT_TIMEOUT_MS,
+      });
       await capture(page, 'struggle-edit-chapter', reports);
       if (await clickByText(page, '+ New passage')) {
-        await sleep(800);
+        // passage.create opens the passage editor; its title
+        // ActionInput is the marker.
+        await page.waitForSelector('[data-polly-action-input][aria-label="Passage title"]', {
+          timeout: SHORT_TIMEOUT_MS,
+        });
         await clickByText(page, '+ New choice');
-        await sleep(700);
+        // choice.create appends a choice row carrying a delete button.
+        await page.waitForSelector('[data-action="choice.delete"]', { timeout: SHORT_TIMEOUT_MS });
         await capture(page, 'struggle-edit-passage', reports);
       }
     }
   }
 
   trace('route', 'speakwell — start a session, capture History');
-  await page.goto(`${TARGET}/speakwell`, { waitUntil: 'domcontentloaded' });
-  await sleep(1000);
+  await gotoRoute(page, '/speakwell', '[data-action="speakwell.tab"]');
   if ((await page.$$('[data-action="speakwell.tab"]')).length > 0) {
     try {
       await fillActionInput(
@@ -410,25 +488,43 @@ async function captureStruggleSpeakwell(page: Page, reports: OverflowReport[]): 
         'Pitching the kitchen renovation idea to the family'
       );
       await page.keyboard.press('Tab');
-      await sleep(300);
     } catch {
       // topic is optional — proceed without it
     }
+    // `session.start` appends a session to the mesh doc but leaves the
+    // Start view mounted, so there is no post-Begin DOM signal here —
+    // the new session surfaces once the History tab renders its row.
     await clickByText(page, 'Begin');
-    await sleep(900);
-    if (await clickByText(page, 'History')) {
-      await sleep(700);
+    if (await clickTab(page, 'History')) {
+      // A populated History list renders one info Badge per session.
+      await page
+        .waitForSelector('[data-polly-badge]', { timeout: SHORT_TIMEOUT_MS })
+        .catch(() => undefined);
       await capture(page, 'speakwell-history', reports);
     }
   }
 }
 
-/** Focus an ActionInput (a click promotes it to an editable field)
- * and type into it. */
+/** Focus an ActionInput (a click promotes its view-mode div to an
+ * editable input/textarea) and type into it. The click triggers a
+ * Preact re-render plus an effect that calls `.focus()` on the new
+ * field, so we wait until the live `<input>`/`<textarea>` is actually
+ * the document's active element before typing — otherwise keystrokes
+ * land nowhere. */
 async function fillActionInput(page: Page, selector: string, text: string): Promise<void> {
   await page.waitForSelector(selector, { timeout: SHORT_TIMEOUT_MS });
   await page.click(selector);
-  await sleep(250);
+  await page.waitForFunction(
+    () => {
+      const el = document.activeElement;
+      return (
+        el !== null &&
+        (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') &&
+        el.getAttribute('data-polly-action-input') !== null
+      );
+    },
+    { timeout: SHORT_TIMEOUT_MS }
+  );
   await page.keyboard.type(text);
 }
 
@@ -442,10 +538,9 @@ async function seedContent(page: Page): Promise<void> {
   // todo-v2 tasks — task.new opens the detail editor; fill the
   // description, then task.close returns to the list.
   try {
-    await page.goto(`${TARGET}/todo-v2`, { waitUntil: 'domcontentloaded' });
-    await sleep(1000);
-    await clickByText(page, 'Tasks');
-    await sleep(600);
+    await gotoRoute(page, '/todo-v2', '[data-action="todo.tab"]');
+    await clickTab(page, 'Tasks');
+    await page.waitForSelector('[data-action="task.new"]', { timeout: SHORT_TIMEOUT_MS });
     if ((await page.$$('[data-action="task.open"]')).length === 0) {
       const tasks = [
         'Buy splashback tiles and grout for the kitchen renovation before the weekend',
@@ -454,12 +549,12 @@ async function seedContent(page: Page): Promise<void> {
       ];
       for (const desc of tasks) {
         await page.click('[data-action="task.new"]');
-        await sleep(700);
+        // task.new opens the detail editor — its Description ActionInput.
         await fillActionInput(page, '[data-polly-action-input][aria-label="Description"]', desc);
         await page.keyboard.press('Tab');
-        await sleep(400);
         await page.click('[data-action="task.close"]');
-        await sleep(600);
+        // task.close returns to the list, which carries the new-task button.
+        await page.waitForSelector('[data-action="task.new"]', { timeout: SHORT_TIMEOUT_MS });
       }
       trace('seed', 'todo: 3 tasks');
     }
@@ -469,19 +564,18 @@ async function seedContent(page: Page): Promise<void> {
 
   // todo-v2 projects.
   try {
-    await page.goto(`${TARGET}/todo-v2`, { waitUntil: 'domcontentloaded' });
-    await sleep(800);
-    await clickByText(page, 'Projects');
-    await sleep(600);
+    await gotoRoute(page, '/todo-v2', '[data-action="todo.tab"]');
+    await clickTab(page, 'Projects');
+    await page.waitForSelector('[data-action="project.new"]', { timeout: SHORT_TIMEOUT_MS });
     if ((await page.$$('[data-action="project.open"]')).length === 0) {
       for (const name of ['Kitchen renovation', 'Tax return 2026']) {
         await page.click('[data-action="project.new"]');
-        await sleep(700);
+        // project.new opens the detail editor — its Name ActionInput.
         await fillActionInput(page, '[data-polly-action-input][aria-label="Name"]', name);
         await page.keyboard.press('Tab');
-        await sleep(400);
         await page.click('[data-action="project.close"]');
-        await sleep(600);
+        // project.close returns to the list, which carries the new-project button.
+        await page.waitForSelector('[data-action="project.new"]', { timeout: SHORT_TIMEOUT_MS });
       }
       trace('seed', 'todo: 2 projects');
     }
@@ -491,18 +585,24 @@ async function seedContent(page: Page): Promise<void> {
 
   // library refs — the create ActionInput commits on Enter.
   try {
-    await page.goto(`${TARGET}/library`, { waitUntil: 'domcontentloaded' });
-    await sleep(1000);
+    await gotoRoute(page, '/library', '[data-polly-action-input]');
     if ((await page.$$('[data-action="ref.open"]')).length === 0) {
       const titles = [
         'The Pragmatic Programmer',
         'A reference with a deliberately long title to check truncation on a narrow phone',
         'Dune',
       ];
+      let expected = 0;
       for (const title of titles) {
         await fillActionInput(page, '[data-polly-action-input]', title);
         await page.keyboard.press('Enter');
-        await sleep(600);
+        // Enter commits the ref; wait for the new row's open button to appear.
+        expected += 1;
+        await page.waitForFunction(
+          (n) => document.querySelectorAll('[data-action="ref.open"]').length >= n,
+          { timeout: SHORT_TIMEOUT_MS },
+          expected
+        );
       }
       trace('seed', 'library: 3 refs');
     }
@@ -513,19 +613,35 @@ async function seedContent(page: Page): Promise<void> {
   // agenda items — type a name into the create form, pick daily so
   // it lands on Today, then Add.
   try {
-    await page.goto(`${TARGET}/agenda`, { waitUntil: 'domcontentloaded' });
-    await sleep(1000);
-    await clickByText(page, 'Items');
-    await sleep(600);
+    await gotoRoute(page, '/agenda', '[data-action="agenda.tab"]');
+    await clickTab(page, 'Items');
+    await page.waitForSelector('[data-action="draft.recurrence"]', { timeout: SHORT_TIMEOUT_MS });
     if ((await page.$$('[data-action="item.toggle-active"]')).length === 0) {
+      let expected = 0;
       for (const name of ['Empty the dishwasher', 'Water the balcony plants']) {
         await fillActionInput(page, '[data-polly-action-input]', name);
         await page.keyboard.press('Tab');
-        await sleep(300);
         await clickByText(page, 'daily');
-        await sleep(300);
+        // The daily recurrence button flips to the primary tier when selected.
+        await page.waitForFunction(
+          () => {
+            const btns = Array.from(document.querySelectorAll('[data-action="draft.recurrence"]'));
+            return btns.some(
+              (b) =>
+                (b.textContent ?? '').trim() === 'daily' &&
+                b.getAttribute('data-polly-button') === 'primary'
+            );
+          },
+          { timeout: SHORT_TIMEOUT_MS }
+        );
         await clickByText(page, 'Add');
-        await sleep(900);
+        // item.create-from-draft appends an item row carrying a toggle-active control.
+        expected += 1;
+        await page.waitForFunction(
+          (n) => document.querySelectorAll('[data-action="item.toggle-active"]').length >= n,
+          { timeout: SHORT_TIMEOUT_MS },
+          expected
+        );
       }
       trace('seed', 'agenda: 2 items');
     }
@@ -565,37 +681,47 @@ async function main(): Promise<void> {
 
     for (const route of ROUTES) {
       trace('route', route.path);
-      await page.goto(`${TARGET}${route.path}`, { waitUntil: 'domcontentloaded' });
-      if (route.ready) {
-        await waitForText(page, route.ready, SHORT_TIMEOUT_MS).catch(() => undefined);
-      }
-      await sleep(1200);
+      await gotoRoute(page, route.path, route.ready);
       await capture(page, route.name, reports);
     }
 
-    // Hub Peers + Users tabs (behind the home tab strip).
-    trace('route', 'hub Peers / Users tabs');
-    await page.goto(`${TARGET}/`, { waitUntil: 'domcontentloaded' });
-    await sleep(1000);
-    if (await clickByText(page, 'Peers')) {
-      await sleep(900);
+    // Hub Peers + Users + Help tabs (behind the home tab strip). Each
+    // tab gets a tab-specific marker so the capture waits on real
+    // rendered content, not a guess.
+    trace('route', 'hub Peers / Users / Help tabs');
+    await gotoRoute(page, '/', '[data-action="home.tab"]');
+    if (await clickTab(page, 'Peers')) {
+      // PeersView always renders the open-a-QR pairing button.
+      await page
+        .waitForSelector('[data-action="pairing.start-issue"]', { timeout: SHORT_TIMEOUT_MS })
+        .catch(() => undefined);
       await capture(page, 'hub-peers', reports);
     }
-    if (await clickByText(page, 'Users')) {
-      await sleep(900);
+    if (await clickTab(page, 'Users')) {
+      // UsersView lists the mesh's users — the seed mesh has two, each
+      // row carrying a revoke-peer control.
+      await page
+        .waitForSelector('[data-action="users.revoke-peer"]', { timeout: SHORT_TIMEOUT_MS })
+        .catch(() => undefined);
       await capture(page, 'hub-users', reports);
     }
-    if (await clickByText(page, 'Help')) {
-      await sleep(900);
+    if (await clickTab(page, 'Help')) {
+      // HelpView renders a select-all-textarea control in its sections.
+      await page
+        .waitForSelector('[data-action="help.select-all-textarea"]', {
+          timeout: SHORT_TIMEOUT_MS,
+        })
+        .catch(() => undefined);
       await capture(page, 'hub-help', reports);
     }
 
     // todo-v2 Projects tab (the route capture lands on Tasks).
     trace('route', 'todo-v2 Projects tab');
-    await page.goto(`${TARGET}/todo-v2`, { waitUntil: 'domcontentloaded' });
-    await sleep(1000);
-    if (await clickByText(page, 'Projects')) {
-      await sleep(800);
+    await gotoRoute(page, '/todo-v2', '[data-action="todo.tab"]');
+    if (await clickTab(page, 'Projects')) {
+      await page
+        .waitForSelector('[data-action="project.new"]', { timeout: SHORT_TIMEOUT_MS })
+        .catch(() => undefined);
       await capture(page, 'todo-projects', reports);
     }
 
@@ -611,7 +737,10 @@ async function main(): Promise<void> {
     trace('route', 'chat widget (injected demo)');
     await page.goto(`${TARGET}/agenda${injectHash()}`, { waitUntil: 'domcontentloaded' });
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await sleep(2000);
+    // The floating chat launcher always renders once the SPA mounts.
+    await page
+      .waitForSelector('[data-action="chat.toggle-widget"]', { timeout: SHORT_TIMEOUT_MS })
+      .catch(() => undefined);
     const widgetBtn = await page.$('[data-action="chat.toggle-widget"]');
     if (widgetBtn) {
       // The inject hook opens the widget itself; click only if closed.
@@ -619,7 +748,10 @@ async function main(): Promise<void> {
       if (!panelOpen) {
         await widgetBtn.click();
       }
-      await sleep(1500);
+      // The open panel carries a Close control — wait for it before shooting.
+      await page
+        .waitForSelector('[data-action="chat.close-widget"]', { timeout: SHORT_TIMEOUT_MS })
+        .catch(() => undefined);
     }
     await capture(page, 'chat-widget', reports);
 
