@@ -16,7 +16,7 @@
 // mutual trust. A `#pair=<token>` fragment in the URL on mount
 // short-circuits the idle screen and auto-submits the scanned token.
 
-import { ActionInput, Button, Code, Layout, Surface, Text } from '@fairfox/polly/ui';
+import { ActionInput, Button, Code, Collapsible, Layout, Surface, Text } from '@fairfox/polly/ui';
 import {
   inviteDraftEnabled,
   inviteDraftName,
@@ -87,10 +87,7 @@ function CliPairReveal({ token }: { token: string }): preact.JSX.Element | null 
   const installUrl = `${window.location.origin}/cli/install?${params.toString()}`;
   const command = `curl -fsSL "${installUrl}" | sh`;
   return (
-    <details>
-      <summary>
-        <Text size="sm">Pair a CLI instead of a browser</Text>
-      </summary>
+    <Collapsible summary="Pair a CLI instead of a browser">
       <Layout rows="auto auto" gap="var(--polly-space-xs)" padding="var(--polly-space-xs) 0 0 0">
         <Text as="p" size="xs">
           Paste this command into a terminal on the machine you want to pair. The installer drops
@@ -98,7 +95,7 @@ function CliPairReveal({ token }: { token: string }): preact.JSX.Element | null 
         </Text>
         <Code block={true}>{command}</Code>
       </Layout>
-    </details>
+    </Collapsible>
   );
 }
 
@@ -108,10 +105,7 @@ function ExtensionPairReveal({ token }: { token: string }): preact.JSX.Element |
   }
   const downloadUrl = `${window.location.origin}/extension/fairfox.zip?token=${encodeURIComponent(token)}`;
   return (
-    <details>
-      <summary>
-        <Text size="sm">Pair a Chrome extension instead</Text>
-      </summary>
+    <Collapsible summary="Pair a Chrome extension instead">
       <Layout rows="auto auto" gap="var(--polly-space-xs)" padding="var(--polly-space-xs) 0 0 0">
         <Text as="p" size="xs">
           Download the fairfox side-panel extension with this pairing token already baked in. Unzip
@@ -125,7 +119,7 @@ function ExtensionPairReveal({ token }: { token: string }): preact.JSX.Element |
           </a>
         </Layout>
       </Layout>
-    </details>
+    </Collapsible>
   );
 }
 
@@ -193,10 +187,7 @@ function InviteSection(): preact.JSX.Element | null {
   }
   const enabled = inviteDraftEnabled.value;
   return (
-    <details>
-      <summary>
-        <Text size="sm">Also invite a new user with this link</Text>
-      </summary>
+    <Collapsible summary="Also invite a new user with this link">
       <Layout
         rows="auto auto auto auto"
         gap="var(--polly-space-xs, 0.25rem)"
@@ -249,7 +240,7 @@ function InviteSection(): preact.JSX.Element | null {
           </>
         )}
       </Layout>
-    </details>
+    </Collapsible>
   );
 }
 
@@ -300,14 +291,11 @@ function IssueView(): preact.JSX.Element {
         </Layout>
       )}
       {issuedToken.value && (
-        <details>
-          <summary>
-            <Text size="sm">Show the raw token (for manual paste)</Text>
-          </summary>
+        <Collapsible summary="Show the raw token (for manual paste)">
           <Layout padding="var(--polly-space-xs) 0 0 0">
             <Code block={true}>{issuedToken.value}</Code>
           </Layout>
-        </details>
+        </Collapsible>
       )}
       {issuedToken.value && <CliPairReveal token={issuedToken.value} />}
       {issuedToken.value && <ExtensionPairReveal token={issuedToken.value} />}
@@ -427,12 +415,7 @@ function WhoAreYouView(): preact.JSX.Element {
         </SectionBody>
       </Layout>
 
-      <details>
-        <summary>
-          <Text size="sm" tone="muted">
-            Used this identity before? Recover it
-          </Text>
-        </summary>
+      <Collapsible summary="Used this identity before? Recover it">
         <Layout autoFlow="row" gap="var(--polly-space-sm)" padding="var(--polly-space-sm) 0 0 0">
           <SectionBody>
             Bring an existing identity onto this device with its recovery blob — scan the QR, drop
@@ -462,7 +445,7 @@ function WhoAreYouView(): preact.JSX.Element {
             data-action="users.import-recovery"
           />
         </Layout>
-      </details>
+      </Collapsible>
 
       {userSetupError.value && <ErrorText>{userSetupError.value}</ErrorText>}
     </Layout>
@@ -504,7 +487,7 @@ export function LoginPage(): preact.JSX.Element {
   // vanishes once IDB resolves.
   const identity = userIdentity.value;
   if (identity === undefined) {
-    return <div />;
+    return <Surface as="div" background="transparent" padding="0" />;
   }
   if (pendingRecoveryBlob.value) {
     return (

@@ -7,6 +7,7 @@
 import { OBSERVED_MESH_STATE_MODULE_ID_FROM_AGENDA } from '@fairfox/agenda/state';
 import { MESH_STATE_MODULE_ID } from '@fairfox/polly/mesh';
 import { Button, Cluster, Code, Layout, Surface, Text } from '@fairfox/polly/ui';
+import { renderMarkdown } from '@fairfox/polly/ui/markdown';
 import { devicesState } from '@fairfox/shared/devices-state';
 import { mesh } from '@fairfox/shared/ensure-mesh';
 import {
@@ -30,21 +31,37 @@ import { selfPeerId } from '#src/client/self-peer.ts';
 // rule polly#107 H5 in or out in one rendered read.
 const OBSERVED_MESH_STATE_MODULE_ID_FROM_HELPVIEW = MESH_STATE_MODULE_ID;
 
+// A help section: a bold heading over a body built from ordered
+// parts. Prose parts are markdown strings rendered through polly's
+// `renderMarkdown` (`marked` + DOMPurify — `**bold**`, `*italic*`,
+// `` `code` ``, lists). Code parts render as polly's `<Code block>`,
+// which — unlike a markdown fenced block — stays width-bounded and
+// scrolls on a narrow phone viewport rather than overflowing it.
+type HelpPart = { readonly prose: string } | { readonly code: string };
+
 function Section({
   heading,
-  children,
+  parts,
 }: {
   heading: string;
-  children: preact.ComponentChildren;
+  parts: readonly HelpPart[];
 }): preact.JSX.Element {
   return (
-    <Layout rows="auto auto" columns="minmax(0, 1fr)" gap="var(--polly-space-sm)">
+    <Layout rows="auto" columns="minmax(0, 1fr)" gap="var(--polly-space-sm)">
       <Text as="h2" size="lg" weight="bold">
         {heading}
       </Text>
-      <Text as="div" tone="muted">
-        {children}
-      </Text>
+      {parts.map((part) =>
+        'code' in part ? (
+          <Code key={part.code} block={true}>
+            {part.code}
+          </Code>
+        ) : (
+          <Text key={part.prose} as="div" tone="muted">
+            {renderMarkdown(part.prose)}
+          </Text>
+        )
+      )}
     </Layout>
   );
 }
@@ -567,6 +584,179 @@ function SyncDiagnostics(): preact.JSX.Element {
   );
 }
 
+// Each help section's body as ordered parts — prose (markdown) and
+// code (polly `<Code block>`). Prose carries the inline `code`,
+// **bold**, *italic* and lists; commands go in code parts so they
+// stay width-bounded on a narrow phone viewport.
+const INSTALL_APP_PARTS: readonly HelpPart[] = [
+  {
+    prose: [
+      '**Desktop Chrome / Edge:** when the browser decides the site qualifies, it',
+      'fires `beforeinstallprompt` and an "Install fairfox" button appears under this',
+      'header. A first visit may not fire it — scroll, click, wait ~30s, or reload once',
+      'to nudge it.',
+      '',
+      "**Safari on macOS or iOS:** Chromium's install event doesn't fire in Safari.",
+      'Install via the share menu instead:',
+      '',
+      '1. Open Safari (not Chrome — iOS only lets Safari install PWAs).',
+      '2. Tap the Share button (⬆) in the toolbar.',
+      '3. Scroll down in the share sheet and tap "Add to Home Screen" (iOS) or "Add to Dock" (macOS).',
+      '4. Name it, tap Add.',
+      '',
+      'Launching from the home-screen icon opens fairfox in standalone PWA mode, no',
+      "browser chrome. The **Reload** button in this page's header substitutes for the",
+      'refresh gesture you lose in that mode.',
+    ].join('\n'),
+  },
+];
+
+const INSTALL_CLI_PARTS: readonly HelpPart[] = [
+  {
+    prose: [
+      'The CLI is a full peer — same keyring, same documents as this browser. From a',
+      'fresh checkout of the repo:',
+    ].join('\n'),
+  },
+  { code: 'bash scripts/install-cli-local.sh' },
+  {
+    prose: [
+      'Symlinks `~/.local/bin/fairfox` and drops a zsh completion at `~/.zfunc/_fairfox`.',
+      "If `~/.local/bin` isn't on your PATH yet, add to your `~/.zshrc`:",
+    ].join('\n'),
+  },
+  {
+    code: [
+      'export PATH="$HOME/.local/bin:$PATH"',
+      'fpath=($HOME/.zfunc $fpath)',
+      'autoload -U compinit && compinit',
+    ].join('\n'),
+  },
+];
+
+const START_MESH_PARTS: readonly HelpPart[] = [
+  {
+    code: [
+      'fairfox init "Holm household" \\',
+      '  --admin "Alex" \\',
+      '  --user "Elisa:member" \\',
+      '  --user "Leo:member"',
+    ].join('\n'),
+  },
+  {
+    prose: [
+      'Creates the mesh, prints your recovery blob (save it — password manager), names',
+      'the mesh from the first positional argument, and queues one invite blob per',
+      '`--user`. Roles: `admin`, `member`, `guest`, `llm`.',
+    ].join('\n'),
+  },
+];
+
+const ADD_DEVICE_PARTS: readonly HelpPart[] = [
+  { code: 'fairfox add device' },
+  {
+    prose: [
+      'Terminal QR + share URL. Scan on your phone — the URL carries a pair token and',
+      'your recovery blob, so the phone pairs and adopts your identity in one tap. The',
+      'URL carries your secret key — share only with yourself.',
+    ].join('\n'),
+  },
+];
+
+const ONBOARD_PARTS: readonly HelpPart[] = [
+  { code: 'fairfox add user elisa --role member' },
+  {
+    prose: [
+      'One verb. Mints a fresh invite blob (or reopens an existing one with the same',
+      "name), writes the invitee's UserEntry into `mesh:users`, and holds a live QR open",
+      'until they scan or you ctrl-c. `fairfox invites` shows pending and consumed',
+      'invites; pass `--queue-only` if you want to mint without opening the socket.',
+      '',
+      'The invitee has three ways to feed the QR into their already-installed PWA, all',
+      'behind **"I have a pairing link" → "Paste token"**: tap *Scan with camera* to',
+      'open an in-app camera (the OS camera would otherwise launch the default browser,',
+      'not the PWA), click the dashed *Scan from a screenshot* zone to pick an image',
+      "file, or just Cmd/Ctrl-V an image that's already on the clipboard. All three feed",
+      'the same decode pipeline as the text paste box.',
+    ].join('\n'),
+  },
+];
+
+const RECEIVE_PARTS: readonly HelpPart[] = [
+  { code: 'fairfox pair <token-or-url-or-blob>' },
+  {
+    prose: [
+      'The receiving side of every onboarding flow — sniffs the input and routes to the',
+      'right handler. Use this on a fresh CLI install with a share URL someone else',
+      'generated, or with a recovery blob to reclaim your identity.',
+    ].join('\n'),
+  },
+];
+
+const VERIFY_PARTS: readonly HelpPart[] = [
+  { code: 'fairfox fingerprint' },
+  {
+    prose: [
+      'Prints the 8-hex mesh fingerprint — same value the Diagnostics panel above shows.',
+      'Two devices on the same mesh print the same line; a different mesh prints a',
+      'different one.',
+    ].join('\n'),
+  },
+];
+
+const EVERYDAY_PARTS: readonly HelpPart[] = [
+  {
+    code: [
+      '# Todos — same data as the Todo sub-app',
+      'fairfox todo tasks',
+      'fairfox todo task add "Do the thing" --project P01 --priority high',
+      'fairfox todo task done T1776614638630-x33y',
+      '',
+      '# Agenda',
+      'fairfox agenda list',
+      'fairfox agenda add "Take out the bins"',
+      '',
+      '# Identity',
+      'fairfox whoami                       # this device + effective perms',
+      'fairfox users                        # everyone in the mesh',
+      'fairfox add user Leo --role member   # invite a new user',
+      '',
+      '# Peers + devices',
+      'fairfox peers                        # every paired device',
+      'fairfox rename "Alex laptop"         # rename this device',
+      'fairfox forget <peerId>              # stop syncing with a peer (local)',
+      '',
+      '# Universal flags on every command',
+      'fairfox <command> --help             # detailed help',
+      'fairfox <command> --verbose          # debug output to stderr',
+      '',
+      '# Deploy (from the repo root)',
+      'fairfox deploy',
+    ].join('\n'),
+  },
+];
+
+const FILES_PARTS: readonly HelpPart[] = [
+  {
+    prose: [
+      '- `~/.fairfox/keyring.json` — per-device Ed25519 keypair + known peers.',
+      '- `~/.fairfox/user-identity.json` — per-user Ed25519 keypair + display name. Mode 0600.',
+      '- `~/.fairfox/invites.json` — pending invite blobs. Mode 0600.',
+      "- `~/.fairfox/mesh/` — this CLI's Automerge document store. Safe to delete; re-syncs from any other peer.",
+    ].join('\n'),
+  },
+];
+
+const TROUBLESHOOTING_PARTS: readonly HelpPart[] = [
+  {
+    prose: [
+      '- **"This device isn\'t allowed to bring in new peers."** Hard-reload (⇧⌘R); the self-heal writes the missing row on mount. If it persists, re-scan with `fairfox mesh add-device`.',
+      '- **Install button not showing.** Desktop Chrome needs a user engagement signal before `beforeinstallprompt` fires. Scroll / click / wait ~30s, then reload. Safari: use the share menu → "Add to Dock" / "Add to Home Screen".',
+      '- **CLI crashes with "Cycle detected."** Polly bug fixed in 0.29.3 — make sure `bun install` has picked it up.',
+    ].join('\n'),
+  },
+];
+
 export function HelpView(): preact.JSX.Element {
   return (
     <Layout rows="auto" columns="minmax(0, 1fr)" gap="var(--polly-space-xl)">
@@ -579,184 +769,16 @@ export function HelpView(): preact.JSX.Element {
         pairing relay, not the data path. This page is a quick tour of the moving parts.
       </Text>
 
-      <Section heading="Install fairfox as an app">
-        <p>
-          <strong>Desktop Chrome / Edge:</strong> when the browser decides the site qualifies, it
-          fires <Code>beforeinstallprompt</Code> and an "Install fairfox" button appears under this
-          header. A first visit may not fire it — scroll, click, wait ~30s, or reload once to nudge
-          it.
-        </p>
-        <p>
-          <strong>Safari on macOS or iOS:</strong> Chromium's install event doesn't fire in Safari.
-          Install via the share menu instead:
-        </p>
-        <ol>
-          <li>Open Safari (not Chrome — iOS only lets Safari install PWAs).</li>
-          <li>
-            Tap the Share button (<span aria-hidden="true">⬆</span>) in the toolbar.
-          </li>
-          <li>
-            Scroll down in the share sheet and tap "Add to Home Screen" (iOS) or "Add to Dock"
-            (macOS).
-          </li>
-          <li>Name it, tap Add.</li>
-        </ol>
-        <p>
-          Launching from the home-screen icon opens fairfox in standalone PWA mode, no browser
-          chrome. The <strong>Reload</strong> button in this page's header substitutes for the
-          refresh gesture you lose in that mode.
-        </p>
-      </Section>
-
-      <Section heading="Install the CLI">
-        <p>
-          The CLI is a full peer — same keyring, same documents as this browser. From a fresh
-          checkout of the repo:
-        </p>
-        <Code block={true}>{'bash scripts/install-cli-local.sh'}</Code>
-        <p>
-          Symlinks <Code>~/.local/bin/fairfox</Code> and drops a zsh completion at{' '}
-          <Code>~/.zfunc/_fairfox</Code>. If <Code>~/.local/bin</Code> isn't on your PATH yet, add
-          to your <Code>~/.zshrc</Code>:
-        </p>
-        <Code block={true}>
-          {[
-            'export PATH="$HOME/.local/bin:$PATH"',
-            'fpath=($HOME/.zfunc $fpath)',
-            'autoload -U compinit && compinit',
-          ].join('\n')}
-        </Code>
-      </Section>
-
-      <Section heading="Start a new mesh">
-        <Code block={true}>
-          {[
-            'fairfox init "Holm household" \\',
-            '  --admin "Alex" \\',
-            '  --user "Elisa:member" \\',
-            '  --user "Leo:member"',
-          ].join('\n')}
-        </Code>
-        <p>
-          Creates the mesh, prints your recovery blob (save it — password manager), names the mesh
-          from the first positional argument, and queues one invite blob per <Code>--user</Code>.
-          Roles: <Code>admin</Code>, <Code>member</Code>, <Code>guest</Code>, <Code>llm</Code>.
-        </p>
-      </Section>
-
-      <Section heading="Add another device for yourself">
-        <Code block={true}>{'fairfox add device'}</Code>
-        <p>
-          Terminal QR + share URL. Scan on your phone — the URL carries a pair token and your
-          recovery blob, so the phone pairs and adopts your identity in one tap. The URL carries
-          your secret key — share only with yourself.
-        </p>
-      </Section>
-
-      <Section heading="Onboard someone else">
-        <Code block={true}>{'fairfox add user elisa --role member'}</Code>
-        <p>
-          One verb. Mints a fresh invite blob (or reopens an existing one with the same name),
-          writes the invitee's UserEntry into <Code>mesh:users</Code>, and holds a live QR open
-          until they scan or you ctrl-c. <Code>fairfox invites</Code> shows pending and consumed
-          invites; pass <Code>--queue-only</Code> if you want to mint without opening the socket.
-        </p>
-        <p>
-          The invitee has three ways to feed the QR into their already-installed PWA, all behind{' '}
-          <strong>"I have a pairing link" → "Paste token"</strong>: tap <em>Scan with camera</em> to
-          open an in-app camera (the OS camera would otherwise launch the default browser, not the
-          PWA), click the dashed <em>Scan from a screenshot</em> zone to pick an image file, or just
-          Cmd/Ctrl-V an image that's already on the clipboard. All three feed the same decode
-          pipeline as the text paste box.
-        </p>
-      </Section>
-
-      <Section heading="Receive a pair token, share URL, or recovery blob">
-        <Code block={true}>{'fairfox pair <token-or-url-or-blob>'}</Code>
-        <p>
-          The receiving side of every onboarding flow — sniffs the input and routes to the right
-          handler. Use this on a fresh CLI install with a share URL someone else generated, or with
-          a recovery blob to reclaim your identity.
-        </p>
-      </Section>
-
-      <Section heading="Verify two devices are on the same mesh">
-        <Code block={true}>{'fairfox fingerprint'}</Code>
-        <p>
-          Prints the 8-hex mesh fingerprint — same value the Diagnostics panel above shows. Two
-          devices on the same mesh print the same line; a different mesh prints a different one.
-        </p>
-      </Section>
-
-      <Section heading="Everyday commands">
-        <Code block={true}>
-          {[
-            '# Todos — same data as the Todo sub-app',
-            'fairfox todo tasks',
-            'fairfox todo task add "Do the thing" --project P01 --priority high',
-            'fairfox todo task done T1776614638630-x33y',
-            '',
-            '# Agenda',
-            'fairfox agenda list',
-            'fairfox agenda add "Take out the bins"',
-            '',
-            '# Identity',
-            'fairfox whoami                       # this device + effective perms',
-            'fairfox users                        # everyone in the mesh',
-            'fairfox add user Leo --role member   # invite a new user',
-            '',
-            '# Peers + devices',
-            'fairfox peers                        # every paired device',
-            'fairfox rename "Alex laptop"         # rename this device',
-            'fairfox forget <peerId>              # stop syncing with a peer (local)',
-            '',
-            '# Universal flags on every command',
-            'fairfox <command> --help             # detailed help',
-            'fairfox <command> --verbose          # debug output to stderr',
-            '',
-            '# Deploy (from the repo root)',
-            'fairfox deploy',
-          ].join('\n')}
-        </Code>
-      </Section>
-
-      <Section heading="Files the CLI writes">
-        <ul>
-          <li>
-            <Code>~/.fairfox/keyring.json</Code> — per-device Ed25519 keypair + known peers.
-          </li>
-          <li>
-            <Code>~/.fairfox/user-identity.json</Code> — per-user Ed25519 keypair + display name.
-            Mode 0600.
-          </li>
-          <li>
-            <Code>~/.fairfox/invites.json</Code> — pending invite blobs. Mode 0600.
-          </li>
-          <li>
-            <Code>~/.fairfox/mesh/</Code> — this CLI's Automerge document store. Safe to delete;
-            re-syncs from any other peer.
-          </li>
-        </ul>
-      </Section>
-
-      <Section heading="Troubleshooting">
-        <ul>
-          <li>
-            <strong>"This device isn't allowed to bring in new peers."</strong> Hard-reload (⇧⌘R);
-            the self-heal writes the missing row on mount. If it persists, re-scan with{' '}
-            <Code>fairfox mesh add-device</Code>.
-          </li>
-          <li>
-            <strong>Install button not showing.</strong> Desktop Chrome needs a user engagement
-            signal before <Code>beforeinstallprompt</Code> fires. Scroll / click / wait ~30s, then
-            reload. Safari: use the share menu → "Add to Dock" / "Add to Home Screen".
-          </li>
-          <li>
-            <strong>CLI crashes with "Cycle detected."</strong> Polly bug fixed in 0.29.3 — make
-            sure <Code>bun install</Code> has picked it up.
-          </li>
-        </ul>
-      </Section>
+      <Section heading="Install fairfox as an app" parts={INSTALL_APP_PARTS} />
+      <Section heading="Install the CLI" parts={INSTALL_CLI_PARTS} />
+      <Section heading="Start a new mesh" parts={START_MESH_PARTS} />
+      <Section heading="Add another device for yourself" parts={ADD_DEVICE_PARTS} />
+      <Section heading="Onboard someone else" parts={ONBOARD_PARTS} />
+      <Section heading="Receive a pair token, share URL, or recovery blob" parts={RECEIVE_PARTS} />
+      <Section heading="Verify two devices are on the same mesh" parts={VERIFY_PARTS} />
+      <Section heading="Everyday commands" parts={EVERYDAY_PARTS} />
+      <Section heading="Files the CLI writes" parts={FILES_PARTS} />
+      <Section heading="Troubleshooting" parts={TROUBLESHOOTING_PARTS} />
     </Layout>
   );
 }

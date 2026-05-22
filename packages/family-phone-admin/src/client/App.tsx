@@ -137,10 +137,10 @@ export function App() {
         </Layout>
         <Tabs tabs={TAB_LIST} activeTab={activeTab} action="directory.tab" />
       </Layout>
-      <div>
+      <Layout>
         {activeTab === 'humans' && <HumansView />}
         {activeTab === 'devices' && <DevicesView />}
-      </div>
+      </Layout>
     </Layout>
   );
 }

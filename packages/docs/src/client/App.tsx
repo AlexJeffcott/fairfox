@@ -261,7 +261,7 @@ export function App() {
         </Text>
         <HubBack />
       </Layout>
-      <div>{activeView.value === 'edit' ? <EditView /> : <ListView />}</div>
+      <Layout>{activeView.value === 'edit' ? <EditView /> : <ListView />}</Layout>
     </Layout>
   );
 }

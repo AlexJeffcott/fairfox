@@ -80,7 +80,9 @@ function AppsGrid() {
             border="default"
           >
             <Layout rows="auto auto" gap="var(--polly-space-xs)">
-              <strong>{s.name}</strong>
+              <Text as="strong" weight="bold">
+                {s.name}
+              </Text>
               <Text as="span" tone="muted" size="sm">
                 {s.description}
               </Text>
@@ -118,10 +120,10 @@ export function Home() {
       padding="var(--polly-space-xl)"
       maxInlineSize="var(--polly-measure-page)"
     >
-      <header>
+      <Surface as="header" background="transparent" padding="0">
         <Layout columns="1fr auto" gap="var(--polly-space-md)" alignItems="center">
           <Cluster as="h1" gap="var(--polly-space-sm)" align="baseline">
-            <span>fairfox</span>
+            <Text as="span">fairfox</Text>
             {meshName && (
               <Text as="span" tone="muted" size="md" weight="normal">
                 · {meshName}
@@ -147,16 +149,16 @@ export function Home() {
           </Layout>
         </Layout>
         <PwaInstallPrompt />
-      </header>
+      </Surface>
 
       <Tabs tabs={tabList()} activeTab={activeView.value} action="home.tab" />
 
-      <div>
+      <Surface as="section" background="transparent" padding="0">
         {activeView.value === 'apps' && <AppsGrid />}
         {activeView.value === 'peers' && <PeersView />}
         {activeView.value === 'users' && <UsersView />}
         {activeView.value === 'help' && <HelpView />}
-      </div>
+      </Surface>
     </Layout>
   );
 }

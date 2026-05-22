@@ -151,10 +151,10 @@ export function App() {
         </Layout>
         <Tabs tabs={TAB_LIST} activeTab={current} action="speakwell.tab" />
       </Layout>
-      <div>
+      <Layout>
         {current === 'start' && <StartView />}
         {current === 'history' && <HistoryView />}
-      </div>
+      </Layout>
     </Layout>
   );
 }

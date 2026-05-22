@@ -201,7 +201,7 @@ function MessageBubble({
         <Text as="strong" size="xs" weight="bold">
           {label}
         </Text>
-        <span />
+        <Surface as="span" background="transparent" padding="0" />
         <Text as="span" size="xs" tone="muted">
           {formatTime(message.createdAt)}
           {message.pending && !isAssistant && ' · pending'}

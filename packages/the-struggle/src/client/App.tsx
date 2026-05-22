@@ -65,7 +65,7 @@ function StoryView() {
   if (!progress || !passage) {
     return (
       <Layout rows="auto" gap="var(--polly-space-md)">
-        <p>No game in progress.</p>
+        <Text as="p">No game in progress.</Text>
         <Button label="Begin" tier="primary" data-action="game.init" />
       </Layout>
     );
@@ -84,8 +84,8 @@ function StoryView() {
         renderView={renderMarkdown}
       />
       {passage.content.preamble && (
-        <Text as="p" tone="muted">
-          <em>{passage.content.preamble}</em>
+        <Text as="p" tone="muted" italic={true}>
+          {passage.content.preamble}
         </Text>
       )}
       {passage.isDeath && (
@@ -134,7 +134,9 @@ function MemoryView() {
             Litanies
           </Text>
           {progress.litanies.map((litany) => (
-            <p key={litany}>{litany}</p>
+            <Text as="p" key={litany}>
+              {litany}
+            </Text>
           ))}
         </Layout>
       )}
@@ -144,7 +146,9 @@ function MemoryView() {
             Places
           </Text>
           {progress.placeNames.map((place) => (
-            <p key={place}>{place}</p>
+            <Text as="p" key={place}>
+              {place}
+            </Text>
           ))}
         </Layout>
       )}
@@ -181,7 +185,9 @@ function ChapterList({ chapters }: { chapters: Chapter[] }) {
             alignItems="center"
           >
             <Layout rows="auto auto" gap="0">
-              <strong data-polly-truncate={true}>{chapter.title || '(untitled chapter)'}</strong>
+              <Text weight="bold" data-polly-truncate={true}>
+                {chapter.title || '(untitled chapter)'}
+              </Text>
               <FieldLabel>{chapter.passages.length} passages</FieldLabel>
             </Layout>
             <Button
@@ -208,7 +214,9 @@ function ChapterEditor({ chapter }: { chapter: Chapter }) {
           size="small"
           data-action="struggle.edit-close-chapter"
         />
-        <strong data-polly-truncate={true}>{chapter.title || '(untitled chapter)'}</strong>
+        <Text weight="bold" data-polly-truncate={true}>
+          {chapter.title || '(untitled chapter)'}
+        </Text>
       </Layout>
 
       <Layout rows="auto" gap="var(--polly-space-xs)">
@@ -257,7 +265,9 @@ function ChapterEditor({ chapter }: { chapter: Chapter }) {
             alignItems="center"
           >
             <Layout rows="auto auto" gap="0">
-              <strong data-polly-truncate={true}>{passage.title || '(untitled passage)'}</strong>
+              <Text weight="bold" data-polly-truncate={true}>
+                {passage.title || '(untitled passage)'}
+              </Text>
               <FieldLabel>
                 {passage.choices.length} choice{passage.choices.length === 1 ? '' : 's'}
                 {passage.isDeath ? ' · death' : ''}
@@ -352,7 +362,9 @@ function PassageEditor({ chapter, passage }: { chapter: Chapter; passage: Passag
           size="small"
           data-action="struggle.edit-close-passage"
         />
-        <strong data-polly-truncate={true}>{passage.title || '(untitled passage)'}</strong>
+        <Text weight="bold" data-polly-truncate={true}>
+          {passage.title || '(untitled passage)'}
+        </Text>
       </Layout>
 
       <Layout rows="auto" gap="var(--polly-space-xs)">
@@ -400,7 +412,7 @@ function PassageEditor({ chapter, passage }: { chapter: Chapter; passage: Passag
           data-action="passage.toggle-death"
           data-action-passage-id={passage.id}
         />
-        <span>This passage is a dead end</span>
+        <Text>This passage is a dead end</Text>
       </Layout>
 
       <Layout columns="minmax(0, 1fr) auto" gap="var(--polly-space-sm)" alignItems="center">
@@ -482,11 +494,11 @@ export function App() {
         </Layout>
         <Tabs tabs={TAB_LIST} activeTab={activeTab} action="game.tab" />
       </Layout>
-      <div>
+      <Layout>
         {activeTab === 'story' && <StoryView />}
         {activeTab === 'memory' && <MemoryView />}
         {activeTab === 'edit' && <EditView />}
-      </div>
+      </Layout>
     </Layout>
   );
 }

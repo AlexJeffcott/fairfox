@@ -7,13 +7,15 @@
 //   - Read state from $meshState signals (appState.value)
 //   - Layout all multi-element arrangements via <Layout>, never raw flex/grid
 
-import { ActionInput, Button, Layout } from '@fairfox/polly/ui';
+import { ActionInput, Button, Layout, Text } from '@fairfox/polly/ui';
 import { appState } from '#src/client/state.ts';
 
 export function App() {
   return (
     <Layout rows="auto 1fr" gap="var(--polly-space-lg)" padding="var(--polly-space-lg)">
-      <h1>Template Sub-App</h1>
+      <Text as="h1" size="xl" weight="bold">
+        Template Sub-App
+      </Text>
       <Layout rows="auto" gap="var(--polly-space-md)">
         <ActionInput
           value=""
@@ -22,23 +24,27 @@ export function App() {
           saveOn="enter"
           placeholder="Add an item..."
         />
-        <ul>
+        <Layout as="ul" rows="auto" gap="var(--polly-space-xs)">
           {appState.value.items.map((item, i) => (
-            <li key={`${item}-${String(i)}`}>
-              <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
-                <span>{item}</span>
-                <Button
-                  label="Remove"
-                  tier="tertiary"
-                  color="danger"
-                  size="small"
-                  data-action="item.remove"
-                  data-action-index={String(i)}
-                />
-              </Layout>
-            </li>
+            <Layout
+              as="li"
+              key={`${item}-${String(i)}`}
+              columns="1fr auto"
+              gap="var(--polly-space-sm)"
+              alignItems="center"
+            >
+              <Text>{item}</Text>
+              <Button
+                label="Remove"
+                tier="tertiary"
+                color="danger"
+                size="small"
+                data-action="item.remove"
+                data-action-index={String(i)}
+              />
+            </Layout>
           ))}
-        </ul>
+        </Layout>
       </Layout>
     </Layout>
   );

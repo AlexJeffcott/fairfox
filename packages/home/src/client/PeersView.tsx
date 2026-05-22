@@ -236,7 +236,9 @@ export function PeersView() {
                       ariaLabel="Rename this device"
                     />
                   ) : (
-                    <strong>{entry.name || '(unnamed)'}</strong>
+                    <Text as="strong" weight="bold">
+                      {entry.name || '(unnamed)'}
+                    </Text>
                   )}
                   <Badge variant={agentColor(entry.agent)}>{entry.agent}</Badge>
                   {isSelf && <Badge variant="default">this device</Badge>}
@@ -277,7 +279,7 @@ export function PeersView() {
                 )}
               </Layout>
               {isSelf ? (
-                <span />
+                <Surface as="span" background="transparent" padding="0" />
               ) : (
                 <Layout
                   columns="auto auto auto"

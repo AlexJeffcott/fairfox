@@ -93,14 +93,13 @@ const VIDEO_STYLE = {
   objectFit: 'cover' as const,
 };
 
-// Decorative guide frame overlaid on the camera feed. Surface's
-// `position` prop has no `absolute` value, so this purely-decorative
-// overlay keeps a minimal positioning style.
+// Decorative guide frame overlaid on the camera feed. Position, inset,
+// and radius ride Surface props; the camera-specific translucent-white
+// border colour and `pointer-events: none` (no Surface prop) stay in a
+// minimal style. The border colour is fed through a `--polly-border`
+// retint so Surface's own `border` prop draws it.
 const FRAME_STYLE = {
-  position: 'absolute' as const,
-  inset: '12%',
-  border: '2px solid rgba(255, 255, 255, 0.8)',
-  borderRadius: 'var(--polly-radius-md)',
+  '--polly-border': 'rgba(255, 255, 255, 0.8)',
   pointerEvents: 'none' as const,
 };
 
@@ -381,7 +380,15 @@ export function QrScanDialog(): preact.JSX.Element | null {
             muted={true}
             autoPlay={true}
           />
-          <div style={FRAME_STYLE} />
+          <Surface
+            position="absolute"
+            inset="12%"
+            radius="md"
+            border="default"
+            borderWidth="medium"
+            background="transparent"
+            style={FRAME_STYLE}
+          />
         </Surface>
         {cameraScanError.value && (
           <Surface

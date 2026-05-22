@@ -10,6 +10,7 @@ import {
   Checkbox,
   Cluster,
   Code,
+  Collapsible,
   Layout,
   Tabs,
   Text,
@@ -228,9 +229,9 @@ function TaskFilters({ projectNames }: { projectNames: string[] }) {
         action="tasks.set-filter-priority"
       />
       <Cluster gap="var(--polly-space-xs)" align="center">
-        <span data-action="tasks.toggle-show-done">
+        <Cluster inline={true} data-action="tasks.toggle-show-done">
           <Checkbox checked={showDone.value} />
-        </span>
+        </Cluster>
         <Text size="sm">Show done</Text>
       </Cluster>
     </Cluster>
@@ -296,9 +297,9 @@ function TasksView() {
                 gap="var(--polly-space-sm)"
                 alignItems="center"
               >
-                <span data-action="task.toggle-done" data-action-tid={t.tid}>
+                <Cluster inline={true} data-action="task.toggle-done" data-action-tid={t.tid}>
                   <Checkbox checked={t.done} />
-                </span>
+                </Cluster>
                 <Text data-polly-truncate={true} data-action="task.open" data-action-tid={t.tid}>
                   {t.description || '(untitled)'}
                 </Text>
@@ -307,7 +308,7 @@ function TasksView() {
                     {t.project}
                   </Text>
                 ) : (
-                  <span />
+                  <Text>{''}</Text>
                 )}
                 <Button
                   label="×"
@@ -421,9 +422,9 @@ function TaskDetail({ tid }: { tid: string }) {
       </Layout>
 
       <Layout columns="auto 1fr" gap="var(--polly-space-sm)" alignItems="center">
-        <span data-action="task.toggle-done" data-action-tid={task.tid}>
+        <Cluster inline={true} data-action="task.toggle-done" data-action-tid={task.tid}>
           <Checkbox checked={task.done} />
-        </span>
+        </Cluster>
         <Text>Done</Text>
       </Layout>
 
@@ -656,12 +657,7 @@ function ProjectTasks({ projectName }: { projectName: string }) {
         </Layout>
       ))}
       {done.length > 0 && (
-        <details>
-          <summary>
-            <Text tone="muted" size="sm">
-              Done ({done.length})
-            </Text>
-          </summary>
+        <Collapsible summary={`Done (${done.length})`}>
           <Layout rows="auto" gap="var(--polly-space-xs)" padding="var(--polly-space-xs) 0 0 0">
             {done.map((t) => (
               <Layout
@@ -670,9 +666,9 @@ function ProjectTasks({ projectName }: { projectName: string }) {
                 gap="var(--polly-space-sm)"
                 alignItems="center"
               >
-                <span data-action="task.toggle-done" data-action-tid={t.tid}>
+                <Cluster inline={true} data-action="task.toggle-done" data-action-tid={t.tid}>
                   <Checkbox checked={t.done} />
-                </span>
+                </Cluster>
                 <s data-polly-truncate={true} data-action="task.open" data-action-tid={t.tid}>
                   <Text tone="muted">{t.description || '(untitled)'}</Text>
                 </s>
@@ -687,7 +683,7 @@ function ProjectTasks({ projectName }: { projectName: string }) {
               </Layout>
             ))}
           </Layout>
-        </details>
+        </Collapsible>
       )}
     </Layout>
   );
@@ -842,7 +838,7 @@ export function App() {
         </Layout>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="todo.tab" />
       </Layout>
-      <div>
+      <Layout>
         {activeTab.value === 'projects' &&
           (selectedProjectId.value === null ? (
             <ProjectsView />
@@ -856,7 +852,7 @@ export function App() {
             <TaskDetail tid={selectedTaskId.value} />
           ))}
         {activeTab.value === 'capture' && <CaptureView />}
-      </div>
+      </Layout>
     </Layout>
   );
 }

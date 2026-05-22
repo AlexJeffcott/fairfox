@@ -201,7 +201,7 @@ function TodayView() {
               alignItems="center"
             >
               {item.time && <Badge variant="info">{item.time}</Badge>}
-              <span data-polly-truncate={true}>{item.name}</span>
+              <Text data-polly-truncate={true}>{item.name}</Text>
             </Layout>
           ))}
         </Layout>
@@ -224,15 +224,15 @@ function ChoreRow({ item, daysOverdue }: { item: AgendaItem; daysOverdue: number
   return (
     <Layout rows="auto auto" gap="var(--polly-space-xs)" padding="var(--polly-space-sm) 0">
       <Layout columns="1fr auto" gap="var(--polly-space-sm)" alignItems="center">
-        <span data-polly-truncate={true}>
-          <strong>{item.name}</strong>
+        <Text data-polly-truncate={true}>
+          <Text weight="bold">{item.name}</Text>
           {item.room && (
             <Text size="sm" tone="muted">
               {' '}
               {item.room}
             </Text>
           )}
-        </span>
+        </Text>
         <Badge variant={overdueBadgeVariant(daysOverdue)}>{overdueLabel(daysOverdue)}</Badge>
       </Layout>
       <Layout
@@ -431,7 +431,7 @@ function ItemsView() {
           >
             <Badge variant={item.kind === 'event' ? 'info' : 'default'}>{item.kind}</Badge>
             <Layout rows="auto auto">
-              <strong>{item.name}</strong>
+              <Text weight="bold">{item.name}</Text>
               <Text as="div" size="sm" tone="muted">
                 {describeRecurrence(item)}
                 {item.room && ` · ${item.room}`}
@@ -533,10 +533,10 @@ function FairnessView() {
               gap="var(--polly-space-sm)"
               alignItems="center"
             >
-              <strong>{person}</strong>
-              <span>
+              <Text weight="bold">{person}</Text>
+              <Text>
                 {entry.count} done · {entry.points} pt
-              </span>
+              </Text>
               <Badge variant={pct >= 30 ? 'success' : 'warning'}>{pct}%</Badge>
               <Surface width="4rem" height="0.4rem" background="sunken" radius="full">
                 <Surface
@@ -598,11 +598,11 @@ export function App() {
         </Layout>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="agenda.tab" />
       </Layout>
-      <div>
+      <Layout>
         {activeTab.value === 'today' && <TodayView />}
         {activeTab.value === 'items' && <ItemsView />}
         {activeTab.value === 'fairness' && <FairnessView />}
-      </div>
+      </Layout>
     </Layout>
   );
 }

@@ -94,7 +94,7 @@ function RefsView() {
             </Badge>
           ))}
         </Layout>
-        <div>{renderMarkdown(selected.body)}</div>
+        <Layout>{renderMarkdown(selected.body)}</Layout>
         {selected.notes && (
           <Layout rows="auto" gap="var(--polly-space-xs)">
             <Text as="h4" size="md" weight="bold">
@@ -186,7 +186,7 @@ function DocsView() {
         <Text as="span" tone="muted" size="sm">
           {CATEGORY_LABELS[selected.category]} · {selected.path}
         </Text>
-        <div>{renderMarkdown(selected.content)}</div>
+        <Layout>{renderMarkdown(selected.content)}</Layout>
       </Layout>
     );
   }
@@ -213,9 +213,9 @@ function DocsView() {
         }
         return (
           <Layout key={category} rows="auto" gap="var(--polly-space-xs)">
-            <h3>
+            <Text as="h3" size="lg" weight="bold">
               {CATEGORY_LABELS[category]} ({group.length})
-            </h3>
+            </Text>
             {group.map((doc) => (
               <Layout
                 key={doc.id}
@@ -281,10 +281,10 @@ export function App() {
         </Layout>
         <Tabs tabs={TAB_LIST} activeTab={activeTab.value} action="library.tab" />
       </Layout>
-      <div>
+      <Layout>
         {activeTab.value === 'refs' && <RefsView />}
         {activeTab.value === 'docs' && <DocsView />}
-      </div>
+      </Layout>
     </Layout>
   );
 }
