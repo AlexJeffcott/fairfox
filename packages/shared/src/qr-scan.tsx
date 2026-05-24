@@ -18,7 +18,7 @@
 // decoding flips `inversionAttempts` to 'attemptBoth' because a
 // screenshot's colour profile may have inverted the code.
 
-import { Button, Layout, Surface, Text } from '@fairfox/polly/ui';
+import { Button, FileInput, Layout, Surface, Text } from '@fairfox/polly/ui';
 import { effect, signal } from '@preact/signals';
 import jsQR from 'jsqr';
 import { importRecoveryBlob, submitScannedValue } from '#src/pairing-actions.ts';
@@ -91,16 +91,6 @@ const VIDEO_STYLE = {
   width: '100%',
   height: '100%',
   objectFit: 'cover' as const,
-};
-
-// Decorative guide frame overlaid on the camera feed. Position, inset,
-// and radius ride Surface props; the camera-specific translucent-white
-// border colour and `pointer-events: none` (no Surface prop) stay in a
-// minimal style. The border colour is fed through a `--polly-border`
-// retint so Surface's own `border` prop draws it.
-const FRAME_STYLE = {
-  '--polly-border': 'rgba(255, 255, 255, 0.8)',
-  pointerEvents: 'none' as const,
 };
 
 function closeCamera(): void {
@@ -351,9 +341,7 @@ export function QrScanDialog(): preact.JSX.Element | null {
       padding="var(--polly-space-md)"
       role="dialog"
       aria-label="Scan pairing QR"
-      // Token-retint: light copy reads against the dark camera overlay;
-      // all Text descendants inherit this --polly-text override.
-      style={{ '--polly-text': 'rgba(255, 255, 255, 0.85)' }}
+      scheme="dark"
     >
       <Layout
         rows="auto auto auto auto"
@@ -386,16 +374,13 @@ export function QrScanDialog(): preact.JSX.Element | null {
             radius="md"
             border="default"
             borderWidth="medium"
+            borderColor="rgba(255, 255, 255, 0.8)"
             background="transparent"
-            style={FRAME_STYLE}
+            pointerEvents="none"
           />
         </Surface>
         {cameraScanError.value && (
-          <Surface
-            background="transparent"
-            // Token-retint: the error copy gets its own light-red tint.
-            style={{ '--polly-text': '#fecaca' }}
-          >
+          <Surface background="transparent" scheme="dark">
             <Text as="p" size="sm">
               {cameraScanError.value}
             </Text>
@@ -536,19 +521,26 @@ export function installQrPasteListener(): void {
   });
 }
 
-/** Screenshot-of-a-QR as an input. Renders a label-wrapped
- * `<input type="file">` whose `change` event bubbles to the global
- * action dispatcher (`pairing.dropzone-file`). The window-level
- * paste listener is installed once at boot and routes clipboard
- * images through whichever dropzone is visible. */
+/** Screenshot-of-a-QR as an input. Renders polly's `FileInput`
+ * primitive; selecting a file routes the chosen image through
+ * `handleDropzoneBlob` in the currently-configured mode. The
+ * window-level paste listener is installed once at boot and routes
+ * clipboard images through whichever dropzone is visible (resolved
+ * via the `data-qr-dropzone-mode` attribute on the wrapping Surface). */
 export function QrImageDropzone({
   mode = 'pair',
 }: {
   mode?: CameraScanMode;
 } = {}): preact.JSX.Element {
+  const onFiles = (files: FileList): void => {
+    const file = files[0];
+    if (!file) {
+      return;
+    }
+    void handleDropzoneBlob(file, mode);
+  };
   return (
     <Surface
-      as="label"
       variant="callout"
       border="default"
       borderStyle="dashed"
@@ -556,48 +548,22 @@ export function QrImageDropzone({
       width="100%"
       data-qr-dropzone-mode={mode}
     >
-      <Layout justifyItems="center">
+      <Layout justifyItems="center" gap="var(--polly-space-sm)">
         <Text size="sm" tone="muted">
           Scan from a screenshot (or paste an image)
         </Text>
+        <FileInput onFiles={onFiles} accept="image/*" label="Pick a screenshot" />
       </Layout>
-      <input
-        type="file"
-        accept="image/*"
-        hidden={true}
-        aria-label="Pick a screenshot of a pairing QR code"
-        data-action="pairing.dropzone-file"
-        data-action-mode={mode}
-      />
     </Surface>
   );
 }
 
-/** Action fragment for the unified registry. Handles the file-input
- * change event that the dropzone fires when the user picks an image.
- * Kept here rather than in `pairing-actions.ts` to avoid a circular
- * import: qr-scan already pulls `submitScannedValue` and
- * `importRecoveryBlob` from pairing-actions. */
+/** Action fragment for the unified registry. Kept exported for the
+ * sub-app dispatchers that already spread it in; the dropzone no
+ * longer wires a data-action because `FileInput` takes a direct
+ * callback, but other QR-related actions can be added here without
+ * touching every consumer. */
 export const qrScanActions: Record<
   string,
   (ctx: { data: Record<string, string>; event: Event; element: HTMLElement }) => void
-> = {
-  'pairing.dropzone-file': (ctx) => {
-    const mode = ctx.data.mode;
-    if (mode !== 'pair' && mode !== 'recovery') {
-      return;
-    }
-    const input = ctx.event.target;
-    if (!(input instanceof HTMLInputElement)) {
-      return;
-    }
-    const file = input.files?.[0];
-    if (!file) {
-      return;
-    }
-    const scoped: CameraScanMode = mode;
-    void handleDropzoneBlob(file, scoped).finally(() => {
-      input.value = '';
-    });
-  },
-};
+> = {};

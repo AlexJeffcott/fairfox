@@ -6,7 +6,7 @@
 
 import { OBSERVED_MESH_STATE_MODULE_ID_FROM_AGENDA } from '@fairfox/agenda/state';
 import { MESH_STATE_MODULE_ID } from '@fairfox/polly/mesh';
-import { Button, Cluster, Code, Layout, Surface, Text } from '@fairfox/polly/ui';
+import { Button, Cluster, Code, Layout, Output, Text } from '@fairfox/polly/ui';
 import { renderMarkdown } from '@fairfox/polly/ui/markdown';
 import { devicesState } from '@fairfox/shared/devices-state';
 import { mesh } from '@fairfox/shared/ensure-mesh';
@@ -128,7 +128,6 @@ function buildDiagnosticsText(): string {
  * — important on a mobile PWA where multi-select is fiddly. */
 function Diagnostics(): preact.JSX.Element {
   const text = buildDiagnosticsText();
-  const lineCount = text.split('\n').length;
   return (
     <Layout rows="auto auto" columns="minmax(0, 1fr)" gap="var(--polly-space-sm)">
       <Text as="h2" size="lg" weight="bold">
@@ -138,15 +137,9 @@ function Diagnostics(): preact.JSX.Element {
         Tap the box to select everything for copy. Compare with another paired device's Help tab to
         confirm you're on the same mesh.
       </Text>
-      <Surface variant="sunken">
-        <textarea
-          readOnly={true}
-          rows={lineCount}
-          value={text}
-          data-action="help.select-all-textarea"
-          data-help-snapshot="true"
-        />
-      </Surface>
+      <Output data-action="help.select-all-textarea" data-help-snapshot="true">
+        {text}
+      </Output>
     </Layout>
   );
 }
@@ -169,15 +162,19 @@ function startSyncDiagnosticsPolling(): void {
     return;
   }
   const tick = async (): Promise<void> => {
-    // Skip ticking while the diagnostic textarea is focused so the
-    // 2s autorefresh doesn't repeatedly rewrite the text mid-copy.
-    // On mobile, selection state is lost the moment the field
-    // re-renders — refreshing under the user's fingers makes the
-    // snapshot effectively un-copyable. The autorefresh resumes on
-    // blur.
-    const active = typeof document === 'undefined' ? null : document.activeElement;
-    if (active instanceof HTMLTextAreaElement && active.dataset.helpSnapshot === 'true') {
-      return;
+    // Skip ticking while the user has a selection inside one of the
+    // diagnostic Output boxes — re-rendering under the user's fingers
+    // loses the selection mid-copy on mobile. The autorefresh resumes
+    // the moment the selection collapses.
+    if (typeof window !== 'undefined') {
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) {
+        const anchor = sel.anchorNode;
+        const el = anchor instanceof Element ? anchor : (anchor?.parentElement ?? null);
+        if (el?.closest('[data-help-snapshot]')) {
+          return;
+        }
+      }
     }
     try {
       await m.refreshTransportStats();
@@ -517,7 +514,6 @@ void refreshDocSizes();
 
 function DocSizes(): preact.JSX.Element {
   const text = docSizesText.value;
-  const lineCount = Math.max(3, text.split('\n').length);
   return (
     <Layout rows="auto auto auto auto" columns="minmax(0, 1fr)" gap="var(--polly-space-sm)">
       <Text as="h2" size="lg" weight="bold">
@@ -545,22 +541,15 @@ function DocSizes(): preact.JSX.Element {
           />
         ) : null}
       </Cluster>
-      <Surface variant="sunken">
-        <textarea
-          readOnly={true}
-          rows={lineCount}
-          value={text}
-          data-action="help.select-all-textarea"
-          data-help-snapshot="true"
-        />
-      </Surface>
+      <Output data-action="help.select-all-textarea" data-help-snapshot="true">
+        {text}
+      </Output>
     </Layout>
   );
 }
 
 function SyncDiagnostics(): preact.JSX.Element {
   const text = peerSnapshot.value;
-  const lineCount = Math.max(3, text.split('\n').length);
   return (
     <Layout rows="auto auto auto" columns="minmax(0, 1fr)" gap="var(--polly-space-sm)">
       <Text as="h2" size="lg" weight="bold">
@@ -571,15 +560,9 @@ function SyncDiagnostics(): preact.JSX.Element {
         + refreshAllTransportStats. Use this to see whether bytes are actually traversing the relay
         and whether the apply backlog is draining.
       </Text>
-      <Surface variant="sunken">
-        <textarea
-          readOnly={true}
-          rows={lineCount}
-          value={text}
-          data-action="help.select-all-textarea"
-          data-help-snapshot="true"
-        />
-      </Surface>
+      <Output data-action="help.select-all-textarea" data-help-snapshot="true">
+        {text}
+      </Output>
     </Layout>
   );
 }

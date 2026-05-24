@@ -124,13 +124,7 @@ export function BuildFreshnessBanner(): preact.JSX.Element | null {
       radius="md"
       inset="auto auto var(--polly-space-md) 50%"
       transform="translateX(-50%)"
-      // Token-retint: the banner is a deliberate dark one-off, so its
-      // light text tokens are overridden here and inherited by the
-      // Text and Button children.
-      style={{
-        '--polly-text': '#f9fafb',
-        '--polly-text-muted': '#f9fafb',
-      }}
+      scheme="dark"
     >
       <Cluster gap="var(--polly-space-sm)" align="center">
         <Text size="sm">A new version of fairfox is available.</Text>

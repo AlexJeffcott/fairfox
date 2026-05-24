@@ -171,9 +171,9 @@ function FloatingButton() {
           inset={`auto calc(1rem - 4px) calc(1rem + ${BUTTON_SIZE - 8}px) auto`}
           zIndex={9999}
           aria-hidden={true}
-          // Retint the strong-border token to the accent colour so the
-          // ring reads as a cutout against the accent-coloured button.
-          style={{ '--polly-border-strong': 'var(--polly-accent)' }}
+          // Retint the border to the accent colour so the ring reads
+          // as a cutout against the accent-coloured button.
+          borderColor="var(--polly-accent)"
         />
       )}
     </Surface>
@@ -210,17 +210,14 @@ function MessageBubble({
       <Surface
         variant="bubble"
         background={bg}
-        style={{
-          // Bubble backgrounds are hardcoded light (#ffffff,
-          // #e8edf3, #dbeafe, #fef3c7); the text colour must be
-          // hardcoded dark too — reading var(--polly-text) made
-          // white-on-white when the user agent's polly theme
-          // resolved that variable to a near-white value. Retint
-          // the polly tokens so the bubble owns its own dark text
-          // and per-sender border without an inline colour rule.
-          '--polly-text': '#1c1917',
-          '--polly-border': border,
-        }}
+        // Bubble backgrounds are hardcoded light (#ffffff, #e8edf3,
+        // #dbeafe, #fef3c7); scheme="light" pins the text tokens to
+        // dark values so the bubble stays readable even when the
+        // user agent's polly theme resolves --polly-text to a
+        // near-white value. borderColor carries the per-sender hue
+        // that used to come from a --polly-border override.
+        scheme="light"
+        borderColor={border}
       >
         <Layout rows="auto" gap="0">
           {message.text.split('\n').map((line, i) => {
@@ -572,12 +569,10 @@ function ActiveCcSessions() {
             gap="0.5rem"
             justifyContent="space-between"
           >
-            <span title={`${s.cwd}`}>
-              <Text size="xs" tone={s.stale ? 'muted' : 'default'}>
-                {leaf}
-                {isDemo ? ' · demo' : ''}
-              </Text>
-            </span>
+            <Text size="xs" tone={s.stale ? 'muted' : 'default'} title={`${s.cwd}`}>
+              {leaf}
+              {isDemo ? ' · demo' : ''}
+            </Text>
             <Text size="xs" tone="muted">
               {state}
               {s.lastToolName ? ` · ${s.lastToolName}` : ''}

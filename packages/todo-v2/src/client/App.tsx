@@ -229,9 +229,9 @@ function TaskFilters({ projectNames }: { projectNames: string[] }) {
         action="tasks.set-filter-priority"
       />
       <Cluster gap="var(--polly-space-xs)" align="center">
-        <Cluster inline={true} data-action="tasks.toggle-show-done">
+        <Layout data-action="tasks.toggle-show-done">
           <Checkbox checked={showDone.value} />
-        </Cluster>
+        </Layout>
         <Text size="sm">Show done</Text>
       </Cluster>
     </Cluster>
@@ -297,9 +297,9 @@ function TasksView() {
                 gap="var(--polly-space-sm)"
                 alignItems="center"
               >
-                <Cluster inline={true} data-action="task.toggle-done" data-action-tid={t.tid}>
+                <Layout data-action="task.toggle-done" data-action-tid={t.tid}>
                   <Checkbox checked={t.done} />
-                </Cluster>
+                </Layout>
                 <Text data-polly-truncate={true} data-action="task.open" data-action-tid={t.tid}>
                   {t.description || '(untitled)'}
                 </Text>
@@ -336,9 +336,15 @@ function TasksView() {
               alignItems="center"
             >
               <Checkbox checked={t.done} data-action="task.toggle-done" data-action-tid={t.tid} />
-              <s data-polly-truncate={true} data-action="task.open" data-action-tid={t.tid}>
-                <Text tone="muted">{t.description || '(untitled)'}</Text>
-              </s>
+              <Text
+                tone="muted"
+                strikethrough={true}
+                data-polly-truncate={true}
+                data-action="task.open"
+                data-action-tid={t.tid}
+              >
+                {t.description || '(untitled)'}
+              </Text>
               <Button
                 label="×"
                 size="small"
@@ -422,9 +428,9 @@ function TaskDetail({ tid }: { tid: string }) {
       </Layout>
 
       <Layout columns="auto 1fr" gap="var(--polly-space-sm)" alignItems="center">
-        <Cluster inline={true} data-action="task.toggle-done" data-action-tid={task.tid}>
+        <Layout data-action="task.toggle-done" data-action-tid={task.tid}>
           <Checkbox checked={task.done} />
-        </Cluster>
+        </Layout>
         <Text>Done</Text>
       </Layout>
 
@@ -657,7 +663,13 @@ function ProjectTasks({ projectName }: { projectName: string }) {
         </Layout>
       ))}
       {done.length > 0 && (
-        <Collapsible summary={`Done (${done.length})`}>
+        <Collapsible
+          summary={
+            <Text tone="muted" size="sm">
+              Done ({done.length})
+            </Text>
+          }
+        >
           <Layout rows="auto" gap="var(--polly-space-xs)" padding="var(--polly-space-xs) 0 0 0">
             {done.map((t) => (
               <Layout
@@ -666,12 +678,18 @@ function ProjectTasks({ projectName }: { projectName: string }) {
                 gap="var(--polly-space-sm)"
                 alignItems="center"
               >
-                <Cluster inline={true} data-action="task.toggle-done" data-action-tid={t.tid}>
+                <Layout data-action="task.toggle-done" data-action-tid={t.tid}>
                   <Checkbox checked={t.done} />
-                </Cluster>
-                <s data-polly-truncate={true} data-action="task.open" data-action-tid={t.tid}>
-                  <Text tone="muted">{t.description || '(untitled)'}</Text>
-                </s>
+                </Layout>
+                <Text
+                  tone="muted"
+                  strikethrough={true}
+                  data-polly-truncate={true}
+                  data-action="task.open"
+                  data-action-tid={t.tid}
+                >
+                  {t.description || '(untitled)'}
+                </Text>
                 <Button
                   label="×"
                   size="small"

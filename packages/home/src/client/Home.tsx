@@ -7,7 +7,7 @@
 // is the natural home for pairing-adjacent administration since
 // pairing already lives on this sub-app.
 
-import { Button, Cluster, Layout, Surface, Tabs, Text } from '@fairfox/polly/ui';
+import { Button, Cluster, Layout, Link, Surface, Tabs, Text } from '@fairfox/polly/ui';
 import { ensureMeshFingerprintLoaded, meshMetaState } from '@fairfox/shared/mesh-meta-state';
 import { setPageContext } from '@fairfox/shared/page-context';
 import { canDo } from '@fairfox/shared/policy';
@@ -72,7 +72,13 @@ function AppsGrid() {
   return (
     <Layout rows="auto" gap="var(--polly-space-md)">
       {SUBAPPS.map((s) => (
-        <a key={s.path} href={s.path} data-action="app.navigate" data-action-href={s.path}>
+        <Link
+          key={s.path}
+          href={s.path}
+          subtle={true}
+          data-action="app.navigate"
+          data-action-href={s.path}
+        >
           <Surface
             variant="raised"
             padding="var(--polly-space-md) var(--polly-space-lg)"
@@ -88,7 +94,7 @@ function AppsGrid() {
               </Text>
             </Layout>
           </Surface>
-        </a>
+        </Link>
       ))}
     </Layout>
   );

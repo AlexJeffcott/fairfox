@@ -16,7 +16,17 @@
 // mutual trust. A `#pair=<token>` fragment in the URL on mount
 // short-circuits the idle screen and auto-submits the scanned token.
 
-import { ActionInput, Button, Code, Collapsible, Layout, Surface, Text } from '@fairfox/polly/ui';
+import {
+  ActionInput,
+  Button,
+  Code,
+  Collapsible,
+  Html,
+  Layout,
+  Link,
+  Surface,
+  Text,
+} from '@fairfox/polly/ui';
 import {
   inviteDraftEnabled,
   inviteDraftName,
@@ -87,7 +97,13 @@ function CliPairReveal({ token }: { token: string }): preact.JSX.Element | null 
   const installUrl = `${window.location.origin}/cli/install?${params.toString()}`;
   const command = `curl -fsSL "${installUrl}" | sh`;
   return (
-    <Collapsible summary="Pair a CLI instead of a browser">
+    <Collapsible
+      summary={
+        <Text tone="muted" size="sm">
+          Pair a CLI instead of a browser
+        </Text>
+      }
+    >
       <Layout rows="auto auto" gap="var(--polly-space-xs)" padding="var(--polly-space-xs) 0 0 0">
         <Text as="p" size="xs">
           Paste this command into a terminal on the machine you want to pair. The installer drops
@@ -105,7 +121,13 @@ function ExtensionPairReveal({ token }: { token: string }): preact.JSX.Element |
   }
   const downloadUrl = `${window.location.origin}/extension/fairfox.zip?token=${encodeURIComponent(token)}`;
   return (
-    <Collapsible summary="Pair a Chrome extension instead">
+    <Collapsible
+      summary={
+        <Text tone="muted" size="sm">
+          Pair a Chrome extension instead
+        </Text>
+      }
+    >
       <Layout rows="auto auto" gap="var(--polly-space-xs)" padding="var(--polly-space-xs) 0 0 0">
         <Text as="p" size="xs">
           Download the fairfox side-panel extension with this pairing token already baked in. Unzip
@@ -114,9 +136,9 @@ function ExtensionPairReveal({ token }: { token: string }): preact.JSX.Element |
           frame.
         </Text>
         <Layout rows="auto" justifyItems="start">
-          <a href={downloadUrl} download="fairfox-extension.zip">
+          <Link href={downloadUrl} download="fairfox-extension.zip">
             <Text size="sm">Download extension .zip</Text>
-          </a>
+          </Link>
         </Layout>
       </Layout>
     </Collapsible>
@@ -187,7 +209,13 @@ function InviteSection(): preact.JSX.Element | null {
   }
   const enabled = inviteDraftEnabled.value;
   return (
-    <Collapsible summary="Also invite a new user with this link">
+    <Collapsible
+      summary={
+        <Text tone="muted" size="sm">
+          Also invite a new user with this link
+        </Text>
+      }
+    >
       <Layout
         rows="auto auto auto auto"
         gap="var(--polly-space-xs, 0.25rem)"
@@ -267,7 +295,7 @@ function IssueView(): preact.JSX.Element {
       {issuedQr.value ? (
         <Layout rows="auto" justifyItems="center">
           {/* QR markup is locally-generated SVG; render it into a span. */}
-          <span dangerouslySetInnerHTML={{ __html: issuedQr.value }} />
+          <Html as="span" html={issuedQr.value} />
         </Layout>
       ) : (
         <Layout rows="auto" justifyItems="center">
@@ -285,13 +313,19 @@ function IssueView(): preact.JSX.Element {
         <Layout rows="auto" justifyItems="center">
           {/* data-polly-wrap keeps a long unbroken pairing URL from
               overflowing the card. */}
-          <a href={issuedShareUrl.value} data-polly-wrap={true}>
+          <Link href={issuedShareUrl.value} data-polly-wrap={true}>
             <Text size="sm">{issuedShareUrl.value}</Text>
-          </a>
+          </Link>
         </Layout>
       )}
       {issuedToken.value && (
-        <Collapsible summary="Show the raw token (for manual paste)">
+        <Collapsible
+          summary={
+            <Text tone="muted" size="sm">
+              Show the raw token (for manual paste)
+            </Text>
+          }
+        >
           <Layout padding="var(--polly-space-xs) 0 0 0">
             <Code block={true}>{issuedToken.value}</Code>
           </Layout>
@@ -415,7 +449,13 @@ function WhoAreYouView(): preact.JSX.Element {
         </SectionBody>
       </Layout>
 
-      <Collapsible summary="Used this identity before? Recover it">
+      <Collapsible
+        summary={
+          <Text tone="muted" size="sm">
+            Used this identity before? Recover it
+          </Text>
+        }
+      >
         <Layout autoFlow="row" gap="var(--polly-space-sm)" padding="var(--polly-space-sm) 0 0 0">
           <SectionBody>
             Bring an existing identity onto this device with its recovery blob — scan the QR, drop
