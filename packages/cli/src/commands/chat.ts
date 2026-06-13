@@ -39,7 +39,7 @@ import {
 import { snapshotMeshDoc } from '@fairfox/shared/compact-mesh-doc';
 import { devicesState } from '@fairfox/shared/devices-state';
 import { documentIndexState } from '@fairfox/shared/document-index-state';
-import { $meshState, type MeshClient, revokePeerLocally } from '@fairfox/shared/polly';
+import { $meshState, assertNever, type MeshClient, revokePeerLocally } from '@fairfox/shared/polly';
 import { userIdentity } from '@fairfox/shared/user-identity-state';
 import { usersState } from '@fairfox/shared/users-state';
 import { localVersion } from '#src/commands/update.ts';
@@ -386,10 +386,15 @@ function resolveContext(ref: ContextRef): string {
       // lands when / if those sub-apps publish finer contexts.
       return `(view: ${ref.label})`;
     }
+    // Every ContextKind variant is handled above; assertNever turns a
+    // future variant added to the union without a branch here into a
+    // compile error. The try/catch makes the runtime throw harmless —
+    // off-type data replicated from a newer client degrades to the
+    // failure string rather than crashing the assistant loop.
+    return assertNever(ref.kind);
   } catch (err) {
     return `(context resolution failed: ${err instanceof Error ? err.message : String(err)})`;
   }
-  return '';
 }
 
 function chatContext(doc: ChatDoc, chatId: string): string {
