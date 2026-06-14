@@ -16,6 +16,7 @@ import {
 } from '@fairfox/shared/mesh-connection-state';
 import { meshFingerprintText, meshMetaState } from '@fairfox/shared/mesh-meta-state';
 import { peersPresent } from '@fairfox/shared/peers-presence';
+import { pushPermission, pushSupported } from '@fairfox/shared/push-subscribe';
 import { userIdentity } from '@fairfox/shared/user-identity-state';
 import {
   OBSERVED_MESH_STATE_MODULE_ID_FROM_USERS_STATE,
@@ -548,6 +549,51 @@ function DocSizes(): preact.JSX.Element {
   );
 }
 
+function NotificationsControl(): preact.JSX.Element {
+  // Show a button whose state depends on the browser's current
+  // permission: ask if not yet decided, the disable affordance if
+  // granted, a hint if denied (the user has to clear it from OS
+  // settings), or nothing if the platform doesn't support push.
+  const supported = pushSupported();
+  const permission = supported ? pushPermission() : 'unsupported';
+  return (
+    <Layout rows="auto auto auto" columns="minmax(0, 1fr)" gap="var(--polly-space-sm)">
+      <Text as="h2" size="lg" weight="bold">
+        Notifications
+      </Text>
+      <Text as="p" tone="muted">
+        Phone and laptop pings when something happens on the mesh while fairfox isn't open.
+        Permission has to come from a tap, not the page itself — that's a platform rule.
+        {permission === 'unsupported'
+          ? typeof window !== 'undefined' && window.isSecureContext === false
+            ? ' This page is on plain HTTP — Web Push requires HTTPS. Open the production URL or run the local-https dev script.'
+            : ' This browser does not expose Web Push. Install the PWA (Add to Home Screen on iOS) and re-open this page.'
+          : permission === 'denied'
+            ? " You've blocked notifications for this site — re-enable them in the OS settings and reload."
+            : ''}
+      </Text>
+      <Cluster gap="var(--polly-space-sm)" justify="start">
+        {permission === 'default' ? (
+          <Button
+            data-action="notifications.enable"
+            tier="primary"
+            size="small"
+            label="Enable notifications"
+          />
+        ) : null}
+        {permission === 'granted' ? (
+          <Button
+            data-action="notifications.disable"
+            tier="secondary"
+            size="small"
+            label="Disable notifications"
+          />
+        ) : null}
+      </Cluster>
+    </Layout>
+  );
+}
+
 function SyncDiagnostics(): preact.JSX.Element {
   const text = peerSnapshot.value;
   return (
@@ -744,6 +790,7 @@ export function HelpView(): preact.JSX.Element {
   return (
     <Layout rows="auto" columns="minmax(0, 1fr)" gap="var(--polly-space-xl)">
       <Diagnostics />
+      <NotificationsControl />
       <DocSizes />
       <SyncDiagnostics />
       <Text as="p">

@@ -28,6 +28,29 @@ export interface Env {
    * single browser session doesn't keep refetching; short enough
    * that compromise blast radius is minutes, not days. */
   readonly FAIRFOX_TURN_TTL_SECONDS: number;
+  /** VAPID public key (uncompressed P-256, base64url-encoded, 87
+   * chars). Handed to clients so `pushManager.subscribe` can bind
+   * subscriptions to this server's identity. Null disables Web
+   * Push entirely — the SPA stops asking for permission and the
+   * /push/* endpoints return 503. */
+  readonly FAIRFOX_VAPID_PUBLIC_KEY: string | null;
+  /** VAPID private key (P-256 d-coordinate, base64url-encoded).
+   * Server-side only — never shipped to clients. Pairs with the
+   * public key above; rotating one without the other invalidates
+   * every existing subscription. */
+  readonly FAIRFOX_VAPID_PRIVATE_KEY: string | null;
+  /** VAPID `sub` claim — typically `mailto:` or `https:` URL.
+   * Vendors (FCM/APNs) log it on push failures and may rate-limit
+   * by it. Required when VAPID keys are set. */
+  readonly FAIRFOX_VAPID_SUBJECT: string | null;
+  /** PEM-encoded TLS private key + certificate file paths. When
+   * both are set, Bun.serve binds over HTTPS instead of HTTP. Used
+   * for local dev so the SPA can run as a secure context (Web Push,
+   * Notification permission, secure WebSocket) without going through
+   * the prod tunnel. On Fly/Railway the platform terminates TLS
+   * upstream, so these stay unset in prod. */
+  readonly FAIRFOX_TLS_KEY_FILE: string | null;
+  readonly FAIRFOX_TLS_CERT_FILE: string | null;
 }
 
 export function loadEnv(): Env {
@@ -37,8 +60,15 @@ export function loadEnv(): Env {
   }
 
   const RAILWAY_ENVIRONMENT: string | null = process.env.RAILWAY_ENVIRONMENT ?? null;
+  // When local TLS is configured, the signalling default flips to
+  // `wss:` to match. An explicit FAIRFOX_SIGNALING_URL always wins.
+  const hasLocalTls = Boolean(
+    process.env.FAIRFOX_TLS_KEY_FILE?.trim() && process.env.FAIRFOX_TLS_CERT_FILE?.trim()
+  );
+  const defaultSignalingScheme = hasLocalTls ? 'wss' : 'ws';
   const FAIRFOX_SIGNALING_URL =
-    process.env.FAIRFOX_SIGNALING_URL ?? `ws://localhost:${PORT}/polly/signaling`;
+    process.env.FAIRFOX_SIGNALING_URL ??
+    `${defaultSignalingScheme}://localhost:${PORT}/polly/signaling`;
 
   // DATA_DIR is optional under the mesh architecture. Legacy sub-apps
   // that still use SQLite need it; new sub-apps don't touch it. An
@@ -113,6 +143,52 @@ export function loadEnv(): Env {
     );
   }
 
+  const FAIRFOX_VAPID_PUBLIC_KEY: string | null =
+    process.env.FAIRFOX_VAPID_PUBLIC_KEY?.trim() || null;
+  const FAIRFOX_VAPID_PRIVATE_KEY: string | null =
+    process.env.FAIRFOX_VAPID_PRIVATE_KEY?.trim() || null;
+  const FAIRFOX_VAPID_SUBJECT: string | null = process.env.FAIRFOX_VAPID_SUBJECT?.trim() || null;
+
+  // Same symmetry rule as TURN: a half-configured VAPID set means the
+  // SPA asks for permission, gets a subscription tied to a public key
+  // the server cannot sign for, and pushes silently fail. Refuse to
+  // boot so the operator notices at deploy time. Subject is mandatory
+  // when keys are present — vendors require it on every push.
+  const vapidSet = [
+    FAIRFOX_VAPID_PUBLIC_KEY,
+    FAIRFOX_VAPID_PRIVATE_KEY,
+    FAIRFOX_VAPID_SUBJECT,
+  ].filter((v) => v !== null).length;
+  if (vapidSet !== 0 && vapidSet !== 3) {
+    die('FAIRFOX_VAPID_{PUBLIC_KEY,PRIVATE_KEY,SUBJECT} must all be set together or none of them.');
+  }
+  if (FAIRFOX_VAPID_SUBJECT && !/^(mailto:|https:\/\/)/.test(FAIRFOX_VAPID_SUBJECT)) {
+    die(
+      `FAIRFOX_VAPID_SUBJECT must start with "mailto:" or "https://" (got ${JSON.stringify(FAIRFOX_VAPID_SUBJECT)}).`
+    );
+  }
+
+  const FAIRFOX_TLS_KEY_FILE: string | null = process.env.FAIRFOX_TLS_KEY_FILE?.trim() || null;
+  const FAIRFOX_TLS_CERT_FILE: string | null = process.env.FAIRFOX_TLS_CERT_FILE?.trim() || null;
+  if (
+    (FAIRFOX_TLS_KEY_FILE && !FAIRFOX_TLS_CERT_FILE) ||
+    (!FAIRFOX_TLS_KEY_FILE && FAIRFOX_TLS_CERT_FILE)
+  ) {
+    die('FAIRFOX_TLS_KEY_FILE and FAIRFOX_TLS_CERT_FILE must both be set together, or neither.');
+  }
+  for (const [name, path] of [
+    ['FAIRFOX_TLS_KEY_FILE', FAIRFOX_TLS_KEY_FILE],
+    ['FAIRFOX_TLS_CERT_FILE', FAIRFOX_TLS_CERT_FILE],
+  ] as const) {
+    if (path) {
+      try {
+        statSync(path);
+      } catch (err) {
+        die(`${name} (${path}) does not exist or is not readable: ${errMsg(err)}`);
+      }
+    }
+  }
+
   return {
     PORT,
     RAILWAY_ENVIRONMENT,
@@ -121,6 +197,11 @@ export function loadEnv(): Env {
     FAIRFOX_TURN_URL,
     FAIRFOX_TURN_SHARED_SECRET,
     FAIRFOX_TURN_TTL_SECONDS,
+    FAIRFOX_VAPID_PUBLIC_KEY,
+    FAIRFOX_VAPID_PRIVATE_KEY,
+    FAIRFOX_VAPID_SUBJECT,
+    FAIRFOX_TLS_KEY_FILE,
+    FAIRFOX_TLS_CERT_FILE,
   };
 }
 

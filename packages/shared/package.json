@@ -43,7 +43,10 @@
     "./assistant-state": "./src/assistant-state.ts",
     "./assistant-state-guards": "./src/assistant-state-guards.ts",
     "./polly": "./src/polly-reexport.ts",
-    "./loaded-budget": "./src/loaded-budget.ts"
+    "./loaded-budget": "./src/loaded-budget.ts",
+    "./service-worker": "./src/service-worker.ts",
+    "./push-subscribe": "./src/push-subscribe.ts",
+    "./push-emit": "./src/push-emit.ts"
   },
   "imports": {
     "#src/*": "./src/*"

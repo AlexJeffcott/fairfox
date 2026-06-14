@@ -1,0 +1,41 @@
+/*
+ * iOS safe-area handling for the installed PWA.
+ *
+ * The HTML shell sets `viewport-fit=cover` and
+ * `apple-mobile-web-app-status-bar-style=black-translucent` so the
+ * page goes edge-to-edge and the status bar (and Dynamic Island /
+ * notch) overlays the top of the document. Without explicit
+ * safe-area padding, the first row of every sub-app sits *under*
+ * the clock and battery indicator on iPhone, and the bottom of the
+ * agenda quick-add input sits under the home-indicator bar.
+ *
+ * The padding lives on `#app` rather than each sub-app's root
+ * Layout for two reasons:
+ *  1. one rule covers every sub-app (Home, Agenda, Chat, Todo, the
+ *     Struggle, Speakwell, Library, Family-Phone-Admin, Docs)
+ *     without having to thread it through nine codepaths;
+ *  2. when iOS rotates, the inset values flip — putting the rule
+ *     here means every sub-app gets the new values for free, no
+ *     re-render gymnastics.
+ *
+ * Values are `env(safe-area-inset-*, 0)` so non-iOS browsers and
+ * non-notched iPhones get zero padding, identical to the prior
+ * behaviour.
+ */
+#app {
+  padding-block-start: env(safe-area-inset-top, 0);
+  padding-block-end: env(safe-area-inset-bottom, 0);
+  padding-inline-start: env(safe-area-inset-left, 0);
+  padding-inline-end: env(safe-area-inset-right, 0);
+  /* iOS Safari treats 100vh as "viewport height ignoring the URL
+   * bar"; svh is the visible-height that excludes the bar so the
+   * page is bounded correctly when the bar is showing. Fall back
+   * to vh on engines that don't support svh yet. */
+  min-block-size: 100vh;
+  box-sizing: border-box;
+}
+@supports (min-block-size: 100svh) {
+  #app {
+    min-block-size: 100svh;
+  }
+}

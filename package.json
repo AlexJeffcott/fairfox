@@ -49,11 +49,13 @@
     "@fairfox/shared": "workspace:*",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
+    "@types/web-push": "^3.6.4",
     "fflate": "catalog:",
     "puppeteer": "^24.41.0",
     "qrcode": "catalog:",
     "tweetnacl": "catalog:",
     "typescript": "catalog:",
+    "web-push": "^3.6.7",
     "ws": "catalog:"
   },
   "scripts": {

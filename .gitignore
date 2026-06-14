@@ -10,3 +10,4 @@ build/
 scripts/artifacts/
 specs/tla/states/
 .claude/scheduled_tasks.lock
+.dev-certs/
