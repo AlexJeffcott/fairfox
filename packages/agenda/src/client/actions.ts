@@ -7,7 +7,11 @@
 // presses Add.
 
 import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
+import { deriveSelfPeerId } from '@fairfox/shared/keyring';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
+import { emitWake } from '@fairfox/shared/push-emit';
+import { userIdentity } from '@fairfox/shared/user-identity-state';
+import { usersState } from '@fairfox/shared/users-state';
 import { agendaViewSignals } from '#src/client/App.tsx';
 import type {
   AgendaItem,
@@ -49,6 +53,28 @@ function isKind(s: string): s is AgendaItemKind {
   return s === 'chore' || s === 'event';
 }
 
+/** Notify every other device on the household mesh that a new agenda
+ * item landed. Best-effort and fire-and-forget — emitWake skips the
+ * sender's own device, revoked devices, and any peer currently live
+ * on the signalling channel (they get the CRDT change in
+ * milliseconds), so the buzz only reaches genuinely-offline household
+ * devices. Mirrors the chat.send wake; the agenda is broadcast the
+ * same way chat is. */
+async function emitAgendaItemWake(item: AgendaItem): Promise<void> {
+  const peerId = await deriveSelfPeerId();
+  const identity = userIdentity.value;
+  const who = identity
+    ? (usersState.value.users[identity.userId]?.displayName ?? identity.userId.slice(0, 6))
+    : 'Someone';
+  await emitWake(peerId, {
+    kind: 'agenda',
+    title: who,
+    body: `Added ${item.kind} “${item.name}”`,
+    tag: `agenda:${item.id}`,
+    url: '/agenda',
+  });
+}
+
 /** Actions that mutate the `agenda:main` CRDT state and therefore
  * require `agenda.write`. View-state toggles stay unguarded.
  * Exported so the unified shell's dispatcher gates the same set. */
@@ -82,6 +108,7 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     agenda.handle?.change((doc) => {
       doc.items.push(item);
     });
+    void emitAgendaItemWake(item);
   },
 
   'item.create-from-draft': () => {
@@ -126,6 +153,7 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       doc.items.push(item);
     });
     resetItemDraft();
+    void emitAgendaItemWake(item);
   },
 
   'item.delete': (ctx) => {

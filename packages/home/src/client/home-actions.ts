@@ -16,6 +16,11 @@ import {
 } from '@fairfox/shared/devices-state';
 import { forgetPeer, loadOrCreateKeyring } from '@fairfox/shared/keyring';
 import { canDo } from '@fairfox/shared/policy';
+import {
+  ensurePushSubscription,
+  requestPushPermission,
+  unsubscribePush,
+} from '@fairfox/shared/push-subscribe';
 import { signDeviceRevocation, signEndorsement } from '@fairfox/shared/user-identity';
 import { userIdentity } from '@fairfox/shared/user-identity-state';
 import {
@@ -106,6 +111,38 @@ export const homeActions: Record<string, (ctx: HandlerContext) => void> = {
     if (ctx.element instanceof HTMLTextAreaElement) {
       ctx.element.select();
     }
+  },
+  // Notifications — the permission prompt must come from a user
+  // gesture (iOS Safari refuses otherwise), so the Settings UI fires
+  // this action on click. Three steps:
+  //   1. Ask the browser for permission. The dialog is OS-level;
+  //      result lands on the next tick.
+  //   2. If granted, subscribe with the relay's VAPID public key and
+  //      write the resulting endpoint+keys onto this device's row in
+  //      mesh:devices so other peers can wake it.
+  //   3. If denied, do nothing — the user can re-grant via OS
+  //      settings; we don't re-prompt programmatically.
+  'notifications.enable': () => {
+    void (async () => {
+      const peerId = selfPeerId.value;
+      if (!peerId) {
+        return;
+      }
+      const result = await requestPushPermission();
+      if (result !== 'granted') {
+        return;
+      }
+      await ensurePushSubscription(peerId);
+    })();
+  },
+  'notifications.disable': () => {
+    void (async () => {
+      const peerId = selfPeerId.value;
+      if (!peerId) {
+        return;
+      }
+      await unsubscribePush(peerId);
+    })();
   },
   'help.refresh-doc-sizes': () => {
     void import('#src/client/doc-sizes.ts').then(({ refreshDocSizes }) => refreshDocSizes());

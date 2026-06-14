@@ -227,6 +227,20 @@ export function loadOrCreateKeyring(): Promise<MeshKeyring> {
   return inFlight;
 }
 
+/** This device's mesh peer id — the first 8 bytes of the keyring's
+ * Ed25519 public key, hex-encoded. Stable across reloads and equal
+ * to the key `mesh:devices` rows are stored under. Async because the
+ * keyring may need a first read from IndexedDB; subsequent calls hit
+ * the in-memory cache. Used wherever code needs "which device am I?"
+ * without threading a peerId through every call (push wake emitters,
+ * chat message authorship). */
+export async function deriveSelfPeerId(): Promise<string> {
+  const keyring = await loadOrCreateKeyring();
+  return Array.from(keyring.identity.publicKey.slice(0, 8))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 /** Drop the in-memory keyring so the next `loadOrCreateKeyring`
  * call re-reads from disk. Intended for tests and for the rare
  * runtime path that wipes the keyring (`fairfox mesh init --force`

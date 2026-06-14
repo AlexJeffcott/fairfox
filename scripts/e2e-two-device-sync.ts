@@ -38,7 +38,6 @@ import {
   MESH_SYNC_TIMEOUT_MS,
   PAIR_CEREMONY_TIMEOUT_MS,
   SHORT_TIMEOUT_MS,
-  sleep,
   waitFor,
   waitForText,
 } from './e2e-config.ts';
@@ -227,8 +226,15 @@ try {
   await waitForText(desktopBrowser.page, 'Agenda', PAIR_CEREMONY_TIMEOUT_MS);
   TRACE('browser', 'paired — agenda visible');
 
-  // Let the WebRTC data channel to the CLI peer settle before writing.
-  await sleep(5000);
+  // After identity is applied, consumePairingHash reloads the page;
+  // the agenda body re-mounts. Wait for the items-tab button — which
+  // only renders in the post-reload agenda — before clicking. This
+  // is navigation-tolerant: waitForSelector retries across the
+  // reload's evaluation-context destruction.
+  await desktopBrowser.page.waitForSelector(
+    'button[data-action="agenda.tab"][data-action-id="items"]',
+    { timeout: PAIR_CEREMONY_TIMEOUT_MS }
+  );
 
   // 4 — type a chore. polly's ActionInput starts as a view-mode div; a
   // click promotes it into an editable input.
@@ -249,10 +255,59 @@ try {
   if (!input) {
     throw new Error('no add-chore input');
   }
-  await input.focus();
-  await desktopBrowser.page.keyboard.type(chore);
+  // polly-ui's ActionInput is a controlled Preact input mounted on
+  // a state transition; puppeteer's `keyboard.type` races Preact's
+  // commit and loses the first character. Drive the value through
+  // the native setter so Preact's onInput sees the change as a real
+  // user input, then dispatch change + blur to fire the configured
+  // saveOn="blur" commit path. Wait for the input to reflect the
+  // typed value before proceeding — no fixed sleep involved.
+  await desktopBrowser.page.evaluate((value) => {
+    const el = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+      'input[data-polly-action-input], textarea[data-polly-action-input]'
+    );
+    if (!el) {
+      throw new Error('no edit-mode action input present');
+    }
+    const proto =
+      el instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+    if (!setter) {
+      throw new Error('no value setter on input prototype');
+    }
+    setter.call(el, value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, chore);
+  await waitFor(
+    async () =>
+      desktopBrowser.page.evaluate(
+        (expected) =>
+          document.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+            'input[data-polly-action-input], textarea[data-polly-action-input]'
+          )?.value === expected,
+        chore
+      ),
+    { timeoutMs: SHORT_TIMEOUT_MS, description: 'input reflects the typed value' }
+  );
   await desktopBrowser.page.keyboard.press('Tab');
-  await sleep(200);
+  // Wait for the agenda's draft to actually carry the chore text
+  // before clicking "create" — the saveOn="blur" commit path that
+  // Tab fires runs asynchronously through the action dispatch and
+  // settles into the mesh doc on the next microtask. Polling the
+  // hidden draft signal would require an exported handle; the
+  // create button's enabled state is a perfectly good proxy.
+  await waitFor(
+    async () =>
+      desktopBrowser.page.evaluate(() => {
+        const btn = document.querySelector<HTMLButtonElement>(
+          'button[data-action="item.create-from-draft"]'
+        );
+        return Boolean(btn && !btn.disabled);
+      }),
+    { timeoutMs: SHORT_TIMEOUT_MS, description: 'create-from-draft button enabled' }
+  );
 
   // 5 — create the chore and wait for it to converge to the CLI peer.
   // A freshly-paired device's write capability settles asynchronously
@@ -260,7 +315,9 @@ try {
   // post-pair reload), so the create click is retried until the chore
   // actually lands in the mesh doc. `agenda list` is read-only
   // (openMeshClientReadOnly), safe to poll while `pair open` holds the
-  // mesh.
+  // mesh. waitFor's own intervalMs is the polling cadence — well
+  // matched to "the wait IS the behaviour" carve-out in
+  // check-no-fixed-waits.
   TRACE('cli', 'create + wait for the chore to converge to the CLI peer');
   try {
     await waitFor(
@@ -268,10 +325,13 @@ try {
         await desktopBrowser.page
           .click('button[data-action="item.create-from-draft"]')
           .catch(() => undefined);
-        await sleep(1500);
         return runCli(['agenda', 'list']).stdout.includes(chore);
       },
-      { timeoutMs: MESH_SYNC_TIMEOUT_MS, intervalMs: 0, description: 'chore in `agenda list`' }
+      {
+        timeoutMs: MESH_SYNC_TIMEOUT_MS,
+        intervalMs: 1500,
+        description: 'chore in `agenda list`',
+      }
     );
     ok = true;
   } catch {

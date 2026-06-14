@@ -1,7 +1,11 @@
 // Action registry for the Todo sub-app.
 
 import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
+import { deriveSelfPeerId } from '@fairfox/shared/keyring';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
+import { emitWake } from '@fairfox/shared/push-emit';
+import { userIdentity } from '@fairfox/shared/user-identity-state';
+import { usersState } from '@fairfox/shared/users-state';
 import {
   filterPriority,
   filterProjectName,
@@ -38,6 +42,29 @@ function generateId(prefix: string): string {
 
 function isTaskPriority(s: string): s is TaskPriority {
   return s === 'high' || s === 'med' || s === 'low';
+}
+
+/** Wake every other mesh device when a quick capture is added — the
+ * "jot a thought on my phone, see it on the laptop" path. Best-effort
+ * and fire-and-forget; emitWake filters out the sender, revoked, and
+ * currently-live devices, so only genuinely-offline devices buzz.
+ * Scoped to captures (not every task/project edit) to keep the todo
+ * tracker quiet — captures are the lightweight inbox, the rest is
+ * desk work. */
+async function emitCaptureWake(capture: QuickCapture): Promise<void> {
+  const peerId = await deriveSelfPeerId();
+  const identity = userIdentity.value;
+  const who = identity
+    ? (usersState.value.users[identity.userId]?.displayName ?? identity.userId.slice(0, 6))
+    : 'Someone';
+  const text = capture.text.length > 200 ? `${capture.text.slice(0, 197)}…` : capture.text;
+  await emitWake(peerId, {
+    kind: 'todo',
+    title: who,
+    body: `Captured “${text}”`,
+    tag: `todo:${capture.id}`,
+    url: '/todo-v2',
+  });
 }
 
 function isProjectStatus(s: string): s is Project['status'] {
@@ -375,6 +402,7 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     capturesState.handle?.change((doc) => {
       doc.captures.push(capture);
     });
+    void emitCaptureWake(capture);
   },
 
   'capture.delete': (ctx) => {

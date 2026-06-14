@@ -47,6 +47,31 @@ export type Capability =
   | 'background-sync'
   | 'llm-peer';
 
+/** A Web Push subscription this device has registered with its
+ * browser-vendor push service. Written by the device itself after
+ * the user grants notification permission and `pushManager.subscribe`
+ * resolves. Other devices read it to encrypt a wake payload bound to
+ * this endpoint's ECDH keys; the relay never sees the plaintext.
+ *
+ * Cleared (field removed via Automerge delete) when the endpoint
+ * stops accepting pushes — the vendor returns 404/410 once a
+ * subscription expires or the user uninstalls the PWA. */
+export interface PushSubscriptionRecord {
+  /** Vendor push endpoint URL (e.g. `https://fcm.googleapis.com/...`).
+   * Treated as opaque by the relay — the only thing it does with it
+   * is POST the VAPID-signed envelope back. */
+  endpoint: string;
+  /** Base64url-encoded P-256 public key from `subscription.getKey('p256dh')`.
+   * Senders use this with RFC 8291 to encrypt the payload. */
+  p256dh: string;
+  /** Base64url-encoded 16-byte secret from `subscription.getKey('auth')`.
+   * Mixed into the RFC 8291 key derivation; recipient's SW decrypts
+   * with the matching private half held in the browser. */
+  auth: string;
+  /** ISO 8601 timestamp of the latest subscribe / refresh. */
+  updatedAt: string;
+}
+
 /** A signature by a user key binding a user to a device. Stored on
  * the device row so verifiers can check it without side-channels.
  * Signed payload: `{ deviceId, userId, addedAt }` as JSON. */
@@ -95,6 +120,12 @@ export interface DeviceEntry {
   revocationSignature?: number[];
   /** The user that signed the revocation, if any. */
   revokedByUserId?: string;
+  /** Web Push subscription for this device. Absent when the device
+   * doesn't have notifications enabled, doesn't support Web Push,
+   * or the last push attempt returned 404/410 (subscription expired
+   * — the sender clears the field so the device re-subscribes next
+   * boot). */
+  pushSubscription?: PushSubscriptionRecord;
 }
 
 export interface DevicesDoc {
@@ -213,6 +244,10 @@ export function upsertDeviceEntry(
   if (revokedByUserId !== undefined) {
     next.revokedByUserId = revokedByUserId;
   }
+  const pushSubscription = patch.pushSubscription ?? existing?.pushSubscription;
+  if (pushSubscription !== undefined) {
+    next.pushSubscription = pushSubscription;
+  }
 
   const handle = devicesState.handle;
   if (!handle) {
@@ -277,6 +312,31 @@ export function upsertDeviceEntry(
     if (patch.revokedByUserId !== undefined) {
       current.revokedByUserId = next.revokedByUserId;
     }
+    if (patch.pushSubscription !== undefined) {
+      current.pushSubscription = next.pushSubscription;
+    }
+  });
+}
+
+/** Clear the push subscription on a device row. Called by the wake
+ * sender when the relay reports a vendor 404/410 — the endpoint is
+ * dead, so any future wake attempts must skip this device until it
+ * re-subscribes on its next boot. Distinct from `upsertDeviceEntry`
+ * because patching undefined into an optional Automerge field is
+ * rejected by the runtime; the field needs an explicit delete. */
+export function clearPushSubscription(peerId: string): void {
+  const handle = devicesState.handle;
+  if (!handle) {
+    throw new Error(
+      'clearPushSubscription: devicesState.handle not bridged — caller must await devicesState.loaded before writing'
+    );
+  }
+  handle.change((doc) => {
+    const current = doc.devices?.[peerId];
+    if (!current) {
+      return;
+    }
+    delete current.pushSubscription;
   });
 }
 

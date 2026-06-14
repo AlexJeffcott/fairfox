@@ -9,4 +9,11 @@ export interface WsData {
    * handler to emit `peer-left` to the remaining incumbents and to
    * evict the peer's entry only if the socket still owns it. */
   peerId?: string;
+  /** Populated by the signalling relay on `join` when the client
+   * sends its `userId` alongside `peerId`. Lets the relay build a
+   * `userId → set<peerId>` index used by the push pipeline to skip
+   * notifications for users who already have a live socket. Older
+   * clients that don't send a userId stay absent from the index;
+   * the push code treats their owners as offline-eligible. */
+  userId?: string;
 }

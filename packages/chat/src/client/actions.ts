@@ -3,10 +3,12 @@
 // is when they press Send.
 
 import { buildFreshnessActions } from '@fairfox/shared/build-freshness';
-import { loadOrCreateKeyring } from '@fairfox/shared/keyring';
+import { deriveSelfPeerId } from '@fairfox/shared/keyring';
 import { currentPageContext, type PageContext } from '@fairfox/shared/page-context';
 import { pairingActions } from '@fairfox/shared/pairing-actions';
+import { emitWake } from '@fairfox/shared/push-emit';
 import { userIdentity } from '@fairfox/shared/user-identity-state';
+import { usersState } from '@fairfox/shared/users-state';
 import { historyViewSignals } from '#src/client/App.tsx';
 import type { Chat, Message } from '#src/client/state.ts';
 import {
@@ -26,13 +28,6 @@ interface HandlerContext {
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-async function derivePeerId(): Promise<string> {
-  const keyring = await loadOrCreateKeyring();
-  return Array.from(keyring.identity.publicKey.slice(0, 8))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
 }
 
 /** Find an existing chat matching a page-context "anchor", so
@@ -234,7 +229,7 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
     // never reaches the underlying Automerge doc, so no sync
     // message ever leaves the device. Waiting on `chatState.loaded`
     // is the same guard 94a09a3 added on the relay side.
-    void Promise.all([chatState.loaded, derivePeerId()]).then(([, peerId]) => {
+    void Promise.all([chatState.loaded, deriveSelfPeerId()]).then(([, peerId]) => {
       const chat = ensureActiveChat(identity.userId, text, pageCtx);
       if (pageCtx) {
         appendContextToChat(chat.id, pageCtx);
@@ -254,6 +249,22 @@ export const registry: Record<string, (ctx: HandlerContext) => void> = {
       });
       bumpChatTimestamp(chat.id);
       resetDraft();
+      // Chat is broadcast — every device on the mesh except this one
+      // should get a notification. emitWake reads mesh:devices,
+      // filters out the sender + revoked + currently-live devices,
+      // and asks the relay to push to the rest. Same-user different-
+      // device (laptop sends, phone buzzes) is the common case in a
+      // household mesh.
+      const senderName =
+        usersState.value.users[identity.userId]?.displayName ?? identity.userId.slice(0, 6);
+      const body = text.length > 200 ? `${text.slice(0, 197)}…` : text;
+      void emitWake(peerId, {
+        kind: 'chat',
+        title: senderName,
+        body,
+        tag: `chat:${chat.id}`,
+        url: '/chat',
+      });
     });
   },
 

@@ -8,6 +8,7 @@
 
 import '@fairfox/polly/ui/styles.css';
 import '@fairfox/polly/ui/theme.css';
+import '#src/client/safe-area.css';
 
 // Swallow automerge-wasm OOM rejections so a single malformed sync
 // message doesn't crash the whole app. The `error inflating
@@ -52,9 +53,11 @@ import { awaitLoadedBudget } from '@fairfox/shared/loaded-budget';
 import { installMeshGateEffects } from '@fairfox/shared/mesh-gate';
 import { meshMetaState } from '@fairfox/shared/mesh-meta-state';
 import { installPairingHashListener } from '@fairfox/shared/pairing-actions';
+import { ensurePushSubscription } from '@fairfox/shared/push-subscribe';
 import { installPwaInstallListeners } from '@fairfox/shared/pwa-install';
 import { installQrCameraLifecycle, installQrPasteListener } from '@fairfox/shared/qr-scan';
 import { installRequirePairedEffects } from '@fairfox/shared/require-paired';
+import { installServiceWorker } from '@fairfox/shared/service-worker';
 import { installStorageHealthPoll } from '@fairfox/shared/storage-health';
 import { usersState } from '@fairfox/shared/users-state';
 import { sessionsState } from '@fairfox/speakwell/state';
@@ -125,6 +128,7 @@ installLibraryEffects();
 installDocsEffects();
 installChatHistoryEffects();
 installTheStruggleEffects();
+void installServiceWorker();
 
 // Populate the self-peer id as soon as the keyring resolves so
 // PeersView can flag this device's own row. Independent of
@@ -141,6 +145,12 @@ void (async () => {
       // never throws into the boot path.
       if (await awaitLoadedBudget(devicesState.loaded, 3000)) {
         touchSelfDeviceEntry(peerId, { agent: 'browser' });
+        // Re-subscribe if the user has already granted permission.
+        // Refreshes the endpoint + keys in case the browser rotated
+        // them, and writes the result onto this device's row so
+        // other peers can wake it. No-op when permission isn't
+        // granted; the Settings UI handles the initial gesture.
+        void ensurePushSubscription(peerId);
       }
     }
   } catch {

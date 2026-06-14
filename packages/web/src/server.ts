@@ -15,11 +15,23 @@ import { SIGNALING_PATH } from '@fairfox/shared/signaling';
 import type { WsData } from '@fairfox/shared/subapp';
 import type { ServerWebSocket, WebSocketHandler } from 'bun';
 import { zipSync } from 'fflate';
+import webpush from 'web-push';
 import { type AppBundle, fetchApp } from './fetch-app.ts';
 
 const APP_PACKAGE = 'home';
 
 const env = loadEnv();
+
+// Configure web-push if VAPID keys are present. Without this call the
+// library throws on every `sendNotification`; with it, calls bind the
+// VAPID subject + key pair as the sender identity on every push.
+if (env.FAIRFOX_VAPID_PUBLIC_KEY && env.FAIRFOX_VAPID_PRIVATE_KEY && env.FAIRFOX_VAPID_SUBJECT) {
+  webpush.setVapidDetails(
+    env.FAIRFOX_VAPID_SUBJECT,
+    env.FAIRFOX_VAPID_PUBLIC_KEY,
+    env.FAIRFOX_VAPID_PRIVATE_KEY
+  );
+}
 
 // --- Build-hash freshness ---
 //
@@ -130,6 +142,56 @@ const REFRESH_TOKEN = process.env.FAIRFOX_REFRESH_TOKEN?.trim() ?? '';
 
 // Signaling state: peer id → WebSocket
 const signalingPeers = new Map<string, ServerWebSocket<WsData>>();
+
+// Push request shapes accepted by `POST /push/send`. Defined here
+// rather than in @fairfox/shared because the relay is the only Bun
+// surface that imports them; the SPA-side equivalents live in
+// `@fairfox/shared/push-client` (it sends, doesn't receive).
+interface PushTargetSubscription {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}
+interface PushWakePayload {
+  kind: string;
+  title: string;
+  body: string;
+  tag: string;
+  url: string;
+}
+interface PushSendRequest {
+  recipientUserId: string;
+  payload: PushWakePayload;
+  targets: PushTargetSubscription[];
+}
+interface PushTargetResult {
+  endpoint: string;
+  status: number;
+  ok: boolean;
+}
+function isWebPushError(err: unknown): err is { statusCode: number } {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'statusCode' in err &&
+    typeof (err as { statusCode: unknown }).statusCode === 'number'
+  );
+}
+
+// userId → set of peerIds currently joined. Populated on every `join`
+// frame whose payload includes a `userId` (older client builds omit
+// it — the entry stays absent and the push code treats them as
+// offline-eligible). The relay consults this map on `POST /push/send`
+// to short-circuit pushes to users who already have a live signalling
+// socket — they'll get the update through the mesh in milliseconds
+// and a redundant notification would buzz the phone for nothing.
+//
+// Today polly's signalling client emits join without userId, so this
+// map stays empty in practice and the online-skip never fires. The
+// index code is kept ready for a future polly tweak (or a custom
+// `user-announce` frame) that supplies userId; until then the
+// sender-side check via peersPresent is the only online-gate.
+const userIdToPeerIds = new Map<string, Set<string>>();
 
 // Pair-return relay state: sessionId → waiting issuer socket. Populated
 // by a `pair-issue` frame from the issuer during the pairing ceremony,
@@ -247,7 +309,8 @@ function handleSignalingMessage(ws: ServerWebSocket<WsData>, msg: string): void 
   try {
     const parsed = JSON.parse(msg);
     if (parsed.type === 'join' && typeof parsed.peerId === 'string') {
-      handleJoin(ws, parsed.peerId);
+      const userId = typeof parsed.userId === 'string' ? parsed.userId : undefined;
+      handleJoin(ws, parsed.peerId, userId);
       return;
     }
     if (
@@ -286,7 +349,7 @@ function handleSignalingMessage(ws: ServerWebSocket<WsData>, msg: string): void 
   }
 }
 
-function handleJoin(ws: ServerWebSocket<WsData>, peerId: string): void {
+function handleJoin(ws: ServerWebSocket<WsData>, peerId: string, userId: string | undefined): void {
   // Snapshot the incumbents before inserting the newcomer so we can
   // tell the newcomer who is already present and tell each of them
   // about the newcomer. A rejoin with the same peerId replaces the
@@ -298,8 +361,33 @@ function handleJoin(ws: ServerWebSocket<WsData>, peerId: string): void {
     }
     incumbents.push({ peerId: existingPeerId, socket: existingSocket });
   }
+  // If this socket was previously joined under a different peerId or
+  // userId, evict the stale entries before inserting the new pair.
+  const priorPeerId = ws.data.peerId;
+  const priorUserId = ws.data.userId;
+  if (priorPeerId && priorPeerId !== peerId && signalingPeers.get(priorPeerId) === ws) {
+    signalingPeers.delete(priorPeerId);
+  }
+  if (priorUserId && priorPeerId) {
+    const priorSet = userIdToPeerIds.get(priorUserId);
+    if (priorSet) {
+      priorSet.delete(priorPeerId);
+      if (priorSet.size === 0) {
+        userIdToPeerIds.delete(priorUserId);
+      }
+    }
+  }
   signalingPeers.set(peerId, ws);
-  (ws.data as WsData).peerId = peerId;
+  ws.data.peerId = peerId;
+  if (userId) {
+    ws.data.userId = userId;
+    let set = userIdToPeerIds.get(userId);
+    if (!set) {
+      set = new Set();
+      userIdToPeerIds.set(userId, set);
+    }
+    set.add(peerId);
+  }
 
   ws.send(
     JSON.stringify({
@@ -352,6 +440,16 @@ function handleSignalingClose(ws: ServerWebSocket<WsData>): void {
     return;
   }
   signalingPeers.delete(peerId);
+  const userId = ws.data.userId;
+  if (userId) {
+    const set = userIdToPeerIds.get(userId);
+    if (set) {
+      set.delete(peerId);
+      if (set.size === 0) {
+        userIdToPeerIds.delete(userId);
+      }
+    }
+  }
   const notice = JSON.stringify({ type: 'peer-left', peerId });
   for (const [, incumbentSocket] of signalingPeers) {
     try {
@@ -436,6 +534,11 @@ const STATIC_ASSETS: Record<string, { path: string; contentType: string; cacheCo
   '/icon-maskable.svg': {
     path: `${PUBLIC_DIR}/icon-maskable.svg`,
     contentType: 'image/svg+xml; charset=utf-8',
+    cacheControl: 'public, max-age=86400',
+  },
+  '/.well-known/security.txt': {
+    path: `${PUBLIC_DIR}/.well-known/security.txt`,
+    contentType: 'text/plain; charset=utf-8',
     cacheControl: 'public, max-age=86400',
   },
 };
@@ -586,8 +689,22 @@ function publicOrigin(req: Request): string {
   return `${scheme}://${host}`;
 }
 
+// Optional TLS — when both FAIRFOX_TLS_KEY_FILE and
+// FAIRFOX_TLS_CERT_FILE are set, the relay binds over HTTPS. Used
+// for local dev so the SPA runs as a secure context (Web Push,
+// Notification permission, secure WebSocket). Fly/Railway terminate
+// TLS upstream so prod leaves these unset.
+const tlsOptions =
+  env.FAIRFOX_TLS_KEY_FILE && env.FAIRFOX_TLS_CERT_FILE
+    ? { key: Bun.file(env.FAIRFOX_TLS_KEY_FILE), cert: Bun.file(env.FAIRFOX_TLS_CERT_FILE) }
+    : undefined;
+if (tlsOptions) {
+  console.log(`[fairfox] TLS enabled (key=${env.FAIRFOX_TLS_KEY_FILE})`);
+}
+
 const server = Bun.serve<WsData>({
   port: env.PORT,
+  ...(tlsOptions ? { tls: tlsOptions } : {}),
   async fetch(req, srv) {
     const p = new URL(req.url).pathname;
 
@@ -646,6 +763,143 @@ const server = Bun.serve<WsData>({
           'Cache-Control': 'no-store',
         },
       });
+    }
+
+    // Web Push — the public half of the VAPID keypair. The SPA reads
+    // this once on boot and hands it to `pushManager.subscribe`, which
+    // binds the subscription to this server's identity. Returns 503
+    // when VAPID isn't configured so the client knows to skip the
+    // subscription flow entirely. Cached for an hour: the keypair is
+    // long-lived (rotation invalidates every subscription) so refetch
+    // pressure is wasted bandwidth.
+    if (p === '/push/vapid-public-key') {
+      if (!env.FAIRFOX_VAPID_PUBLIC_KEY) {
+        return new Response('VAPID not configured', { status: 503 });
+      }
+      return Response.json(
+        { publicKey: env.FAIRFOX_VAPID_PUBLIC_KEY },
+        { headers: { 'Cache-Control': 'public, max-age=3600' } }
+      );
+    }
+
+    // Web Push — delivery proxy. Any mesh peer can POST a wake intent
+    // here; the relay applies the online-skip gate (see
+    // `userIdToPeerIds` above) and, for offline recipients, hands each
+    // target subscription + payload to the `web-push` library, which
+    // performs RFC 8291 payload encryption and VAPID JWT signing
+    // against the vendor endpoint baked into the subscription.
+    //
+    // The relay sees plaintext payloads in flight — same trust
+    // posture as `/api/llm/*` above, which already proxies plaintext
+    // LLM conversations. The single-operator family mesh accepts this
+    // tradeoff in exchange for a much simpler implementation than a
+    // hand-rolled RFC 8291 in the sender's browser. Revisit if the
+    // trust model widens (relay operated by a third party, mesh
+    // members not all related, etc.).
+    //
+    // Request body:
+    //   {
+    //     recipientUserId: string;       // skip when this user is live
+    //     payload: WakePayload;          // shown on the device
+    //     targets: PushSubscriptionRecord[];
+    //   }
+    // Response: { skipped?: 'user-online'; results?: PerTargetResult[] }
+    // where PerTargetResult = { endpoint: string; status: number; ok: boolean }.
+    if (p === '/push/send' && req.method === 'POST') {
+      if (!env.FAIRFOX_VAPID_PUBLIC_KEY) {
+        return new Response('VAPID not configured', { status: 503 });
+      }
+      let body: PushSendRequest;
+      try {
+        body = (await req.json()) as PushSendRequest;
+      } catch {
+        return Response.json({ error: 'invalid JSON' }, { status: 400 });
+      }
+      if (
+        typeof body.recipientUserId !== 'string' ||
+        !body.payload ||
+        typeof body.payload !== 'object' ||
+        !Array.isArray(body.targets)
+      ) {
+        return Response.json({ error: 'malformed request' }, { status: 400 });
+      }
+      // Online-skip — the relay's signalling table is the source of
+      // truth for "is the recipient connected right now?". Any peer
+      // owned by the recipient being present is enough to suppress
+      // the push; the mesh will deliver the change in milliseconds.
+      const liveSet = userIdToPeerIds.get(body.recipientUserId);
+      if (liveSet && liveSet.size > 0) {
+        return Response.json({ skipped: 'user-online' });
+      }
+      // No live socket — fan out to every target subscription. Each
+      // call is independent; one vendor 410'ing doesn't affect the
+      // others, and the caller decides what to do with the per-target
+      // statuses (typically: clear the dead subscription from the
+      // device's mesh row).
+      const payloadJson = JSON.stringify(body.payload);
+      // Test-only escape hatch: FAIRFOX_PUSH_TEST_STUB_URL=1 makes
+      // /push/send POST the wake-intent envelope (subscription +
+      // unencrypted payload + recipient userId) to each target's
+      // endpoint as plain JSON, instead of running web-push's
+      // RFC 8291 encryption + VAPID signing path. Used by
+      // `scripts/e2e-push.ts` to assert the relay's routing and
+      // per-target status reporting without standing up a TLS
+      // listener — web-push hard-codes `https.request` regardless
+      // of endpoint scheme, so a mock vendor would otherwise need a
+      // real cert. Same shape as FAIRFOX_CLAUDE_STUB in the chat
+      // relay: env-gated, never set in prod, the only test-only
+      // branch in this file.
+      const useStub = process.env.FAIRFOX_PUSH_TEST_STUB_URL === '1';
+      const results: PushTargetResult[] = await Promise.all(
+        body.targets.map(async (t) => {
+          if (
+            !t ||
+            typeof t.endpoint !== 'string' ||
+            typeof t.p256dh !== 'string' ||
+            typeof t.auth !== 'string'
+          ) {
+            return { endpoint: t?.endpoint ?? '', status: 0, ok: false };
+          }
+          if (useStub) {
+            try {
+              const stubRes = await fetch(t.endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  recipientUserId: body.recipientUserId,
+                  payload: body.payload,
+                  subscription: { endpoint: t.endpoint, p256dh: t.p256dh, auth: t.auth },
+                }),
+              });
+              return {
+                endpoint: t.endpoint,
+                status: stubRes.status,
+                ok: stubRes.ok,
+              };
+            } catch {
+              return { endpoint: t.endpoint, status: 0, ok: false };
+            }
+          }
+          try {
+            const result = await webpush.sendNotification(
+              { endpoint: t.endpoint, keys: { p256dh: t.p256dh, auth: t.auth } },
+              payloadJson,
+              { TTL: 60 }
+            );
+            return { endpoint: t.endpoint, status: result.statusCode, ok: true };
+          } catch (err) {
+            const status = isWebPushError(err) ? err.statusCode : 0;
+            if (status === 0) {
+              console.warn(
+                '[push] sendNotification failed without status:',
+                err instanceof Error ? err.message : String(err)
+              );
+            }
+            return { endpoint: t.endpoint, status, ok: false };
+          }
+        })
+      );
+      return Response.json({ results });
     }
 
     if (p === '/build-hash') {
