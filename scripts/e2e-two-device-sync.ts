@@ -249,8 +249,30 @@ try {
   if (!input) {
     throw new Error('no add-chore input');
   }
-  await input.focus();
-  await desktopBrowser.page.keyboard.type(chore);
+  const readChoreInput = (): Promise<string> =>
+    desktopBrowser.page.evaluate(() => {
+      const el = document.querySelector(
+        'input[data-polly-action-input], textarea[data-polly-action-input]'
+      );
+      return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el.value : '';
+    });
+  // polly's ActionInput re-renders as it promotes view→edit, and a keystroke
+  // that lands mid-transition is dropped (the leading char goes missing).
+  // Type, read the field back, and clear+retype until it holds the whole
+  // chore — so the convergence assertion below tests mesh sync, not a
+  // browser typing race.
+  await waitFor(
+    async () => {
+      await input.focus();
+      const current = await readChoreInput();
+      for (let i = 0; i < current.length; i++) {
+        await desktopBrowser.page.keyboard.press('Backspace');
+      }
+      await desktopBrowser.page.keyboard.type(chore);
+      return (await readChoreInput()) === chore;
+    },
+    { timeoutMs: SHORT_TIMEOUT_MS, intervalMs: 100, description: 'chore text fully entered' }
+  );
   await desktopBrowser.page.keyboard.press('Tab');
   await sleep(200);
 
