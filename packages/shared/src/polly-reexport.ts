@@ -19,7 +19,7 @@ export type { DocHandle } from '@automerge/automerge-repo/slim';
 // which lowers to polly's `applyTopLevel` and races concurrent
 // per-key edits to a silent merge-loss by actor-id hash.
 export { Repo } from '@automerge/automerge-repo/slim';
-export { isRecord } from '@fairfox/polly/guards';
+export { assertNever, isRecord } from '@fairfox/polly/guards';
 export {
   $meshState,
   applyPairingToken,
