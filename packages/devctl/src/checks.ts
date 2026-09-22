@@ -131,4 +131,20 @@ export const CHECKS: readonly Check[] = [
       },
     ],
   },
+
+  // Step 0a, the tests and the lint scripts.
+  {
+    name: 'unit',
+    catches: 'a wrong result from one function',
+    run: ['bun', 'test', './packages', '--path-ignore-patterns=**/*.property.test.ts'],
+    red: [
+      {
+        breaks: 'ci writes its record when the tree changed during the run',
+        file: 'packages/devctl/src/record.ts',
+        find: '!run.cleanBefore || !run.cleanAfter ||',
+        replace: '!run.cleanBefore ||',
+        output: '(fail) the ci record > a tree changed during the run writes none',
+      },
+    ],
+  },
 ];
