@@ -187,6 +187,13 @@ export const CHECKS: readonly Check[] = [
         replace: '<body>Fairfox</body>',
         output: 'the name Fairfox is shown with scripts turned off',
       },
+      {
+        breaks: 'the features glob misses the feature file',
+        file: 'playwright.config.ts',
+        find: "  features: 'features/**/*.feature',",
+        replace: "  features: 'features/*/**/*.feature',",
+        output: 'Error: No tests found',
+      },
     ],
   },
   // TLC, for the hand-written TLA+ specs (S4).

@@ -12,7 +12,8 @@ import { defineBddConfig } from 'playwright-bdd';
 import { PHONE, WIDTH } from './features/browser/phone.ts';
 
 const testDir = defineBddConfig({
-  features: 'features/*.feature',
+  // Every depth of features/, as the @local runner reads it.
+  features: 'features/**/*.feature',
   steps: 'features/browser/*.ts',
   tags: '@browser',
   outputDir: '.features-gen',
