@@ -30,7 +30,11 @@ _devctl() {
     'browser:Run the @browser features in WebKit on a screen 320px wide'
     'tlc:Model-check each hand-written TLA+ spec with TLC'
     'verify:Run polly verify on the anchored handlers, inside 120 s'
-    'image:Build the production image from the checkout'
+    'image:Build the production image from the checkout, check it, and run the server in it'
+    'replica:Replicate the database from the image with Litestream, restore it, and read it back'
+    'restore:Restore a Litestream file replica and read the marker and the migration'
+    'deploy:Deploy the commit at HEAD to the Fly app, and record it'
+    'rollback:Go back to the release before the current one on the Fly app, and record it'
   )
 
   if (( CURRENT == 2 )); then
@@ -75,6 +79,20 @@ _devctl() {
       ;;
     image)
       _arguments '(-h --help)'{-h,--help}'[show the help of image]'
+      ;;
+    replica)
+      _arguments '(-h --help)'{-h,--help}'[show the help of replica]'
+      ;;
+    restore)
+      _arguments \
+        '(-h --help)'{-h,--help}'[show the help of restore]' \
+        '1:replica directory:_directories'
+      ;;
+    deploy)
+      _arguments '(-h --help)'{-h,--help}'[show the help of deploy]'
+      ;;
+    rollback)
+      _arguments '(-h --help)'{-h,--help}'[show the help of rollback]'
       ;;
   esac
 }

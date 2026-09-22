@@ -1,0 +1,48 @@
+/**
+ * The age of the replica (S7a): how long ago Litestream last wrote to it,
+ * read from what `litestream ltx -json -level all <url>` lists. Pure: the
+ * listing and "now" are arguments, so a test sets both.
+ */
+
+/** A replica older than this fails the status command (S7a). */
+export const MAX_REPLICA_AGE_SECONDS = 3600;
+
+/** The newest timestamp in the listing, or undefined for an empty replica or a listing that is not one. */
+function newestWrite(listing: string): Date | undefined {
+  const parsed: unknown = JSON.parse(listing);
+  if (!Array.isArray(parsed)) {
+    throw new Error(`litestream ltx did not print a list: ${listing.trim()}`);
+  }
+  let newest: Date | undefined;
+  for (const entry of parsed) {
+    const timestamp: unknown = typeof entry === 'object' && entry !== null ? Reflect.get(entry, 'timestamp') : undefined;
+    if (typeof timestamp !== 'string') {
+      throw new Error(`An LTX entry has no timestamp: ${JSON.stringify(entry)}`);
+    }
+    const at = new Date(timestamp);
+    if (Number.isNaN(at.getTime())) {
+      throw new Error(`An LTX entry has a timestamp that is not a time: ${JSON.stringify(timestamp)}`);
+    }
+    if (newest === undefined || at > newest) {
+      newest = at;
+    }
+  }
+  return newest;
+}
+
+/** Seconds since the newest write to the replica, or undefined when the replica holds nothing. */
+export function replicaAgeSeconds(listing: string, now: Date): number | undefined {
+  const newest = newestWrite(listing);
+  return newest === undefined ? undefined : Math.max(0, Math.round((now.getTime() - newest.getTime()) / 1000));
+}
+
+/** Why the replica fails the check, or null when it passes. */
+export function replicaVerdict(ageSeconds: number | undefined, maxSeconds: number): string | null {
+  if (ageSeconds === undefined) {
+    return 'The replica holds nothing: Litestream has not written to it.';
+  }
+  if (ageSeconds > maxSeconds) {
+    return `The replica is ${ageSeconds} s old, older than ${maxSeconds} s.`;
+  }
+  return null;
+}

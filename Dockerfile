@@ -24,6 +24,13 @@
 FROM oven/bun:1.4.2@sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895
 RUN bun --version
 
+# Litestream 0.5.17, one static binary copied from the official image, pinned
+# by digest. It replicates the database off the machine (S7a) and runs the
+# server as its child: see packages/server/serve.sh. It is not a package, so
+# IMAGE_PACKAGES does not change; `devctl replica` proves it works.
+COPY --from=litestream/litestream:0.5.17@sha256:4b02b9859a6b6b4087d8b8944e15f7e984bd7957cba322bbeee38b0e27b9656a /usr/local/bin/litestream /usr/local/bin/litestream
+RUN litestream version
+
 WORKDIR /app
 
 COPY package.json bun.lock bunfig.toml tsconfig.base.json ./
@@ -42,4 +49,9 @@ RUN rm -rf node_modules/.bun/typescript@* \
            node_modules/.bun/undici-types@* \
   && find node_modules -xtype l -delete
 
-# No command yet: the server gets its entry point and its config at step 0b.
+# The command: Litestream, with the server as its child (S7a). Every setting
+# comes from the environment at run time and none has a default (C1): Fly
+# sets them from fly.toml, from the secrets, and from `devctl deploy`
+# (DEPLOY.md). `devctl image` runs this command in the image it built and
+# reads the version route (IM1).
+CMD ["/app/packages/server/serve.sh"]

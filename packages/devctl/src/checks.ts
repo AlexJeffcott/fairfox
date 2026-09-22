@@ -71,7 +71,7 @@ export const CHECKS: readonly Check[] = [
         file: 'packages/server/src/index.ts',
         find: 'return new Elysia().use(',
         replace: 'return new Elysia(0).use(',
-        output: 'packages/server/src/index.ts(22,',
+        output: 'packages/server/src/index.ts(23,',
       },
       {
         breaks: 'a step of the @local features passes a number where the server takes a string setting',
@@ -372,13 +372,55 @@ export const CHECKS: readonly Check[] = [
       },
     ],
   },
-  // The production image: what production runs, and no development tool (C7).
+  // The production image: what production runs, and no development tool (C7); and the server runs in it (IM1).
   {
     name: 'image',
     catches:
-      "a development tool in the production image. It is the image a deploy sends to Fly, and a tool that is not in it cannot stop it from building (C7): Stryker stopped eal's, June to 2026-08-25 (L6)",
+      "a development tool in the production image, or a production image the server cannot start in. It is the image a deploy sends to Fly, and a tool that is not in it cannot stop it from building (C7): Stryker stopped eal's, June to 2026-08-25 (L6). The server is started in it with the settings of fly.toml and its version route read (IM1): --omit=peer built green and the server could not start",
     run: [...DEVCTL, 'image'],
     red: [
+      {
+        breaks: 'the image has no command: the CMD is dropped from the Dockerfile',
+        file: 'Dockerfile',
+        find: 'CMD ["/app/packages/server/serve.sh"]\n',
+        replace: '',
+        output: 'did not start: the container exited (',
+      },
+      {
+        breaks: 'the server listens on the port after the one fly.toml names',
+        file: 'packages/server/src/main.ts',
+        find: ".listen({ hostname: '0.0.0.0', port });",
+        replace: ".listen({ hostname: '0.0.0.0', port: port + 1 });",
+        output: 'No answer from the server in fairfox:',
+      },
+      {
+        breaks: 'the entry point exits at once',
+        file: 'packages/server/src/main.ts',
+        find: 'const settings = environment();\n',
+        replace: 'process.exit(0);\nconst settings = environment();\n',
+        output: 'did not start: the container exited (',
+      },
+      {
+        breaks: 'the server answers a commit typed into its code, not the one the image was started with',
+        file: 'packages/server/src/index.ts',
+        find: "get('/version', () => ({ commit }))",
+        replace: "get('/version', () => ({ commit: '3f9c2e1' }))",
+        output: 'the version route answered the commit 3f9c2e1, not ',
+      },
+      {
+        breaks: 'fly.toml no longer gives the server its database path, and serve.sh stops',
+        file: 'fly.toml',
+        find: '  FAIRFOX_DATABASE_PATH = "/data/fairfox.db"\n',
+        replace: '',
+        output: 'The setting FAIRFOX_DATABASE_PATH is not set. It has no default.',
+      },
+      {
+        breaks: 'fly.toml gives the server a port that is not the one Fly reaches it on',
+        file: 'fly.toml',
+        find: '  FAIRFOX_PORT = "3000"\n',
+        replace: '  FAIRFOX_PORT = "3001"\n',
+        output: 'fly.toml [env] FAIRFOX_PORT is "3001" and internal_port is 3000',
+      },
       {
         breaks: 'a postinstall script sets up git hooks, and the image has no git',
         file: 'package.json',
@@ -416,6 +458,57 @@ export const CHECKS: readonly Check[] = [
       },
     ],
   },
+  // Litestream, end to end: replicate from the image, restore, read the marker and the migration back (S7, S7a).
+  {
+    name: 'replica',
+    catches:
+      'a backup pipeline that does not bring the database back: a replica Litestream does not write, a restore that is not the database that was set up, a replica older than one hour (S7, S7a). Runs on the image the image check built',
+    run: [...DEVCTL, 'replica'],
+    red: [
+      {
+        breaks: 'the restore is made from an empty replica (M3): it restores nothing, and must not pass',
+        file: 'packages/devctl/src/replica.ts',
+        find: "const restored = await restoreFrom(root, tag, join(dir, 'replica'));",
+        replace: "const restored = await restoreFrom(root, tag, join(dir, 'empty'));",
+        output: 'no matching backup files available',
+      },
+      {
+        breaks: 'the marker row is not written at set-up, so the restored database cannot be told from a fresh one',
+        file: 'packages/server/src/migrations/001-meta.ts',
+        find: "    database.query('INSERT INTO meta (key, value) VALUES (?, ?)').run('marker', setup.marker);\n",
+        replace: '',
+        output: 'The meta table holds no marker row, or no migration row: the database is not set up.',
+      },
+      {
+        breaks: 'the restored database is compared with a marker that is not the live one',
+        file: 'packages/devctl/src/replica.ts',
+        find: 'const problems = restoreProblems(made.live, restored, LATEST_MIGRATION);',
+        replace: "const problems = restoreProblems({ ...made.live, marker: 'another' }, restored, LATEST_MIGRATION);",
+        output: 'and the live one another.',
+      },
+      {
+        breaks: 'the latest migration this image knows is not the one the restored database is at',
+        file: 'packages/devctl/src/replica.ts',
+        find: 'const problems = restoreProblems(made.live, restored, LATEST_MIGRATION);',
+        replace: "const problems = restoreProblems(made.live, restored, '002-members');",
+        output: 'The restored database is at migration 001-meta, and the latest is 002-members.',
+      },
+      {
+        breaks: 'a replica of any age is too old: the status command fails on the age it reads (S7a)',
+        file: 'packages/server/src/replica.ts',
+        find: 'export const MAX_REPLICA_AGE_SECONDS = 3600;',
+        replace: 'export const MAX_REPLICA_AGE_SECONDS = -1;',
+        output: 's old, older than -1 s.',
+      },
+      {
+        breaks: 'serve.sh runs the server without Litestream, so no snapshot is ever written',
+        file: 'packages/server/serve.sh',
+        find: 'exec litestream replicate -exec "bun packages/server/src/main.ts" "$FAIRFOX_DATABASE_PATH" "$FAIRFOX_REPLICA_URL"',
+        replace: 'exec bun packages/server/src/main.ts',
+        output: '"snapshot complete" did not appear inside',
+      },
+    ],
+  },
   // What the server ships with.
   {
     name: 'server-deps',
@@ -428,6 +521,42 @@ export const CHECKS: readonly Check[] = [
         find: '  "dependencies": {\n    "elysia": "1.4.30"\n  },',
         replace: '  "dependencies": {\n    "@fairfox/polly": "0.82.1",\n    "elysia": "1.4.30"\n  },',
         output: 'lists @fairfox/polly in dependencies',
+      },
+    ],
+  },
+  // The deploy document names every variable the server reads (C3).
+  {
+    name: 'env-list',
+    catches: 'a variable the server reads that DEPLOY.md does not list, or one DEPLOY.md lists that nothing reads (C3)',
+    run: ['bun', 'packages/devctl/src/checks/env-list.ts'],
+    red: [
+      {
+        breaks: 'DEPLOY.md lists a variable nothing reads',
+        file: 'DEPLOY.md',
+        find: '| `FAIRFOX_REPLICA_URL` |',
+        replace: '| `FAIRFOX_EXTRA` | nothing | nowhere |\n| `FAIRFOX_REPLICA_URL` |',
+        output: 'DEPLOY.md lists FAIRFOX_EXTRA under "Every setting the code reads (C3)", and nothing in packages/server/ reads it.',
+      },
+      {
+        breaks: 'the SETTINGS table names a variable DEPLOY.md does not list',
+        file: 'packages/server/src/config.ts',
+        find: "  replicaUrl: 'FAIRFOX_REPLICA_URL',\n",
+        replace: "  replicaUrl: 'FAIRFOX_REPLICA_URL',\n  extra: 'FAIRFOX_EXTRA',\n",
+        output: 'packages/server/ reads FAIRFOX_EXTRA, and DEPLOY.md does not list it',
+      },
+      {
+        breaks: 'a file of the server reads process.env.FAIRFOX_LOG, which is in no table',
+        file: 'packages/server/src/environment.ts',
+        find: '  return process.env;',
+        replace: '  return { ...process.env, FAIRFOX_LOG: process.env.FAIRFOX_LOG };',
+        output: 'packages/server/ reads FAIRFOX_LOG, and DEPLOY.md does not list it',
+      },
+      {
+        breaks: 'serve.sh reads a variable DEPLOY.md does not list',
+        file: 'packages/server/serve.sh',
+        find: 'set -eu\n',
+        replace: 'set -eu\n: "${FAIRFOX_BUCKET:?The setting FAIRFOX_BUCKET is not set.}"\n',
+        output: 'packages/server/ reads FAIRFOX_BUCKET, and DEPLOY.md does not list it',
       },
     ],
   },
@@ -478,6 +607,41 @@ export const CHECKS: readonly Check[] = [
         find: '  turns.value = { taken: turns.value.taken + 1 };\n',
         replace: '  turns.value = { taken: turns.value.taken + 1 };\n  turns.value = { taken: turns.value.taken + 1 };\n',
         output: '"taken": 2',
+      },
+      {
+        breaks: 'a database at a migration this image does not know runs every migration again',
+        file: 'packages/server/src/migrations/plan.ts',
+        find: '  if (at < 0) {\n    return { ahead: applied };\n  }\n',
+        replace: '',
+        output: '(fail) the migration plan > a database at a migration this image does not know is ahead, and runs none',
+      },
+      {
+        breaks: 'a replica over the limit passes',
+        file: 'packages/server/src/replica.ts',
+        find: '  if (ageSeconds > maxSeconds) {',
+        replace: '  if (ageSeconds > maxSeconds * 2) {',
+        output: '(fail) the verdict on the replica > a replica over the limit fails, and the message says by how much',
+      },
+      {
+        breaks: 'a deploy from a tree with changes is not refused',
+        file: 'packages/devctl/src/deploy-decisions.ts',
+        find: '  if (!facts.clean) {',
+        replace: '  if (facts.clean && !facts.clean) {',
+        output: '(fail) may it deploy > a tree with changes may not',
+      },
+      {
+        breaks: "a rollback to the old app's release, older than the first of the new server, is not refused",
+        file: 'packages/devctl/src/rollback-decisions.ts',
+        find: '  if (to.version < first.version) {',
+        replace: '  if (to.version < 0) {',
+        output: "(fail) which release to go back to > the old app's release, older than the first of the new server, is refused (C6)",
+      },
+      {
+        breaks: 'a version answer with a second field passes',
+        file: 'packages/devctl/src/version-answer.ts',
+        find: "  if (keys.length !== 1 || typeof answered !== 'string') {",
+        replace: "  if (typeof answered !== 'string') {",
+        output: '(fail) the verdict on a version answer > a second field fails',
       },
     ],
   },
@@ -575,7 +739,7 @@ export const CHECKS: readonly Check[] = [
         file: 'packages/server/src/config.test.ts',
         find: "    expect(() => readConfig({ FAIRFOX_COMMIT: '', FAIRFOX_DATABASE_PATH: ':memory:' })).toThrow(\n      'The setting FAIRFOX_COMMIT is not set',\n    );\n",
         replace: '',
-        output: 'packages/server/src/config.ts:22:30',
+        output: 'packages/server/src/config.ts:29:30',
       },
       {
         breaks: 'the test of a one-character answer is gone from the cli package',

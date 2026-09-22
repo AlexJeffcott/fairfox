@@ -8,7 +8,13 @@
   "checkers": [],
   "plugins": [],
   "reporters": ["clear-text"],
-  "mutate": ["packages/server/src/**/*.ts", "!**/*.test.ts"],
+  "mutate": [
+    "packages/server/src/**/*.ts",
+    "!**/*.test.ts",
+    "!packages/server/src/main.ts",
+    "!packages/server/src/status.ts",
+    "!packages/server/src/environment.ts"
+  ],
   "thresholds": {
     "high": 100,
     "low": 100,

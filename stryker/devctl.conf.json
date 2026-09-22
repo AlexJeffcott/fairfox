@@ -14,8 +14,15 @@
     "packages/devctl/src/checks/casts.ts",
     "packages/devctl/src/checks/syntax.ts",
     "packages/devctl/src/checks/waits.ts",
+    "packages/devctl/src/deploy-decisions.ts",
+    "packages/devctl/src/env-list.ts",
+    "packages/devctl/src/fly-config.ts",
     "packages/devctl/src/image-contents.ts",
-    "packages/devctl/src/record.ts"
+    "packages/devctl/src/record.ts",
+    "packages/devctl/src/releases.ts",
+    "packages/devctl/src/restore-decisions.ts",
+    "packages/devctl/src/rollback-decisions.ts",
+    "packages/devctl/src/version-answer.ts"
   ],
   "thresholds": {
     "high": 100,

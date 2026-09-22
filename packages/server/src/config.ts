@@ -1,17 +1,24 @@
 /**
  * The settings the server reads, by name. None has a default (C1): a server
- * that lacks one does not start, and its error names the setting.
+ * that lacks one does not start, and its error names the setting. Every name
+ * here is in DEPLOY.md, with where it is set; the check env-list compares the
+ * two lists (C3).
  */
 export const SETTINGS = {
-  /** The commit the server runs. The version route answers it (C5). */
+  /** The commit the server runs. The version route answers it (C5). `devctl deploy` sets it on each deploy. */
   commit: 'FAIRFOX_COMMIT',
-  /** The SQLite database. `:memory:` is an empty database in memory. */
+  /** The SQLite database. `:memory:` is an empty database in memory. Litestream reads the same variable (C1). */
   databasePath: 'FAIRFOX_DATABASE_PATH',
+  /** The port the server listens on. fly.toml's internal_port is the same number. */
+  port: 'FAIRFOX_PORT',
+  /** Where Litestream replicates the database to (S7a). A secret on Fly: it names the bucket. */
+  replicaUrl: 'FAIRFOX_REPLICA_URL',
 } as const;
 
 /** Settings as a process environment holds them. A test passes them as an argument (C2). */
 export type Settings = Readonly<Record<string, string | undefined>>;
 
+/** What the app needs: the commit it answers and the database it opens. */
 export type Config = {
   commit: string;
   databasePath: string;
@@ -29,5 +36,28 @@ export function readConfig(settings: Settings): Config {
   return {
     commit: required(settings, SETTINGS.commit),
     databasePath: required(settings, SETTINGS.databasePath),
+  };
+}
+
+/** The port to listen on: a whole number from 1 to 65535, or the server does not start. */
+export function readPort(settings: Settings): number {
+  const value = required(settings, SETTINGS.port);
+  const port = Number(value);
+  if (!/^\d+$/.test(value) || port < 1 || port > 65535) {
+    throw new Error(`The setting ${SETTINGS.port} is ${JSON.stringify(value)}, not a port from 1 to 65535.`);
+  }
+  return port;
+}
+
+/** What the status command needs: the database to read and the replica to age. */
+export type StatusConfig = {
+  databasePath: string;
+  replicaUrl: string;
+};
+
+export function readStatusConfig(settings: Settings): StatusConfig {
+  return {
+    databasePath: required(settings, SETTINGS.databasePath),
+    replicaUrl: required(settings, SETTINGS.replicaUrl),
   };
 }

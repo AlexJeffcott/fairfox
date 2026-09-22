@@ -2,8 +2,12 @@ import { browser } from './browser.ts';
 import { build } from './build.ts';
 import { ci } from './ci.ts';
 import { type Command, commandHelp } from './command.ts';
+import { deploy } from './deploy.ts';
 import { image } from './image.ts';
 import { mutation } from './mutation.ts';
+import { replica } from './replica.ts';
+import { restore } from './restore.ts';
+import { rollback } from './rollback.ts';
 import { tlc } from './tlc.ts';
 import { verify } from './verify.ts';
 
@@ -52,4 +56,4 @@ as \`devctl <command> --help\`.
 };
 
 /** Every devctl command, in the order `devctl --help` lists them. To add a command, add it here. */
-export const COMMANDS: readonly Command[] = [help, build, ci, mutation, browser, tlc, verify, image];
+export const COMMANDS: readonly Command[] = [help, build, ci, mutation, browser, tlc, verify, image, replica, restore, deploy, rollback];

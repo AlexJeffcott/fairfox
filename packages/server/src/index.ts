@@ -1,6 +1,6 @@
-import { Database } from 'bun:sqlite';
 import { Elysia } from 'elysia';
 import { readConfig, type Settings } from './config.ts';
+import { openDatabase } from './database.ts';
 
 export { SETTINGS, type Settings } from './config.ts';
 
@@ -11,14 +11,15 @@ function publicRoutes(commit: string) {
 
 /**
  * The Fairfox server. It reads its settings and does not start when one is
- * missing (C1), opens its database, and holds its routes. The caller listens.
- * Step 0a adds no business logic: the one route is the version (C5), and
- * nothing reads the database yet.
+ * missing (C1), opens its database and brings it to the latest migration
+ * (S7, C6), and holds its routes. The caller listens: main.ts in the image,
+ * the @local steps in their process. Step 0b adds no business logic: the one
+ * route is the version (C5), and no route reads the database yet.
  */
 export function createApp(settings: Settings) {
   const config = readConfig(settings);
-  const database = new Database(config.databasePath);
-  // Stryker disable next-line ArrowFunction: nothing reads the database at step 0a, so its close cannot be seen; step 0b proves the database
+  const { database } = openDatabase(config.databasePath);
+  // Stryker disable next-line ArrowFunction: no route reads the database yet, so its close cannot be seen from outside
   return new Elysia().use(publicRoutes(config.commit)).onStop(() => database.close());
 }
 

@@ -14,10 +14,16 @@ import { childEnv, run } from './proc.ts';
  * A config may mutate part of its package. What each leaves out, and why:
  * - cli: src/index.ts, the command flow, which the @local features run as a
  *   process.
- * - devctl: all but record.ts and checks/casts.ts, syntax.ts and waits.ts,
- *   the pure functions its tests call. The rest is the command flow and the
- *   check scripts, which run as processes; devctl ci --red sees each check
- *   red (M3).
+ * - devctl: all but the pure functions its tests call: record.ts,
+ *   checks/casts.ts, syntax.ts and waits.ts, and the decisions of step 0b
+ *   (deploy-decisions.ts, rollback-decisions.ts, restore-decisions.ts,
+ *   releases.ts, fly-config.ts, version-answer.ts, env-list.ts). The rest is
+ *   the command flow, the check scripts and the thin wrappers around docker
+ *   and fly, which run as processes; devctl ci --red sees each check red
+ *   (M3), and devctl deploy and rollback are never run in CI.
+ * - server: main.ts, status.ts and environment.ts, the two entry points and
+ *   the one function that reads process.env. They run as processes in the
+ *   image: devctl image and devctl replica see them red (M3).
  * - shell: nothing. Its tests are the @browser feature, in WebKit: its
  *   command, src/mutation-shell.ts, builds the shell in Stryker's sandbox and
  *   gives the page the active mutant, which the page cannot read from
