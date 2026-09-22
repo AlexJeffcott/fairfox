@@ -5,15 +5,16 @@ import { run, seconds } from './proc.ts';
 
 /**
  * Every package of the workspace, and where its bundle runs. Each package's
- * entry is `packages/<name>/src/index.ts`; its bundle goes to
- * `packages/<name>/dist/`. `devctl build` fails on a directory under
+ * entry is `packages/<name>/src/index.ts`, or `src/index.html` for a package
+ * marked `page`: Bun bundles the page and the script it names. The bundle goes
+ * to `packages/<name>/dist/`. `devctl build` fails on a directory under
  * `packages/` that is not listed here.
  */
-export const PACKAGES: readonly { name: string; target: 'bun' | 'browser' }[] = [
+export const PACKAGES: readonly { name: string; target: 'bun' | 'browser'; page?: true }[] = [
   { name: 'server', target: 'bun' },
   { name: 'client', target: 'browser' },
   { name: 'cli', target: 'bun' },
-  { name: 'shell', target: 'browser' },
+  { name: 'shell', target: 'browser', page: true },
   { name: 'permissions', target: 'browser' },
   { name: 'devctl', target: 'bun' },
 ];
@@ -31,14 +32,14 @@ async function typecheckOne(root: string, dir: string): Promise<Built> {
   return { name: dir, ok: types.code === 0, ms: types.ms, output: types.output };
 }
 
-async function buildOne(root: string, name: string, target: 'bun' | 'browser'): Promise<Built> {
+async function buildOne(root: string, name: string, target: 'bun' | 'browser', page: boolean): Promise<Built> {
   const dir = join('packages', name);
   const types = await run(['bun', 'node_modules/typescript/bin/tsc', '--noEmit', '-p', join(dir, 'tsconfig.json')], root);
   if (types.code !== 0) {
     return { name, ok: false, ms: types.ms, output: types.output };
   }
   const bundle = await run(
-    ['bun', 'build', join(dir, 'src', 'index.ts'), '--target', target, '--outdir', join(dir, 'dist')],
+    ['bun', 'build', join(dir, 'src', page ? 'index.html' : 'index.ts'), '--target', target, '--outdir', join(dir, 'dist')],
     root,
   );
   return { name, ok: bundle.code === 0, ms: types.ms + bundle.ms, output: bundle.code === 0 ? '' : bundle.output };
@@ -87,7 +88,7 @@ package.json but is missing from PACKAGES in packages/devctl/src/build.ts.
     }
     const chosen = positionals.length === 0 ? PACKAGES : PACKAGES.filter((p) => positionals.includes(p.name));
     const results = await Promise.all([
-      ...chosen.map((p) => buildOne(root, p.name, p.target)),
+      ...chosen.map((p) => buildOne(root, p.name, p.target, p.page === true)),
       ...(positionals.length === 0 ? TYPECHECKED.map((dir) => typecheckOne(root, dir)) : []),
     ]);
     const width = Math.max(...results.map((r) => r.name.length));

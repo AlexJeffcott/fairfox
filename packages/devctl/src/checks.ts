@@ -83,7 +83,7 @@ export const CHECKS: readonly Check[] = [
       {
         breaks: 'the shell is dropped from the build table',
         file: 'packages/devctl/src/build.ts',
-        find: "  { name: 'shell', target: 'browser' },\n",
+        find: "  { name: 'shell', target: 'browser', page: true },\n",
         replace: '',
         output: 'packages/shell is not in the build table',
       },
@@ -212,6 +212,188 @@ export const CHECKS: readonly Check[] = [
       },
     ],
   },
+  // The screens: Preact, Signals and polly, each pinned to one version (M12).
+  {
+    name: 'pins',
+    catches: 'a framework of the screens given as a range, or a second copy of it installed (M12)',
+    run: ['bun', 'packages/devctl/src/checks/pins.ts'],
+    red: [
+      {
+        breaks: 'the shell gives Preact as a range',
+        file: 'packages/shell/package.json',
+        find: '"preact": "10.29.1"',
+        replace: '"preact": "^10.29.1"',
+        output: 'gives preact as ^10.29.1, not one exact version',
+      },
+      {
+        breaks: 'the lockfile holds a second Preact, under polly',
+        file: 'bun.lock',
+        find: '    "preact": ["preact@10.29.1"',
+        replace: '    "@fairfox/polly/preact": ["preact@10.29.8", "", {}, ""],\n    "preact": ["preact@10.29.1"',
+        output: 'bun.lock holds 2 copies of preact: 10.29.8, 10.29.1',
+      },
+    ],
+  },
+  // The @browser features: Playwright with playwright-bdd, in WebKit at 320px wide (U1).
+  {
+    name: 'browser',
+    catches: 'a screen that fails in a real browser or at the width of a phone (L2)',
+    run: [...DEVCTL, 'browser'],
+    red: [
+      {
+        breaks: 'the shell draws an element 400px wide',
+        file: 'packages/shell/src/index.ts',
+        find: "h('h1', null, name)",
+        replace: "h('h1', { style: 'width: 400px' }, name)",
+        output: 'the page is 408px wide and scrolls sideways',
+      },
+      {
+        breaks: 'the shell draws the name 400px wide inside a box that clips it, so the page does not scroll',
+        file: 'packages/shell/src/index.ts',
+        find: "h('h1', null, name)",
+        replace: "h('div', { style: 'overflow: hidden' }, h('h1', { style: 'width: 400px' }, name))",
+        output: '<h1> ends at 408px',
+      },
+      {
+        breaks: 'the script of the shell throws, once it has drawn the name and before its mark',
+        file: 'packages/shell/src/index.ts',
+        find: "  document.documentElement.dataset.shell = 'drawn';\n});\n",
+        replace: "  document.documentElement.dataset.shell = 'drawn';\n});\nthrow new Error('the shell threw');\n",
+        output: 'page error: the shell threw',
+      },
+      {
+        breaks: 'the name is typed into the static HTML',
+        file: 'packages/shell/src/index.html',
+        find: '<body></body>',
+        replace: '<body>Fairfox</body>',
+        output: 'the name Fairfox is shown with scripts turned off',
+      },
+      {
+        breaks: 'the features glob misses the feature file',
+        file: 'playwright.config.ts',
+        find: "  features: 'features/**/*.feature',",
+        replace: "  features: 'features/*/**/*.feature',",
+        output: 'Error: No tests found',
+      },
+    ],
+  },
+  // TLC, for the hand-written TLA+ specs (S4).
+  {
+    name: 'tlc',
+    catches: 'a defect of ordering or convergence in a hand-written TLA+ spec (S4, L4)',
+    run: [...DEVCTL, 'tlc'],
+    red: [
+      {
+        breaks: 'the writers read the count without taking the lock',
+        file: 'specs/tla/two-writers/TwoWriters.tla',
+        find: '  /\\ lock = "free"\n  /\\ lock\' = w\n',
+        replace: '  /\\ UNCHANGED lock\n',
+        output: 'Invariant NoLostUpdate is violated',
+      },
+      {
+        breaks: 'the jar on disk is not the tla2tools.jar the checkout pins',
+        file: 'packages/devctl/src/tlc.ts',
+        find: "sha256: '936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88'",
+        replace: "sha256: '0000000000000000000000000000000000000000000000000000000000000000'",
+        output: 'not the pinned 0000000000000000000000000000000000000000000000000000000000000000',
+      },
+      {
+        breaks: 'the cfg names no invariant, so TLC checks nothing but deadlock',
+        file: 'specs/tla/two-writers/TwoWriters.cfg',
+        find: 'INVARIANTS TypeOK NoLostUpdate\n',
+        replace: '',
+        output: 'TwoWriters.cfg names no INVARIANT',
+      },
+      {
+        breaks: 'a spec has no cfg beside it (the specs are read from a fixture that holds one)',
+        file: 'packages/devctl/src/tlc.ts',
+        find: "const SPECS = join('specs', 'tla');",
+        replace: "const SPECS = join('packages', 'devctl', 'fixtures', 'tla');",
+        output: 'Orphan.tla has no Orphan.cfg beside it',
+      },
+    ],
+  },
+  // polly verify, with the spec anchors in the handlers and the TLA+ it generates.
+  {
+    name: 'verify',
+    catches:
+      'a state that a set of handlers can reach and that breaks a rule written beside them. It checks the model polly builds from the anchors, not the code; the unit check tests the code',
+    run: [...DEVCTL, 'verify'],
+    red: [
+      {
+        breaks: 'the handler takes a turn without its guard',
+        file: 'packages/server/src/turns.ts',
+        find: "  requires(turns.value.taken < 1, 'a second turn is refused');\n",
+        replace: '',
+        output: 'Action property EnsuresAfter_HandlePostTurn is violated',
+      },
+      {
+        breaks: 'the run does not finish inside its time limit',
+        file: 'packages/devctl/src/verify.ts',
+        find: 'export const LIMIT_SECONDS = 120;',
+        replace: 'export const LIMIT_SECONDS = 1;',
+        output: 'polly verify did not finish inside its time limit of 1 s',
+      },
+      {
+        breaks: 'TLC samples behaviours instead of checking every state, and polly calls it passed',
+        file: 'packages/devctl/polly-tla/entrypoint.sh',
+        find: 'java -XX:+UseParallelGC -jar /opt/tla2tools.jar "$@" > /work/tlc.log',
+        replace: 'java -XX:+UseParallelGC -jar /opt/tla2tools.jar -simulate num=20 "$@" > /work/tlc.log',
+        output: 'TLC did not print "Model checking completed. No error has been found."',
+      },
+      {
+        breaks: 'polly runs TLC in an image that is not the one devctl verify built',
+        file: 'packages/devctl/polly-tla/entrypoint.sh',
+        find: 'if [ ! -e /work/.keep-tlc-log ]; then',
+        replace: 'if true; then',
+        output: 'polly did not run TLC in the polly-tla:latest devctl verify built',
+      },
+      {
+        breaks: 'the jar for polly-tla is not the tla2tools.jar the checkout pins',
+        file: 'packages/devctl/src/tlc.ts',
+        find: "sha256: '936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88'",
+        replace: "sha256: '0000000000000000000000000000000000000000000000000000000000000000'",
+        output: 'not the pinned 0000000000000000000000000000000000000000000000000000000000000000',
+      },
+    ],
+  },
+  // The production image, built with every development tool in the tree (C7).
+  {
+    name: 'image',
+    catches: 'a development tool that stops the production build. Stryker did, from June to 2026-08-25 (L6)',
+    run: [...DEVCTL, 'image'],
+    red: [
+      {
+        breaks: 'a postinstall script sets up git hooks, and the image has no git',
+        file: 'package.json',
+        find: '  "scripts": {\n',
+        replace: '  "scripts": {\n    "postinstall": "git config core.hooksPath .githooks",\n',
+        output: 'postinstall script from "fairfox" exited with 127',
+      },
+      {
+        breaks: "the image is built for the developer's machine, arm64, not for Fly's amd64",
+        file: 'packages/devctl/src/image.ts',
+        find: "'--platform', FLY_PLATFORM, ",
+        replace: '',
+        output: "is for linux/arm64, and Fly's machines run linux/amd64",
+      },
+    ],
+  },
+  // What the server ships with.
+  {
+    name: 'server-deps',
+    catches: 'a runtime dependency of the server that its running code never imports, shipped to production for nothing',
+    run: ['bun', 'packages/devctl/src/checks/server-deps.ts'],
+    red: [
+      {
+        breaks: 'polly is a runtime dependency of the server again',
+        file: 'packages/server/package.json',
+        find: '  "dependencies": {\n    "elysia": "1.4.30"\n  },',
+        replace: '  "dependencies": {\n    "@fairfox/polly": "0.82.1",\n    "elysia": "1.4.30"\n  },',
+        output: 'lists @fairfox/polly in dependencies',
+      },
+    ],
+  },
   {
     name: 'unit',
     catches: 'a wrong result from one function',
@@ -245,6 +427,20 @@ export const CHECKS: readonly Check[] = [
         find: 'export function commitOf(answer: unknown): string {\n',
         replace: "export function commitOf(answer: unknown): string {\n  return String(Reflect.get(Object(answer), 'commit'));\n",
         output: '(fail) the commit in a version answer > an answer with no commit is refused',
+      },
+      {
+        breaks: "the turn route takes a turn on every call: only polly's anchor refuses a second",
+        file: 'packages/server/src/turns.ts',
+        find: '  if (turns.value.taken >= 1) {\n    return status(409, { taken: turns.value.taken });\n  }\n',
+        replace: '',
+        output: '"taken": 3',
+      },
+      {
+        breaks: 'the turn route writes its turn twice in one call; polly models the two writes as one',
+        file: 'packages/server/src/turns.ts',
+        find: '  turns.value = { taken: turns.value.taken + 1 };\n',
+        replace: '  turns.value = { taken: turns.value.taken + 1 };\n  turns.value = { taken: turns.value.taken + 1 };\n',
+        output: '"taken": 2',
       },
     ],
   },

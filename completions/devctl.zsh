@@ -27,6 +27,10 @@ _devctl() {
     'build:Type-check and bundle each package of the workspace'
     'ci:Run every registered check on the commit that is checked out'
     'mutation:Run Stryker on named packages, or on the packages a branch touched'
+    'browser:Run the @browser features in WebKit on a screen 320px wide'
+    'tlc:Model-check each hand-written TLA+ spec with TLC'
+    'verify:Run polly verify on the anchored handlers, inside 120 s'
+    'image:Build the production image from the checkout'
   )
 
   if (( CURRENT == 2 )); then
@@ -59,6 +63,18 @@ _devctl() {
         '(-h --help)'{-h,--help}'[show the help of mutation]' \
         '--since[run on the packages this branch touched since a ref]:ref:__git_references' \
         '*:package:_devctl_mutated'
+      ;;
+    browser)
+      _arguments '(-h --help)'{-h,--help}'[show the help of browser]'
+      ;;
+    tlc)
+      _arguments '(-h --help)'{-h,--help}'[show the help of tlc]'
+      ;;
+    verify)
+      _arguments '(-h --help)'{-h,--help}'[show the help of verify]'
+      ;;
+    image)
+      _arguments '(-h --help)'{-h,--help}'[show the help of image]'
       ;;
   esac
 }

@@ -1,0 +1,12 @@
+# What the production image may hold, and nothing else. A development tool's
+# files (node_modules, bundles, reports, caches, generated specs) stay out
+# whatever their name: the list below lets in, it does not keep out.
+*
+!package.json
+!bun.lock
+!bunfig.toml
+!tsconfig.base.json
+!packages/
+**/node_modules
+packages/*/dist
+packages/server/specs/tla/generated
