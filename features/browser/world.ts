@@ -48,6 +48,20 @@ export class ShellWorld {
     this.opened = page;
   }
 
+  /**
+   * Wait until the shell marks that it has drawn: data-shell="drawn" on
+   * <html>, which it sets in the frame after it draws the name.
+   */
+  async untilDrawn(): Promise<void> {
+    try {
+      await expect(this.shown().locator('html')).toHaveAttribute('data-shell', 'drawn');
+    } catch {
+      throw new Error(
+        `The shell never marked that it drew. The browser reported: ${this.errors.join('; ') || 'no error'}`,
+      );
+    }
+  }
+
   shown(): Page {
     if (this.opened === null) {
       throw new Error('The shell was not opened: no When step opened it');

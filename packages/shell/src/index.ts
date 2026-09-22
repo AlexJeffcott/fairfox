@@ -8,3 +8,10 @@ import { h, render } from 'preact';
 const name = $state('Fairfox');
 
 render(h('h1', null, name), document.body);
+
+// The mark that the shell has drawn: data-shell="drawn" on <html>, set in the
+// frame after the name is drawn. The @browser steps wait for it before they
+// read the errors the browser reported.
+requestAnimationFrame(() => {
+  document.documentElement.dataset.shell = 'drawn';
+});
