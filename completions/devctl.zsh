@@ -26,6 +26,7 @@ _devctl() {
     'help:List every command, or show the help of one'
     'build:Type-check and bundle each package of the workspace'
     'ci:Run every registered check on the commit that is checked out'
+    'mutation:Run Stryker on named packages, or on the packages a branch touched'
   )
 
   if (( CURRENT == 2 )); then
@@ -53,6 +54,12 @@ _devctl() {
         '--red[see each check red with its recorded change, then green again]' \
         '--list[list the registered checks and what each catches]'
       ;;
+    mutation)
+      _arguments \
+        '(-h --help)'{-h,--help}'[show the help of mutation]' \
+        '--since[run on the packages this branch touched since a ref]:ref:__git_references' \
+        '*:package:_devctl_mutated'
+      ;;
   esac
 }
 
@@ -61,6 +68,15 @@ _devctl_checks() {
   local -a checks
   checks=(${${(f)"$(devctl ci --list 2>/dev/null)"}%% *})
   compadd -a checks
+}
+
+# The packages with a Stryker config, from stryker/*.conf.json.
+_devctl_mutated() {
+  local root
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || return
+  local -a packages
+  packages=("$root"/stryker/*.conf.json(N:t:r:r))
+  compadd -a packages
 }
 
 compdef _devctl devctl
