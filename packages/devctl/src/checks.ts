@@ -282,6 +282,13 @@ export const CHECKS: readonly Check[] = [
         replace: '  "scripts": {\n    "postinstall": "git config core.hooksPath .githooks",\n',
         output: 'postinstall script from "fairfox" exited with 127',
       },
+      {
+        breaks: "the image is built for the developer's machine, arm64, not for Fly's amd64",
+        file: 'packages/devctl/src/image.ts',
+        find: "'--platform', FLY_PLATFORM, ",
+        replace: '',
+        output: "is for linux/arm64, and Fly's machines run linux/amd64",
+      },
     ],
   },
   // What the server ships with.
