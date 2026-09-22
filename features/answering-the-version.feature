@@ -10,16 +10,26 @@ Feature: The server answers which commit it runs
   The client runs in the test's process (M9). The CLI runs as its own
   process and reaches the server over HTTP.
 
-  Scenario: The client reads the commit the server runs
-    Given a server running commit "3f9c2e1"
+  Scenario Outline: The client reads the commit the server runs
+    Given a server running commit "<commit>"
     When the client asks the server for its version
-    Then the answer is the commit "3f9c2e1"
+    Then the answer is the commit "<commit>"
     And the answer holds nothing but the commit
 
-  Scenario: The CLI prints the commit the server runs
-    Given a server running commit "3f9c2e1"
+    Examples:
+      | commit  |
+      | 3f9c2e1 |
+      | a07b5d4 |
+
+  Scenario Outline: The CLI prints the commit the server runs
+    Given a server running commit "<commit>"
     When the CLI's version command is run against that server
-    Then the CLI prints the commit "3f9c2e1"
+    Then the CLI prints the commit "<commit>"
+
+    Examples:
+      | commit  |
+      | 3f9c2e1 |
+      | a07b5d4 |
 
   Scenario: A server with no commit set does not start
     When a server is started with no commit set

@@ -15,7 +15,7 @@ import { describe, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AstBuilder, compile, GherkinClassicTokenMatcher, Parser } from '@cucumber/gherkin';
-import { type GherkinDocument, IdGenerator, type Pickle, type PickleStep, type Step } from '@cucumber/messages';
+import { type Background, type GherkinDocument, IdGenerator, type Pickle, type PickleStep, type Scenario } from '@cucumber/messages';
 
 export type StepDefinition<World> = {
   /** Matched against the whole text of a step. Its groups are the step's arguments. */
@@ -44,24 +44,44 @@ export type Feature = {
   pickles: readonly Pickle[];
   /** The keyword each step is written with (Given, When, Then, And, But), by the id of its step in the file. */
   keywords: ReadonlyMap<string, string>;
+  /** Each row of a Scenario Outline's examples, as `name: value`, by the id of its row in the file. */
+  rows: ReadonlyMap<string, string>;
 };
 
+/** Every background and scenario of a document, those inside a rule included. */
+function parts(document: GherkinDocument): (Background | Scenario)[] {
+  const found: (Background | Scenario)[] = [];
+  for (const child of [
+    ...(document.feature?.children ?? []),
+    ...(document.feature?.children ?? []).flatMap((c) => c.rule?.children ?? []),
+  ]) {
+    if (child.background !== undefined) found.push(child.background);
+    if (child.scenario !== undefined) found.push(child.scenario);
+  }
+  return found;
+}
+
 function keywords(document: GherkinDocument): Map<string, string> {
+  return new Map(parts(document).flatMap((part) => part.steps.map((step) => [step.id, step.keyword.trim()] as const)));
+}
+
+function rows(document: GherkinDocument): Map<string, string> {
   const found = new Map<string, string>();
-  const add = (steps: readonly Step[] | undefined): void => {
-    for (const step of steps ?? []) {
-      found.set(step.id, step.keyword.trim());
-    }
-  };
-  for (const child of document.feature?.children ?? []) {
-    add(child.background?.steps);
-    add(child.scenario?.steps);
-    for (const inRule of child.rule?.children ?? []) {
-      add(inRule.background?.steps);
-      add(inRule.scenario?.steps);
+  for (const part of parts(document)) {
+    for (const examples of 'examples' in part ? part.examples : []) {
+      const names = examples.tableHeader?.cells.map((cell) => cell.value) ?? [];
+      for (const row of examples.tableBody) {
+        found.set(row.id, row.cells.map((cell, i) => `${names[i] ?? i}: ${cell.value}`).join(', '));
+      }
     }
   }
   return found;
+}
+
+/** A scenario's name, and for one example of a Scenario Outline, its row: `Name (commit: a07b5d4)`. */
+export function title(feature: Feature, pickle: Pickle): string {
+  const row = feature.rows.get(pickle.astNodeIds[1] ?? '');
+  return row === undefined ? pickle.name : `${pickle.name} (${row})`;
 }
 
 /** Every `.feature` file under `dir`, at any depth, as a path from `dir`. */
@@ -78,6 +98,7 @@ export function readFeatures(dir: string): Feature[] {
       file,
       pickles: compile(document, file, newId),
       keywords: keywords(document),
+      rows: rows(document),
     };
   });
 }
@@ -117,7 +138,7 @@ async function runPickle<World>(suite: Suite<World>, feature: Feature, pickle: P
   try {
     for (const step of pickle.steps) {
       const keyword = feature.keywords.get(step.astNodeIds[0] ?? '') ?? '';
-      const where = `Step failed in "${pickle.name}": ${keyword} ${step.text}`;
+      const where = `Step failed in "${title(feature, pickle)}": ${keyword} ${step.text}`;
       try {
         const [definition, args] = bind(suite.steps, step);
         await definition.run(world, ...args);
@@ -148,7 +169,7 @@ export function plan(features: readonly Feature[], tag: string): Plan {
   for (const feature of features) {
     for (const pickle of feature.pickles) {
       if (!pickle.tags.some((t) => LOCATIONS.includes(t.name))) {
-        nowhere.push(`${feature.file}: ${pickle.name}`);
+        nowhere.push(`${feature.file}: ${title(feature, pickle)}`);
       }
     }
     const pickles = feature.pickles.filter((pickle) => pickle.tags.some((t) => t.name === tag));
@@ -169,7 +190,7 @@ export function runFeatures<World>(suite: Suite<World>): void {
   for (const { feature, pickles } of run) {
     describe(feature.name, () => {
       for (const pickle of pickles) {
-        test(pickle.name, () => runPickle(suite, feature, pickle));
+        test(title(feature, pickle), () => runPickle(suite, feature, pickle));
       }
     });
   }
