@@ -75,6 +75,9 @@ function occurrences(text: string, find: string): number {
 /** Make one change, run its check, put the file back. Returns a failure, or null when the check went red as recorded. */
 async function seeRed(root: string, check: Check, change: RedChange): Promise<string | null> {
   const path = join(root, change.file);
+  if (!(await Bun.file(path).exists())) {
+    return `${change.file} does not exist. Update packages/devctl/src/checks.ts.`;
+  }
   const original = await Bun.file(path).text();
   const count = occurrences(original, change.find);
   if (count !== 1) {
@@ -129,7 +132,7 @@ async function red(root: string, checks: readonly Check[]): Promise<number> {
   console.log(
     failures === 0
       ? `\nEach of ${changes} changes turned its check red, as recorded.`
-      : `\n${failures} failures. A check that cannot be made red is deleted (M3).`,
+      : `\n${failures} ${failures === 1 ? 'failure' : 'failures'}. A check that cannot be made red is deleted (M3).`,
   );
   return failures === 0 ? 0 : 1;
 }
