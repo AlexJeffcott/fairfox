@@ -1,8 +1,10 @@
 /**
  * Runs `.feature` files under `bun test` (M1). Cucumber's own parser reads
- * each file and compiles it to pickles: one per scenario, with the feature's
- * tags on each. Only the pickles with the given tag run here; a `@browser`
- * or `@live` scenario in the same directory is left to its own runner.
+ * every `.feature` file under the directory, at any depth, and compiles each
+ * to pickles: one per scenario, with the feature's tags on each. Only the
+ * pickles with the given tag run here; a `@browser` or `@live` scenario is
+ * left to its own runner. A scenario that carries none of `@local`,
+ * `@browser` and `@live` would run nowhere, so it fails here.
  *
  * Each pickle is one Bun test, named after its scenario. Its steps run in
  * order, each against the one step definition whose pattern matches the
@@ -33,7 +35,10 @@ export type Suite<World> = {
   dispose: (world: World) => void | Promise<void>;
 };
 
-type Feature = {
+/** Where a scenario runs (M1). Tags are matched exactly: `@Local` is none of them. */
+export const LOCATIONS: readonly string[] = ['@local', '@browser', '@live'];
+
+export type Feature = {
   name: string;
   file: string;
   pickles: readonly Pickle[];
@@ -59,10 +64,11 @@ function keywords(document: GherkinDocument): Map<string, string> {
   return found;
 }
 
-function readFeatures(dir: string): Feature[] {
+/** Every `.feature` file under `dir`, at any depth, as a path from `dir`. */
+export function readFeatures(dir: string): Feature[] {
   const newId = IdGenerator.uuid();
   const parser = new Parser(new AstBuilder(newId), new GherkinClassicTokenMatcher());
-  const files = readdirSync(dir)
+  const files = readdirSync(dir, { recursive: true, encoding: 'utf8' })
     .filter((file) => file.endsWith('.feature'))
     .sort();
   return files.map((file) => {
@@ -128,22 +134,51 @@ async function runPickle<World>(suite: Suite<World>, feature: Feature, pickle: P
   }
 }
 
-/** Register one Bun test for each scenario with the suite's tag. Fails when there is none. */
-export function runFeatures<World>(suite: Suite<World>): void {
-  let count = 0;
-  for (const feature of readFeatures(suite.dir)) {
-    const pickles = feature.pickles.filter((pickle) => pickle.tags.some((tag) => tag.name === suite.tag));
-    if (pickles.length === 0) {
-      continue;
+export type Plan = {
+  /** The features with a scenario that carries the tag, and those scenarios. */
+  run: readonly { feature: Feature; pickles: readonly Pickle[] }[];
+  /** Each scenario that carries none of LOCATIONS, as "<file>: <scenario>". */
+  nowhere: readonly string[];
+};
+
+/** Which scenarios run under `tag`, and which run nowhere. */
+export function plan(features: readonly Feature[], tag: string): Plan {
+  const run: { feature: Feature; pickles: readonly Pickle[] }[] = [];
+  const nowhere: string[] = [];
+  for (const feature of features) {
+    for (const pickle of feature.pickles) {
+      if (!pickle.tags.some((t) => LOCATIONS.includes(t.name))) {
+        nowhere.push(`${feature.file}: ${pickle.name}`);
+      }
     }
-    count += pickles.length;
+    const pickles = feature.pickles.filter((pickle) => pickle.tags.some((t) => t.name === tag));
+    if (pickles.length > 0) {
+      run.push({ feature, pickles });
+    }
+  }
+  return { run, nowhere };
+}
+
+/**
+ * Register one Bun test for each scenario with the suite's tag, and one
+ * failing test for each scenario that runs nowhere. Fails when no scenario
+ * carries the tag.
+ */
+export function runFeatures<World>(suite: Suite<World>): void {
+  const { run, nowhere } = plan(readFeatures(suite.dir), suite.tag);
+  for (const { feature, pickles } of run) {
     describe(feature.name, () => {
       for (const pickle of pickles) {
         test(pickle.name, () => runPickle(suite, feature, pickle));
       }
     });
   }
-  if (count === 0) {
+  for (const scenario of nowhere) {
+    test(`runs nowhere: ${scenario}`, () => {
+      throw new Error(`The scenario ${scenario} carries none of ${LOCATIONS.join(', ')}, so it runs nowhere.`);
+    });
+  }
+  if (run.length === 0) {
     test(`scenarios tagged ${suite.tag}`, () => {
       throw new Error(`No scenario in ${suite.dir} is tagged ${suite.tag}.`);
     });

@@ -288,6 +288,20 @@ export const CHECKS: readonly Check[] = [
         replace: "commit: settings[SETTINGS.commit] ?? 'unknown',",
         output: 'Step failed in "A server with no commit set does not start": Then the server does not start',
       },
+      {
+        breaks: 'the runner reads the top level of features/ only',
+        file: 'features/local/gherkin.ts',
+        find: "readdirSync(dir, { recursive: true, encoding: 'utf8' })",
+        replace: "readdirSync(dir, { encoding: 'utf8' })",
+        output: '(fail) the feature runner > reads .feature files at every depth',
+      },
+      {
+        breaks: 'a scenario with no location tag, such as @Local, is left out without a word',
+        file: 'features/local/gherkin.ts',
+        find: 'if (!pickle.tags.some((t) => LOCATIONS.includes(t.name))) {',
+        replace: 'if (false) {',
+        output: '(fail) the feature runner > a scenario tagged @Local runs nowhere, and is named',
+      },
     ],
   },
   {
