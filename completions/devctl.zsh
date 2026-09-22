@@ -27,6 +27,7 @@ _devctl() {
     'build:Type-check and bundle each package of the workspace'
     'ci:Run every registered check on the commit that is checked out'
     'browser:Run the @browser features in WebKit on a screen 320px wide'
+    'tlc:Model-check each hand-written TLA+ spec with TLC'
   )
 
   if (( CURRENT == 2 )); then
@@ -56,6 +57,9 @@ _devctl() {
       ;;
     browser)
       _arguments '(-h --help)'{-h,--help}'[show the help of browser]'
+      ;;
+    tlc)
+      _arguments '(-h --help)'{-h,--help}'[show the help of tlc]'
       ;;
   esac
 }

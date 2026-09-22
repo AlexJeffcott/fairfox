@@ -182,4 +182,26 @@ export const CHECKS: readonly Check[] = [
       },
     ],
   },
+  // TLC, for the hand-written TLA+ specs (S4).
+  {
+    name: 'tlc',
+    catches: 'a defect of ordering or convergence in a hand-written TLA+ spec (S4, L4)',
+    run: [...DEVCTL, 'tlc'],
+    red: [
+      {
+        breaks: 'the writers read the count without taking the lock',
+        file: 'specs/tla/two-writers/TwoWriters.tla',
+        find: '  /\\ lock = "free"\n  /\\ lock\' = w\n',
+        replace: '  /\\ UNCHANGED lock\n',
+        output: 'Invariant NoLostUpdate is violated',
+      },
+      {
+        breaks: 'the jar on disk is not the tla2tools.jar the checkout pins',
+        file: 'packages/devctl/src/tlc.ts',
+        find: "sha256: '936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88'",
+        replace: "sha256: '0000000000000000000000000000000000000000000000000000000000000000'",
+        output: 'not the pinned 0000000000000000000000000000000000000000000000000000000000000000',
+      },
+    ],
+  },
 ];
