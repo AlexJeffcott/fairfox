@@ -24,6 +24,10 @@
         "@fairfox/server": "workspace:*",
       },
     },
+    "packages/devctl": {
+      "name": "@fairfox/devctl",
+      "version": "0.0.0",
+    },
     "packages/permissions": {
       "name": "@fairfox/permissions",
       "version": "0.0.0",
@@ -48,6 +52,8 @@
     "@fairfox/cli": ["@fairfox/cli@workspace:packages/cli"],
 
     "@fairfox/client": ["@fairfox/client@workspace:packages/client"],
+
+    "@fairfox/devctl": ["@fairfox/devctl@workspace:packages/devctl"],
 
     "@fairfox/permissions": ["@fairfox/permissions@workspace:packages/permissions"],
 
