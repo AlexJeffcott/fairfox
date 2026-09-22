@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { type Check, CHECKS, type RedChange } from './checks.ts';
 import type { Command } from './command.ts';
 import { type Ran, run, seconds } from './proc.ts';
+import { recordDecision } from './record.ts';
 import { head, isClean } from './repo.ts';
 
 /**
@@ -50,12 +51,20 @@ async function green(root: string, checks: readonly Check[], full: boolean): Pro
     }
   }
 
-  if (!full) {
+  const decision = recordDecision({
+    full,
+    red: red.length,
+    cleanBefore,
+    cleanAfter: await isClean(root),
+    headBefore: commit,
+    headAfter: await head(root),
+  });
+  if (decision === 'partial') {
     console.log('\n--only: a partial run writes no record.');
-  } else if (red.length > 0) {
+  } else if (decision === 'red') {
     await rm(recordPath(root, commit), { force: true });
     console.log(`\nRed: ${red.join(', ')}. No record for ${commit}.`);
-  } else if (!cleanBefore || !(await isClean(root)) || (await head(root)) !== commit) {
+  } else if (decision === 'not-one-commit') {
     console.log('\nEvery check is green, but the working tree was not clean, or HEAD moved.');
     console.log(`The run is not a run of ${commit}: no record written. Commit, then run devctl ci again.`);
   } else {

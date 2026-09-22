@@ -18,7 +18,18 @@ export const PACKAGES: readonly { name: string; target: 'bun' | 'browser' }[] = 
   { name: 'devctl', target: 'bun' },
 ];
 
+/**
+ * Code outside the packages, type-checked by its own tsconfig.json and not
+ * bundled: the Bun runner and step definitions of the @local features.
+ */
+export const TYPECHECKED: readonly string[] = ['features/local'];
+
 type Built = { name: string; ok: boolean; ms: number; output: string };
+
+async function typecheckOne(root: string, dir: string): Promise<Built> {
+  const types = await run(['bun', 'node_modules/typescript/bin/tsc', '--noEmit', '-p', join(dir, 'tsconfig.json')], root);
+  return { name: dir, ok: types.code === 0, ms: types.ms, output: types.output };
+}
 
 async function buildOne(root: string, name: string, target: 'bun' | 'browser'): Promise<Built> {
   const dir = join('packages', name);
@@ -54,7 +65,8 @@ export const build: Command = {
   help: `
 Type-check each package with tsc (strict, no emit), then bundle its
 src/index.ts with Bun into packages/<name>/dist/. With no package named,
-build all of them: ${PACKAGES.map((p) => p.name).join(', ')}.
+build all of them: ${PACKAGES.map((p) => p.name).join(', ')}; and
+type-check the code outside the packages: ${TYPECHECKED.join(', ')}.
 
 Fails when a package fails, and when a directory under packages/ holds a
 package.json but is missing from PACKAGES in packages/devctl/src/build.ts.
@@ -74,7 +86,10 @@ package.json but is missing from PACKAGES in packages/devctl/src/build.ts.
       return 1;
     }
     const chosen = positionals.length === 0 ? PACKAGES : PACKAGES.filter((p) => positionals.includes(p.name));
-    const results = await Promise.all(chosen.map((p) => buildOne(root, p.name, p.target)));
+    const results = await Promise.all([
+      ...chosen.map((p) => buildOne(root, p.name, p.target)),
+      ...(positionals.length === 0 ? TYPECHECKED.map((dir) => typecheckOne(root, dir)) : []),
+    ]);
     const width = Math.max(...results.map((r) => r.name.length));
     for (const r of results) {
       console.log(`${r.ok ? 'ok  ' : 'FAIL'}  ${r.name.padEnd(width)}  ${seconds(r.ms)}`);

@@ -1,3 +1,4 @@
 node_modules/
 packages/*/dist/
 .devctl/
+.stryker-tmp/

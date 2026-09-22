@@ -1,0 +1,26 @@
+{
+  "$schema": "../node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "bun test ./packages/devctl"
+  },
+  "coverageAnalysis": "off",
+  "checkers": [],
+  "plugins": [],
+  "reporters": ["clear-text"],
+  "mutate": [
+    "packages/devctl/src/record.ts",
+    "packages/devctl/src/checks/casts.ts",
+    "packages/devctl/src/checks/syntax.ts",
+    "packages/devctl/src/checks/waits.ts"
+  ],
+  "thresholds": {
+    "high": 100,
+    "low": 100,
+    "break": 100
+  },
+  "ignorePatterns": ["**/dist/**", ".devctl", "turn"],
+  "cleanTempDir": "always",
+  "timeoutMS": 60000,
+  "concurrency": 4
+}
