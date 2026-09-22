@@ -268,6 +268,13 @@ export const CHECKS: readonly Check[] = [
         output: 'Step failed in "The client reads the commit the server runs": And the answer holds nothing but the commit',
       },
       {
+        breaks: 'the version route answers a header that names the database',
+        file: 'packages/server/src/index.ts',
+        find: "get('/version', () => ({ commit }))",
+        replace: "get('/version', ({ set }) => {\n    set.headers['x-database-path'] = ':memory:';\n    return { commit };\n  })",
+        output: 'Step failed in "The client reads the commit the server runs": And the answer holds nothing but the commit',
+      },
+      {
         breaks: 'the CLI prints a fixed value',
         file: 'packages/cli/src/index.ts',
         find: 'console.log(answer.data.commit);',

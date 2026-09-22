@@ -33,6 +33,16 @@ export async function dispose(world: World): Promise<void> {
 
 const CLI = join(import.meta.dir, '..', '..', 'packages', 'cli', 'src', 'index.ts');
 
+/** The headers HTTP itself needs. Any other header in the answer says something more than the commit. */
+const TRANSPORT_HEADERS: readonly string[] = [
+  'connection',
+  'content-length',
+  'content-type',
+  'date',
+  'keep-alive',
+  'transfer-encoding',
+];
+
 function must<T>(value: T | undefined, what: string): T {
   if (value === undefined) {
     throw new Error(`No ${what}: an earlier step did not set it.`);
@@ -73,6 +83,8 @@ export const steps: readonly StepDefinition<World>[] = [
     run: (world) => {
       const answer = must(world.answer, 'answer');
       expect(Object.keys(answer.data ?? {})).toEqual(['commit']);
+      const headers = [...answer.response.headers.keys()];
+      expect(headers.filter((name) => !TRANSPORT_HEADERS.includes(name))).toEqual([]);
     },
   },
   {
