@@ -29,6 +29,7 @@ _devctl() {
     'browser:Run the @browser features in WebKit on a screen 320px wide'
     'tlc:Model-check each hand-written TLA+ spec with TLC'
     'verify:Run polly verify on the anchored handlers, inside 120 s'
+    'image:Build the production image from the checkout'
   )
 
   if (( CURRENT == 2 )); then
@@ -64,6 +65,9 @@ _devctl() {
       ;;
     verify)
       _arguments '(-h --help)'{-h,--help}'[show the help of verify]'
+      ;;
+    image)
+      _arguments '(-h --help)'{-h,--help}'[show the help of image]'
       ;;
   esac
 }

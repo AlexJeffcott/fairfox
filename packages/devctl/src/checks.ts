@@ -226,4 +226,19 @@ export const CHECKS: readonly Check[] = [
       },
     ],
   },
+  // The production image, built with every development tool in the tree (C7).
+  {
+    name: 'image',
+    catches: 'a development tool that stops the production build. Stryker did, from June to 2026-08-25 (L6)',
+    run: [...DEVCTL, 'image'],
+    red: [
+      {
+        breaks: 'a postinstall script calls Playwright, which the production install leaves out',
+        file: 'package.json',
+        find: '  "scripts": {\n',
+        replace: '  "scripts": {\n    "postinstall": "playwright install webkit",\n',
+        output: 'postinstall script from "fairfox" exited with 127',
+      },
+    ],
+  },
 ];
