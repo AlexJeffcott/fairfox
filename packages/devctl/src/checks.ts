@@ -191,6 +191,20 @@ export const CHECKS: readonly Check[] = [
     ],
   },
   {
+    name: 'property',
+    catches: 'a defect that only some inputs show (L6)',
+    run: ['bun', 'test', '.property.test.ts'],
+    red: [
+      {
+        breaks: 'entries drops the first action of each kind',
+        file: 'packages/permissions/src/index.ts',
+        find: 'actions.map((action)',
+        replace: 'actions.slice(1).map((action)',
+        output: '(fail) entries > a list has one entry for each of its actions',
+      },
+    ],
+  },
+  {
     name: 'local',
     catches: 'behaviour that does not match the requirement, in the @local scenarios of the .feature files (M1)',
     run: ['bun', 'test', './features/local'],
