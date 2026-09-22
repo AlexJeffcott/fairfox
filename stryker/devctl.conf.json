@@ -7,19 +7,26 @@
   "coverageAnalysis": "off",
   "checkers": [],
   "plugins": [],
-  "reporters": ["clear-text"],
+  "reporters": [
+    "clear-text"
+  ],
   "mutate": [
-    "packages/devctl/src/record.ts",
     "packages/devctl/src/checks/casts.ts",
     "packages/devctl/src/checks/syntax.ts",
-    "packages/devctl/src/checks/waits.ts"
+    "packages/devctl/src/checks/waits.ts",
+    "packages/devctl/src/image-contents.ts",
+    "packages/devctl/src/record.ts"
   ],
   "thresholds": {
     "high": 100,
     "low": 100,
     "break": 100
   },
-  "ignorePatterns": ["**/dist/**", ".devctl", "turn"],
+  "ignorePatterns": [
+    "**/dist/**",
+    ".devctl",
+    "turn"
+  ],
   "cleanTempDir": "always",
   "timeoutMS": 60000,
   "concurrency": 4

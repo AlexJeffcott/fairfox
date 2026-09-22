@@ -372,10 +372,11 @@ export const CHECKS: readonly Check[] = [
       },
     ],
   },
-  // The production image, built with every development tool in the tree (C7).
+  // The production image: what production runs, and no development tool (C7).
   {
     name: 'image',
-    catches: 'a development tool that stops the production build. Stryker did, from June to 2026-08-25 (L6)',
+    catches:
+      "a development tool in the production image. It is the image a deploy sends to Fly, and a tool that is not in it cannot stop it from building (C7): Stryker stopped eal's, June to 2026-08-25 (L6)",
     run: [...DEVCTL, 'image'],
     red: [
       {
@@ -388,9 +389,30 @@ export const CHECKS: readonly Check[] = [
       {
         breaks: "the image is built for the developer's machine, arm64, not for Fly's amd64",
         file: 'packages/devctl/src/image.ts',
-        find: "'--platform', FLY_PLATFORM, ",
-        replace: '',
+        find: "'docker', 'build', '--progress', 'plain', '--platform', FLY_PLATFORM,",
+        replace: "'docker', 'build', '--progress', 'plain',",
         output: "is for linux/arm64, and Fly's machines run linux/amd64",
+      },
+      {
+        breaks: "the shell is installed into the image, and polly's development toolchain with it",
+        file: '.dockerignore',
+        find: 'packages/shell\npackages/client',
+        replace: 'packages/client',
+        output: 'ts-morph',
+      },
+      {
+        breaks: 'the type-only packages are left in the image, TypeScript among them',
+        file: 'Dockerfile',
+        find: 'rm -rf node_modules/.bun/typescript@*',
+        replace: 'rm -rf node_modules/.bun/no-such-package@*',
+        output: 'typescript',
+      },
+      {
+        breaks: 'the table names a package the image does not hold',
+        file: 'packages/devctl/src/image-contents.ts',
+        find: "  ms: 'debug',\n",
+        replace: "  ms: 'debug',\n  'ts-morph': 'nothing pulls it in: it is here to be seen red',\n",
+        output: 'IMAGE_PACKAGES names packages the image does not hold: ts-morph.',
       },
     ],
   },

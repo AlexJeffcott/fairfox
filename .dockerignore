@@ -10,3 +10,15 @@
 **/node_modules
 packages/*/dist
 packages/server/specs/tla/generated
+
+# The packages production does not run. Each is left out so that its
+# dependencies are left out with it (C7). `bun install --production` drops a
+# devDependency, and none of these dependencies is one: packages/shell depends
+# on @fairfox/polly, polly depends on ts-morph and asks for typescript and
+# @stryker-mutator/api as peers, so installing the shell puts that whole
+# development toolchain in the image. The shell is browser code; the image
+# takes its built files at step 0b, not its source and not its dependencies.
+packages/shell
+packages/client
+packages/cli
+packages/devctl
