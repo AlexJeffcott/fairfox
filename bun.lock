@@ -38,8 +38,10 @@
       "name": "@fairfox/server",
       "version": "0.0.0",
       "dependencies": {
-        "@fairfox/polly": "0.82.1",
         "elysia": "1.4.30",
+      },
+      "devDependencies": {
+        "@fairfox/polly": "0.82.1",
       },
     },
     "packages/shell": {

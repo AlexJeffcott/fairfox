@@ -242,6 +242,21 @@ export const CHECKS: readonly Check[] = [
       },
     ],
   },
+  // What the server ships with.
+  {
+    name: 'server-deps',
+    catches: 'a runtime dependency of the server that its running code never imports, shipped to production for nothing',
+    run: ['bun', 'packages/devctl/src/checks/server-deps.ts'],
+    red: [
+      {
+        breaks: 'polly is a runtime dependency of the server again',
+        file: 'packages/server/package.json',
+        find: '  "dependencies": {\n    "elysia": "1.4.30"\n  },',
+        replace: '  "dependencies": {\n    "@fairfox/polly": "0.82.1",\n    "elysia": "1.4.30"\n  },',
+        output: 'lists @fairfox/polly in dependencies',
+      },
+    ],
+  },
   // The unit tests, under bun test. The same name and command as the unit
   // check of the branch rebuild-local: at the merge the two become one entry.
   {
