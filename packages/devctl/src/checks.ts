@@ -225,6 +225,27 @@ export const CHECKS: readonly Check[] = [
         replace: 'export const LIMIT_SECONDS = 1;',
         output: 'polly verify did not finish inside its time limit of 1 s',
       },
+      {
+        breaks: 'TLC samples behaviours instead of checking every state, and polly calls it passed',
+        file: 'packages/devctl/polly-tla/entrypoint.sh',
+        find: 'java -XX:+UseParallelGC -jar /opt/tla2tools.jar "$@" > /work/tlc.log',
+        replace: 'java -XX:+UseParallelGC -jar /opt/tla2tools.jar -simulate num=20 "$@" > /work/tlc.log',
+        output: 'TLC did not print "Model checking completed. No error has been found."',
+      },
+      {
+        breaks: 'polly runs TLC in an image that is not the one devctl verify built',
+        file: 'packages/devctl/polly-tla/entrypoint.sh',
+        find: 'if [ ! -e /work/.keep-tlc-log ]; then',
+        replace: 'if true; then',
+        output: 'polly did not run TLC in the polly-tla:latest devctl verify built',
+      },
+      {
+        breaks: 'the jar for polly-tla is not the tla2tools.jar the checkout pins',
+        file: 'packages/devctl/src/tlc.ts',
+        find: "sha256: '936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88'",
+        replace: "sha256: '0000000000000000000000000000000000000000000000000000000000000000'",
+        output: 'not the pinned 0000000000000000000000000000000000000000000000000000000000000000',
+      },
     ],
   },
   // The production image, built with every development tool in the tree (C7).

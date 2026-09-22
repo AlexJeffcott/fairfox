@@ -30,7 +30,7 @@ function sha256(bytes: ArrayBuffer): string {
 }
 
 /** The pinned jar, downloaded when missing. Throws when its hash is not the pinned one. */
-async function tlaTools(root: string): Promise<string> {
+export async function tlaTools(root: string): Promise<string> {
   const dir = join(root, '.devctl', 'tools');
   const jar = join(dir, `tla2tools-${TLA_TOOLS.version}.jar`);
   if (!(await Bun.file(jar).exists())) {
@@ -78,7 +78,7 @@ async function specs(root: string): Promise<Spec[]> {
  * empty queue, and more states than the initial ones are each read, after
  * eal's devctl verify.
  */
-function problems(output: string, code: number): string[] {
+export function problems(output: string, code: number): string[] {
   const found: string[] = [];
   const violated = /Invariant (\w+) is violated/.exec(output)?.[1];
   if (violated !== undefined) {

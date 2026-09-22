@@ -16,10 +16,16 @@ export default defineVerification({
     maxInFlight: 2,
     // One client, in place of maxTabs, which polly will not set below 1.
     // With it polly's generator models one tab: a quarter of the states of
-    // two. Measured on 2026-09-22: 1.6 million distinct states, where
-    // maxTabs 1 gave 6.3 million.
+    // two. Measured on 2026-09-22: 1,590,976 distinct states, where maxTabs 1
+    // gave 6,344,512.
     maxClients: 1,
   },
+  // The rest of those states are polly's web-extension MessageRouter, and
+  // polly 0.82.1 has no setting for any of it: three contexts (background,
+  // content, popup), each port connecting and disconnecting, a payload of
+  // id, text and userId over two values each that no handler reads, message
+  // timeouts (TimeoutLimit 3), a clock, and a routing depth. A subsystem
+  // generates the same router.
   verification: { workers: availableParallelism() },
   onBuild: 'error',
   onRelease: 'error',
