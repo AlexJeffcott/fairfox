@@ -71,7 +71,7 @@ export const CHECKS: readonly Check[] = [
         file: 'packages/server/src/index.ts',
         find: 'return new Elysia().use(',
         replace: 'return new Elysia(0).use(',
-        output: 'packages/server/src/index.ts(21,',
+        output: 'packages/server/src/index.ts(22,',
       },
       {
         breaks: 'a step of the @local features passes a number where the server takes a string setting',
@@ -336,6 +336,13 @@ export const CHECKS: readonly Check[] = [
         find: "  ['self.setTimeout resolving a promise', 'await new Promise((go) => self.setTimeout(go, 100));', [TIMER]],\n",
         replace: '',
         output: 'packages/devctl/src/checks/waits.ts:7:60',
+      },
+      {
+        breaks: 'the test of an empty setting is gone from the server',
+        file: 'packages/server/src/config.test.ts',
+        find: "    expect(() => readConfig({ FAIRFOX_COMMIT: '', FAIRFOX_DATABASE_PATH: ':memory:' })).toThrow(\n      'The setting FAIRFOX_COMMIT is not set',\n    );\n",
+        replace: '',
+        output: 'packages/server/src/config.ts:22:30',
       },
       {
         breaks: 'the test of a one-character answer is gone from the cli package',

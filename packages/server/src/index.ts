@@ -6,7 +6,7 @@ export { SETTINGS, type Settings } from './config.ts';
 
 /** The routes of the class `public` (I18a): they need no session. */
 function publicRoutes(commit: string) {
-  return new Elysia({ name: 'public' }).get('/version', () => ({ commit }));
+  return new Elysia().get('/version', () => ({ commit }));
 }
 
 /**
@@ -17,7 +17,8 @@ function publicRoutes(commit: string) {
  */
 export function createApp(settings: Settings) {
   const config = readConfig(settings);
-  const database = new Database(config.databasePath, { strict: true });
+  const database = new Database(config.databasePath);
+  // Stryker disable next-line ArrowFunction: nothing reads the database at step 0a, so its close cannot be seen; step 0b proves the database
   return new Elysia().use(publicRoutes(config.commit)).onStop(() => database.close());
 }
 

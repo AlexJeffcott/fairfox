@@ -29,8 +29,6 @@ const SUFFIX = '.conf.json';
 export const EXEMPT: Readonly<Record<string, string>> = {
   shell: 'no code yet: the shell is built at step 7b',
   client: "no logic of its own: createClient is one call to Eden's treaty",
-  server:
-    'no business logic yet (step 0a): its one behaviour is the @local version feature, which M1 does not let a unit test repeat. Its first logic comes at stage 1',
   permissions: 'no code yet: the list is empty until stage 1',
 };
 

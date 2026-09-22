@@ -8,8 +8,11 @@
  */
 import { expect } from 'bun:test';
 import { join } from 'node:path';
-import { type Client, createClient } from '@fairfox/client';
-import { type App, createApp } from '@fairfox/server';
+// The server and the client are imported by path, not by package name: under
+// Stryker, which links the root node_modules into its copy of the tree, a
+// package name would reach the server that is not mutated.
+import { type Client, createClient } from '../../packages/client/src/index.ts';
+import { type App, createApp } from '../../packages/server/src/index.ts';
 import type { StepDefinition } from './gherkin.ts';
 
 type Answer = Awaited<ReturnType<Client['version']['get']>>;
