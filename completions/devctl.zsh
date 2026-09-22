@@ -8,7 +8,8 @@
 # name different commands, flags or packages.
 
 # `devctl` runs the devctl of the checkout you are in. Outside a checkout it
-# fails; it never falls back to another one.
+# fails; it never falls back to another one. lingua's completions/devctl.zsh
+# defines the same `devctl` and `_devctl`: whichever is sourced last wins.
 devctl() {
   local root
   root=$(git rev-parse --show-toplevel 2>/dev/null)

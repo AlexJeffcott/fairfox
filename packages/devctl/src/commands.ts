@@ -17,7 +17,7 @@ Commands:
 ${list}
 
 Run \`devctl <command> --help\` for what a command does and its flags.
-Outside zsh, run \`bun devctl <command>\` from the root of the checkout.
+\`bun devctl <command>\`, from the root of the checkout, runs the same.
 `;
 }
 
