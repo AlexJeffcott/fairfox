@@ -24,6 +24,7 @@ _devctl() {
   commands=(
     'help:List every command, or show the help of one'
     'build:Type-check and bundle each package of the workspace'
+    'ci:Run every registered check on the commit that is checked out'
   )
 
   if (( CURRENT == 2 )); then
@@ -44,7 +45,21 @@ _devctl() {
         '(-h --help)'{-h,--help}'[show the help of build]' \
         '*:package:(server client cli shell permissions devctl)'
       ;;
+    ci)
+      _arguments \
+        '(-h --help)'{-h,--help}'[show the help of ci]' \
+        '*--only[run only this check; writes no record]:check:_devctl_checks' \
+        '--red[see each check red with its recorded change, then green again]' \
+        '--list[list the registered checks and what each catches]'
+      ;;
   esac
+}
+
+# The registered checks, asked of devctl itself so the list cannot drift.
+_devctl_checks() {
+  local -a checks
+  checks=(${${(f)"$(devctl ci --list 2>/dev/null)"}%% *})
+  compadd -a checks
 }
 
 compdef _devctl devctl
