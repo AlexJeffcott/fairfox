@@ -284,7 +284,7 @@ export const CHECKS: readonly Check[] = [
       {
         breaks: 'the CLI prints a fixed value',
         file: 'packages/cli/src/index.ts',
-        find: 'console.log(answer.data.commit);',
+        find: 'console.log(commitOf(answer.data));',
         replace: "console.log('0000000');",
         output: 'Step failed in "The CLI prints the commit the server runs": Then the CLI prints the commit "3f9c2e1"',
       },
