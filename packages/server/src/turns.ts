@@ -3,11 +3,12 @@
 // (step 0a). `createApp` does not mount it: it is not a route of the server.
 // The first real anchors come with the first handlers that need them.
 //
-// `requires` is the handler's guard and `ensures` is its rule, written beside
-// it: one turn, never two. polly verify turns the guard, the assignment and
-// the rule into TLA+, and TLC checks the rule in every state the handler can
-// reach, over two messages (specs/verification.config.ts). Without the guard
-// a second message takes a second turn. At runtime both are no-ops.
+// The code refuses a second turn itself. `requires` and `ensures` are the
+// anchors: the guard and the rule, written beside the code for polly verify,
+// which turns them and the assignment into TLA+ and has TLC check the rule in
+// every state the model reaches (specs/verification.config.ts). At run time
+// both anchors do nothing, so polly checks the model and not the code:
+// turns.test.ts tests the code.
 import { $serverState } from '@fairfox/polly/state';
 import { ensures, requires } from '@fairfox/polly/verify';
 import { Elysia } from 'elysia';
@@ -15,7 +16,10 @@ import { Elysia } from 'elysia';
 /** How many turns have been taken. */
 export const turns = $serverState('turns', { taken: 0 });
 
-export const turnRoutes = new Elysia().post('/turn', () => {
+export const turnRoutes = new Elysia().post('/turn', ({ status }) => {
+  if (turns.value.taken >= 1) {
+    return status(409, { taken: turns.value.taken });
+  }
   requires(turns.value.taken < 1, 'a second turn is refused');
   turns.value = { taken: turns.value.taken + 1 };
   ensures(turns.value.taken <= 1, 'no more than one turn is taken');

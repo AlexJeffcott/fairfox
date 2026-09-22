@@ -207,7 +207,8 @@ export const CHECKS: readonly Check[] = [
   // polly verify, with the spec anchors in the handlers and the TLA+ it generates.
   {
     name: 'verify',
-    catches: 'a state that a set of handlers can reach and that breaks a rule written beside them',
+    catches:
+      'a state that a set of handlers can reach and that breaks a rule written beside them. It checks the model polly builds from the anchors, not the code; the unit check tests the code',
     run: [...DEVCTL, 'verify'],
     red: [
       {
@@ -238,6 +239,29 @@ export const CHECKS: readonly Check[] = [
         find: '  "scripts": {\n',
         replace: '  "scripts": {\n    "postinstall": "git config core.hooksPath .githooks",\n',
         output: 'postinstall script from "fairfox" exited with 127',
+      },
+    ],
+  },
+  // The unit tests, under bun test. The same name and command as the unit
+  // check of the branch rebuild-local: at the merge the two become one entry.
+  {
+    name: 'unit',
+    catches: 'a wrong result from one function',
+    run: ['bun', 'test', './packages', '--path-ignore-patterns=**/*.property.test.ts'],
+    red: [
+      {
+        breaks: "the turn route takes a turn on every call: only polly's anchor refuses a second",
+        file: 'packages/server/src/turns.ts',
+        find: '  if (turns.value.taken >= 1) {\n    return status(409, { taken: turns.value.taken });\n  }\n',
+        replace: '',
+        output: '"taken": 3',
+      },
+      {
+        breaks: 'the turn route writes its turn twice in one call; polly models the two writes as one',
+        file: 'packages/server/src/turns.ts',
+        find: '  turns.value = { taken: turns.value.taken + 1 };\n',
+        replace: '  turns.value = { taken: turns.value.taken + 1 };\n  turns.value = { taken: turns.value.taken + 1 };\n',
+        output: '"taken": 2',
       },
     ],
   },
