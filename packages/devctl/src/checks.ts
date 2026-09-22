@@ -153,4 +153,33 @@ export const CHECKS: readonly Check[] = [
       },
     ],
   },
+  // The @browser features: Playwright with playwright-bdd, in WebKit at 320px wide (U1).
+  {
+    name: 'browser',
+    catches: 'a screen that fails in a real browser or at the width of a phone (L2)',
+    run: [...DEVCTL, 'browser'],
+    red: [
+      {
+        breaks: 'the shell draws an element 400px wide',
+        file: 'packages/shell/src/index.ts',
+        find: "h('h1', null, name)",
+        replace: "h('h1', { style: 'width: 400px' }, name)",
+        output: 'on a screen 320px wide: it scrolls sideways',
+      },
+      {
+        breaks: 'the script of the shell throws, once it has drawn the name',
+        file: 'packages/shell/src/index.ts',
+        find: 'document.body);',
+        replace: "document.body);\nthrow new Error('the shell threw');",
+        output: 'page error: the shell threw',
+      },
+      {
+        breaks: 'the name is typed into the static HTML',
+        file: 'packages/shell/src/index.html',
+        find: '<body></body>',
+        replace: '<body>Fairfox</body>',
+        output: 'the name Fairfox is shown with scripts turned off',
+      },
+    ],
+  },
 ];

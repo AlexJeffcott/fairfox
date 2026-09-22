@@ -26,6 +26,7 @@ _devctl() {
     'help:List every command, or show the help of one'
     'build:Type-check and bundle each package of the workspace'
     'ci:Run every registered check on the commit that is checked out'
+    'browser:Run the @browser features in WebKit on a screen 320px wide'
   )
 
   if (( CURRENT == 2 )); then
@@ -52,6 +53,9 @@ _devctl() {
         '*--only[run only this check; writes no record]:check:_devctl_checks' \
         '--red[see each check red with its recorded change, then green again]' \
         '--list[list the registered checks and what each catches]'
+      ;;
+    browser)
+      _arguments '(-h --help)'{-h,--help}'[show the help of browser]'
       ;;
   esac
 }
