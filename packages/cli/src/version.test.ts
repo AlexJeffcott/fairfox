@@ -22,6 +22,7 @@ describe('the commit in a version answer', () => {
 
   test('an answer that is not an object is refused', () => {
     expect(() => commitOf('3f9c2e1')).toThrow(refused);
+    expect(() => commitOf('x')).toThrow(refused);
     expect(() => commitOf(null)).toThrow(refused);
   });
 });

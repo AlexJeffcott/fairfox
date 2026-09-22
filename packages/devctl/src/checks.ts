@@ -313,8 +313,8 @@ export const CHECKS: readonly Check[] = [
   },
   {
     name: 'mutation',
-    catches: 'a test that passes when the code is wrong (L6, "test gaps"): Stryker on the permissions package',
-    run: [...DEVCTL, 'mutation', 'permissions'],
+    catches: 'a test that passes when the code is wrong (L6, "test gaps"): Stryker on each package this branch touched',
+    run: [...DEVCTL, 'mutation', '--since', 'main'],
     red: [
       {
         breaks: 'the test that each entry is an action its kind allows asserts nothing',
@@ -322,6 +322,20 @@ export const CHECKS: readonly Check[] = [
         find: '          expect(list[entry.kind]).toContain(entry.action);\n',
         replace: '',
         output: '[Survived] ObjectLiteral',
+      },
+      {
+        breaks: 'the test of a one-character answer is gone from the cli package',
+        file: 'packages/cli/src/version.test.ts',
+        find: "    expect(() => commitOf('x')).toThrow(refused);\n",
+        replace: '',
+        output: 'packages/cli/src/version.ts:9:5',
+      },
+      {
+        breaks: 'a touched package with no Stryker config and no reason passes',
+        file: 'packages/devctl/src/mutation.ts',
+        find: "  shell: 'no code yet: the shell is built at step 7b',\n",
+        replace: '',
+        output: 'packages/shell changed since main and has no Stryker config',
       },
     ],
   },
