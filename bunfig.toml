@@ -1,0 +1,2 @@
+# Bun loads no .env file, in scripts or in `bun test`. Config is passed in (C1, C2).
+env = false

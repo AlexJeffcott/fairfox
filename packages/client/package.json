@@ -1,0 +1,11 @@
+{
+  "name": "@fairfox/client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@elysiajs/eden": "1.4.9",
+    "@fairfox/server": "workspace:*"
+  }
+}
