@@ -1,6 +1,6 @@
 import { Database } from 'bun:sqlite';
 import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BUSY_TIMEOUT_MS, openDatabase } from './database.ts';
@@ -19,7 +19,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{1
 
 describe('opening the database', () => {
   test('a new file is set up: WAL, a busy timeout, every migration, a marker', () => {
-    const { database, migrated } = openDatabase(join(dir, 'new.db'));
+    const path = join(dir, 'new.db');
+    const { database, migrated } = openDatabase(path);
+    expect(existsSync(path)).toBe(true);
     expect(pragma(database, 'journal_mode')).toBe('wal');
     expect(pragma(database, 'busy_timeout')).toBe(BUSY_TIMEOUT_MS);
     expect(migrated).toStrictEqual({ ran: MIGRATIONS.map((m) => m.name) });
@@ -59,10 +61,11 @@ describe('opening the database', () => {
     second.database.close();
   });
 
-  test('the migration names are in order and unique', () => {
+  test('the migration names are in order and unique, and the latest is the last', () => {
     const names = MIGRATIONS.map((m) => m.name);
     expect(names).toStrictEqual([...new Set(names)].sort());
     expect(names.every((name) => /^\d{3}-[a-z-]+$/.test(name))).toBe(true);
+    expect(LATEST_MIGRATION).toBe(names[names.length - 1]);
   });
 });
 
@@ -73,10 +76,17 @@ describe('reading meta', () => {
     database.close();
   });
 
-  test('a meta table without its rows is not set up', () => {
-    const { database } = openDatabase(join(dir, 'broken.db'));
-    database.query('DELETE FROM meta WHERE key = ?').run('marker');
-    expect(() => readMeta(database)).toThrow('no marker row');
+  test.each(['marker', 'migration'])('a meta table without its %s row is not set up', (key) => {
+    const { database } = openDatabase(join(dir, `no-${key}.db`));
+    database.query('DELETE FROM meta WHERE key = ?').run(key);
+    expect(() => readMeta(database)).toThrow('The meta table holds no marker row, or no migration row: the database is not set up.');
+    database.close();
+  });
+
+  test('a meta value that is not text is refused, by its key', () => {
+    const { database } = openDatabase(join(dir, 'blob.db'));
+    database.query('UPDATE meta SET value = ? WHERE key = ?').run(new Uint8Array([1, 2]), 'marker');
+    expect(() => readMeta(database)).toThrow('The meta row marker holds a value that is not text.');
     database.close();
   });
 });

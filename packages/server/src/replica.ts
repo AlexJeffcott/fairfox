@@ -7,33 +7,30 @@
 /** A replica older than this fails the status command (S7a). */
 export const MAX_REPLICA_AGE_SECONDS = 3600;
 
-/** The newest timestamp in the listing, or undefined for an empty replica or a listing that is not one. */
-function newestWrite(listing: string): Date | undefined {
-  const parsed: unknown = JSON.parse(listing);
-  if (!Array.isArray(parsed)) {
-    throw new Error(`litestream ltx did not print a list: ${listing.trim()}`);
+/** The time of one entry of the listing, in milliseconds since the epoch. */
+function writtenAt(entry: unknown): number {
+  const timestamp: unknown = Reflect.get(Object(entry), 'timestamp');
+  if (typeof timestamp !== 'string') {
+    throw new Error(`An LTX entry has no timestamp: ${JSON.stringify(entry)}`);
   }
-  let newest: Date | undefined;
-  for (const entry of parsed) {
-    const timestamp: unknown = typeof entry === 'object' && entry !== null ? Reflect.get(entry, 'timestamp') : undefined;
-    if (typeof timestamp !== 'string') {
-      throw new Error(`An LTX entry has no timestamp: ${JSON.stringify(entry)}`);
-    }
-    const at = new Date(timestamp);
-    if (Number.isNaN(at.getTime())) {
-      throw new Error(`An LTX entry has a timestamp that is not a time: ${JSON.stringify(timestamp)}`);
-    }
-    if (newest === undefined || at > newest) {
-      newest = at;
-    }
+  const at = Date.parse(timestamp);
+  if (Number.isNaN(at)) {
+    throw new Error(`An LTX entry has a timestamp that is not a time: ${JSON.stringify(timestamp)}`);
   }
-  return newest;
+  return at;
 }
 
 /** Seconds since the newest write to the replica, or undefined when the replica holds nothing. */
 export function replicaAgeSeconds(listing: string, now: Date): number | undefined {
-  const newest = newestWrite(listing);
-  return newest === undefined ? undefined : Math.max(0, Math.round((now.getTime() - newest.getTime()) / 1000));
+  const parsed: unknown = JSON.parse(listing);
+  if (!Array.isArray(parsed)) {
+    throw new Error(`litestream ltx did not print a list: ${listing.trim()}`);
+  }
+  if (parsed.length === 0) {
+    return undefined;
+  }
+  const newest = Math.max(...parsed.map(writtenAt));
+  return Math.max(0, Math.round((now.getTime() - newest) / 1000));
 }
 
 /** Why the replica fails the check, or null when it passes. */

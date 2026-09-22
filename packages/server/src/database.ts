@@ -16,7 +16,7 @@ export type Opened = {
  * does not exist is created: the marker is written then, once (S7).
  */
 export function openDatabase(path: string): Opened {
-  const database = new Database(path, { create: true, strict: true });
+  const database = new Database(path);
   database.exec('PRAGMA journal_mode = WAL');
   database.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
   const migrated = migrate(database, { marker: randomUUID() });

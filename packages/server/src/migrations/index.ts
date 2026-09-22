@@ -9,7 +9,7 @@ export type { Migration, Setup } from './migration.ts';
 export const MIGRATIONS: readonly Migration[] = [meta];
 
 /** The name of the latest migration this image knows. */
-export const LATEST_MIGRATION = MIGRATIONS[MIGRATIONS.length - 1]?.name;
+export const LATEST_MIGRATION = MIGRATIONS.map((m) => m.name).at(-1);
 
 /** The rows of `meta` a restore is read against (S7, C5). */
 export type Meta = {
@@ -17,13 +17,16 @@ export type Meta = {
   migration: string;
 };
 
+/** The value of one row of `meta`, or undefined when there is no row with that key. */
 function row(database: Database, key: string): string | undefined {
-  const found: unknown = database.query('SELECT value FROM meta WHERE key = ?').get(key);
-  if (typeof found !== 'object' || found === null) {
+  const found = database.query<{ value: unknown }, [string]>('SELECT value FROM meta WHERE key = ?').get(key);
+  if (found === null) {
     return undefined;
   }
-  const value: unknown = Reflect.get(found, 'value');
-  return typeof value === 'string' ? value : undefined;
+  if (typeof found.value !== 'string') {
+    throw new Error(`The meta row ${key} holds a value that is not text.`);
+  }
+  return found.value;
 }
 
 function hasMeta(database: Database): boolean {
@@ -63,16 +66,13 @@ export function migrate(database: Database, setup: Setup): Migrated {
   if ('ahead' in planned) {
     return planned;
   }
-  for (const name of planned.run) {
-    const migration = MIGRATIONS.find((m) => m.name === name);
-    if (migration === undefined) {
-      throw new Error(`No migration is named ${name}`);
-    }
+  const pending = MIGRATIONS.filter((m) => planned.run.includes(m.name));
+  for (const migration of pending) {
     database.transaction(() => {
       migration.up(database, setup);
       // Prepared after up: the first migration is the one that creates meta.
       database.query('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run('migration', migration.name);
     })();
   }
-  return { ran: planned.run };
+  return { ran: pending.map((m) => m.name) };
 }

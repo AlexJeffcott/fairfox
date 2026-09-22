@@ -37,8 +37,8 @@ describe('parsing fly releases --json', () => {
     expect(() => parseReleases('{"Version":1}')).toThrow('fly releases --json did not print a list');
   });
 
-  test('an entry that is not an object is refused, by its index', () => {
-    expect(() => parseReleases(JSON.stringify([entry(2), 7]))).toThrow('Release 1 of fly releases --json is not an object');
+  test.each(['7', 'null', '"x"'])('an entry that is not an object, %s, is refused, by its index', (bad) => {
+    expect(() => parseReleases(`[${JSON.stringify(entry(2))}, ${bad}]`)).toThrow('Release 1 of fly releases --json is not an object');
   });
 
   test('a missing field is refused, by name', () => {
@@ -55,8 +55,14 @@ describe('parsing fly releases --json', () => {
     );
   });
 
-  test.each(['"3"', '3.5'])('a version of %s is refused', (version) => {
-    expect(() => parseReleases(`[${JSON.stringify(entry(1)).replace('"Version":1', `"Version":${version}`)}]`)).toThrow(
+  test('a version that is not a number is refused', () => {
+    expect(() => parseReleases(`[${JSON.stringify(entry(1)).replace('"Version":1', '"Version":"1"')}]`)).toThrow(
+      'Release 0 of fly releases --json has a Version that is not a number',
+    );
+  });
+
+  test('a version that is not a whole number is refused', () => {
+    expect(() => parseReleases(`[${JSON.stringify(entry(1)).replace('"Version":1', '"Version":1.5')}]`)).toThrow(
       'Release 0 of fly releases --json has a Version that is not a whole number',
     );
   });

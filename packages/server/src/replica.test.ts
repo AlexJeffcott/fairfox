@@ -33,16 +33,20 @@ describe('the age of the replica', () => {
     expect(replicaAgeSeconds('[]\n', now)).toBeUndefined();
   });
 
-  test('a listing that is not a list is refused', () => {
-    expect(() => replicaAgeSeconds('{"error":"x"}', now)).toThrow('litestream ltx did not print a list: {"error":"x"}');
+  test('a listing that is not a list is refused, and shown without its line break', () => {
+    expect(() => replicaAgeSeconds('{"error":"x"}\n', now)).toThrow(new Error('litestream ltx did not print a list: {"error":"x"}'));
   });
 
-  test('an entry with no timestamp is refused', () => {
-    expect(() => replicaAgeSeconds('[{"level":0}]', now)).toThrow('An LTX entry has no timestamp: {"level":0}');
+  test.each(['{"level":0}', 'null', '7', '"2026-09-22T19:59:48Z"'])('an entry with no timestamp, %s, is refused', (entry) => {
+    expect(() => replicaAgeSeconds(`[${entry}]`, now)).toThrow(new Error(`An LTX entry has no timestamp: ${entry}`));
   });
 
   test('an entry whose timestamp is not a time is refused', () => {
     expect(() => replicaAgeSeconds(listing('yesterday'), now)).toThrow('An LTX entry has a timestamp that is not a time: "yesterday"');
+  });
+
+  test('one bad entry among good ones is refused', () => {
+    expect(() => replicaAgeSeconds(listing('2026-09-22T19:59:48Z', 'yesterday'), now)).toThrow('not a time: "yesterday"');
   });
 });
 

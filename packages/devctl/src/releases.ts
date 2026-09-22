@@ -40,7 +40,10 @@ export function parseReleases(json: string): Release[] {
       throw new Error(`Release ${index} of fly releases --json is not an object`);
     }
     const version = field(entry, 'Version', index);
-    if (typeof version !== 'number' || !Number.isInteger(version)) {
+    if (typeof version !== 'number') {
+      throw new Error(`Release ${index} of fly releases --json has a Version that is not a number`);
+    }
+    if (!Number.isInteger(version)) {
       throw new Error(`Release ${index} of fly releases --json has a Version that is not a whole number`);
     }
     return {

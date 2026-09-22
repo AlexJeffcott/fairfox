@@ -24,11 +24,17 @@ describe('reading fly.toml', () => {
     expect(() => readFlyConfig('[http_service]\ninternal_port = 3000\n')).toThrow('fly.toml has no [env] table');
   });
 
+  test('an [[env]] array is not the [env] table', () => {
+    expect(() => readFlyConfig('[[env]]\nFAIRFOX_PORT = "3000"\n[http_service]\ninternal_port = 3000\n')).toThrow(
+      'fly.toml has no [env] table',
+    );
+  });
+
   test('a file with no [http_service] is refused', () => {
     expect(() => readFlyConfig('[env]\nFAIRFOX_PORT = "3000"\n')).toThrow('fly.toml has no [http_service] table');
   });
 
-  test('a file that is not a table is refused', () => {
+  test('an empty file is refused', () => {
     expect(() => readFlyConfig('')).toThrow('fly.toml has no [env] table');
   });
 
@@ -36,9 +42,21 @@ describe('reading fly.toml', () => {
     expect(() => readFlyConfig(toml.replace('"3000"', '3000'))).toThrow('fly.toml [env] FAIRFOX_PORT is not a string');
   });
 
-  test.each(['"3000"', '0', '65536', '3000.5'])('an internal port of %s is refused', (port) => {
+  test.each(['"3000"', 'true'])('an internal port of %s is not a number', (port) => {
+    expect(() => readFlyConfig(toml.replace('internal_port = 3000', `internal_port = ${port}`))).toThrow(
+      `fly.toml http_service.internal_port is not a number: ${port}`,
+    );
+  });
+
+  test.each(['0', '65536', '3000.5'])('an internal port of %s is not a port', (port) => {
     expect(() => readFlyConfig(toml.replace('internal_port = 3000', `internal_port = ${port}`))).toThrow(
       `fly.toml http_service.internal_port is not a port: ${port}`,
+    );
+  });
+
+  test.each(['1', '65535'])('an internal port of %s is a port', (port) => {
+    expect(readFlyConfig(toml.replace('internal_port = 3000', `internal_port = ${port}`).replace('"3000"', `"${port}"`)).internalPort).toBe(
+      Number(port),
     );
   });
 

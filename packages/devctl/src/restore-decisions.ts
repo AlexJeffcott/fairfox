@@ -12,8 +12,8 @@ export type Status = {
   replicaAgeSeconds: number | null;
 };
 
-function field(status: object, name: string, line: string): string | number | null {
-  const value: unknown = Reflect.get(status, name);
+function field(status: unknown, name: string, line: string): string | number | null {
+  const value: unknown = Reflect.get(Object(status), name);
   if (value === undefined) {
     throw new Error(`The status command printed no ${name}: ${line}`);
   }
@@ -29,10 +29,8 @@ export function parseStatus(output: string): Status {
   if (line === undefined) {
     throw new Error(`The status command printed no JSON line:\n${output.trim()}`);
   }
+  // A line that starts with { is an object, or JSON.parse refuses it.
   const parsed: unknown = JSON.parse(line);
-  if (typeof parsed !== 'object' || parsed === null) {
-    throw new Error(`The status command printed no JSON line:\n${output.trim()}`);
-  }
   const migration = field(parsed, 'migration', line);
   const databasePath = field(parsed, 'databasePath', line);
   const marker = field(parsed, 'marker', line);

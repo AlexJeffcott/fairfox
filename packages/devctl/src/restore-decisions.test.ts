@@ -23,12 +23,12 @@ describe('reading the status line', () => {
     });
   });
 
-  test('no JSON line is refused, and the output shown', () => {
-    expect(() => parseStatus('error: x\n')).toThrow('The status command printed no JSON line:\nerror: x');
+  test('no JSON line is refused, and the output shown without its line break', () => {
+    expect(() => parseStatus('error: x\n')).toThrow(new Error('The status command printed no JSON line:\nerror: x'));
   });
 
-  test('a JSON line that is not an object is refused', () => {
-    expect(() => parseStatus('{')).toThrow();
+  test('a line that starts like JSON and is not is refused', () => {
+    expect(() => parseStatus('{')).toThrow(SyntaxError);
   });
 
   test('a missing field is refused by name', () => {

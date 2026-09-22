@@ -22,13 +22,14 @@ export function deployRefusal(facts: DeployFacts): string | null {
   if (!facts.clean) {
     return 'The working tree is not clean. A deploy is of one commit and no other (M6): commit or stash, run devctl ci, then deploy.';
   }
-  if (facts.record === undefined) {
+  const { record } = facts;
+  if (record === undefined) {
     return `No record of a green devctl ci run for ${facts.head}. Run devctl ci, then deploy (M6).`;
   }
-  if (facts.record.commit !== facts.head) {
-    return `The record for ${facts.head} names another commit, ${facts.record.commit}. Run devctl ci, then deploy (M6).`;
+  if (record.commit !== facts.head) {
+    return `The record for ${facts.head} names another commit, ${record.commit}. Run devctl ci, then deploy (M6).`;
   }
-  const missing = facts.checks.filter((name) => !facts.record?.green.includes(name));
+  const missing = facts.checks.filter((name) => !record.green.includes(name));
   if (missing.length > 0) {
     return `The record for ${facts.head} holds no green run of: ${missing.join(', ')}. Run devctl ci, then deploy (M6).`;
   }
