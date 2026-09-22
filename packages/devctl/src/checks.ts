@@ -164,7 +164,7 @@ export const CHECKS: readonly Check[] = [
         file: 'packages/devctl/src/build.ts',
         find: 'const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);',
         replace: 'const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name) as string[];',
-        output: 'packages/devctl/src/build.ts:50',
+        output: 'packages/devctl/src/build.ts:51',
       },
       {
         breaks: "an angle-bracket assertion, which eal's line scan let through",
