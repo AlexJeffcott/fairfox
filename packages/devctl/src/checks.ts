@@ -233,10 +233,10 @@ export const CHECKS: readonly Check[] = [
     run: [...DEVCTL, 'image'],
     red: [
       {
-        breaks: 'a postinstall script calls Playwright, which the production install leaves out',
+        breaks: 'a postinstall script sets up git hooks, and the image has no git',
         file: 'package.json',
         find: '  "scripts": {\n',
-        replace: '  "scripts": {\n    "postinstall": "playwright install webkit",\n',
+        replace: '  "scripts": {\n    "postinstall": "git config core.hooksPath .githooks",\n',
         output: 'postinstall script from "fairfox" exited with 127',
       },
     ],

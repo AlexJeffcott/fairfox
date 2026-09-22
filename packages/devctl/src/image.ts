@@ -15,9 +15,10 @@ checkout as its build context, the way a deploy builds it. .dockerignore
 lets in only the manifests, the lockfile and packages/, so no file a
 development tool leaves in the checkout reaches the image.
 
-Every development tool is in package.json and bun.lock, and the production
-install reads both. A development tool that stops that install, or any
-later step, fails this command: in CI, not at the first deploy after it.
+The image has every development tool installed: its install is the full
+one, from package.json and bun.lock. It runs on Node 24 with Bun 1.4.2. A
+development tool that stops that install, or any later step, fails this
+command: in CI, not at the first deploy after it.
 
 Tags the image ${IMAGE_TAG}. Pushes nothing. Docker must be running.
 `,

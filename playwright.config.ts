@@ -3,9 +3,10 @@
 // packages/devctl/src/browser.ts.
 //
 // Only @browser scenarios are generated. The @local features sit in the same
-// features/ directory and run under Bun, not here; their steps are not in the
-// `steps` glob below, and playwright-bdd leaves a feature out when its tags do
-// not match.
+// features/ directory and run under `bun test`, not here: playwright-bdd
+// leaves a feature out when its tags do not match. Their steps are in
+// features/local/ and import bun:test, which a Playwright worker cannot load,
+// so the `steps` glob below names features/browser/ and nothing else.
 import { defineConfig } from '@playwright/test';
 import { defineBddConfig } from 'playwright-bdd';
 import { PHONE, WIDTH } from './features/browser/phone.ts';
