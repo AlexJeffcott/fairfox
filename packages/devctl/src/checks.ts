@@ -236,7 +236,7 @@ export const CHECKS: readonly Check[] = [
         breaks: 'findFixedWaits takes a string that names Bun.sleep for a wait',
         file: 'packages/devctl/src/checks/waits.ts',
         find: '    if (isBunSleep(node)) {\n',
-        replace: "    if (ts.isStringLiteralLike(node) && node.text.includes('Bun.sleep(')) {\n      report(node, 'Bun.sleep');\n    } else if (isBunSleep(node)) {\n",
+        replace: "    if (ts.isStringLiteralLike(node) && node.text.includes('Bun.sleep(')) {\n      found.set(node, 'Bun.sleep');\n    }\n    if (isBunSleep(node)) {\n",
         output: '(fail) findFixedWaits > leaves a string that names a wait',
       },
       {
@@ -330,6 +330,13 @@ export const CHECKS: readonly Check[] = [
     catches: 'a test that passes when the code is wrong (L6, "test gaps"): Stryker on each package this branch touched',
     run: [...DEVCTL, 'mutation', '--since', 'main'],
     red: [
+      {
+        breaks: 'the test of self.setTimeout is gone from devctl',
+        file: 'packages/devctl/src/checks/waits.test.ts',
+        find: "  ['self.setTimeout resolving a promise', 'await new Promise((go) => self.setTimeout(go, 100));', [TIMER]],\n",
+        replace: '',
+        output: 'packages/devctl/src/checks/waits.ts:7:60',
+      },
       {
         breaks: 'the test of a one-character answer is gone from the cli package',
         file: 'packages/cli/src/version.test.ts',

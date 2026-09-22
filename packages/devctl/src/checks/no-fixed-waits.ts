@@ -23,7 +23,7 @@ for (const file of files) {
 if (found.length > 0) {
   console.log(`Found ${found.length} fixed wait(s):`);
   for (const f of found) {
-    console.log(`  ${f.file}:${f.line}  [${f.reason}]  ${f.text.slice(0, 100)}`);
+    console.log(`  ${f.file}:${f.line}  [${f.reason}]  ${f.text.split('\n')[0]?.slice(0, 100)}`);
   }
   process.exit(1);
 }

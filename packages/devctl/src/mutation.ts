@@ -9,8 +9,15 @@ import { childEnv, run } from './proc.ts';
  * runs that package's tests with Stryker's command runner. No patch. A
  * config's break threshold is 100: one mutant that the tests let pass fails
  * the run. The defect it catches: a test that passes when the code is wrong
- * (L6, "test gaps"). A config that leaves a file out says why at the top of
- * that file.
+ * (L6, "test gaps").
+ *
+ * A config may mutate part of its package. What each leaves out, and why:
+ * - cli: src/index.ts, the command flow, which the @local features run as a
+ *   process.
+ * - devctl: all but record.ts and checks/casts.ts, syntax.ts and waits.ts,
+ *   the pure functions its tests call. The rest is the command flow and the
+ *   check scripts, which run as processes; devctl ci --red sees each check
+ *   red (M3).
  */
 const CONFIGS = 'stryker';
 const SUFFIX = '.conf.json';
@@ -24,7 +31,6 @@ export const EXEMPT: Readonly<Record<string, string>> = {
   client: "no logic of its own: createClient is one call to Eden's treaty",
   server:
     'no business logic yet (step 0a): its one behaviour is the @local version feature, which M1 does not let a unit test repeat. Its first logic comes at stage 1',
-  devctl: 'the development CLI that runs these checks, not the product: each check is seen red by devctl ci --red (M3)',
   permissions: 'no code yet: the list is empty until stage 1',
 };
 

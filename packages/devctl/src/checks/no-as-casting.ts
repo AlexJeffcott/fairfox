@@ -20,7 +20,7 @@ for (const file of files) {
 if (found.length > 0) {
   console.log(`Found ${found.length} type assertion(s):`);
   for (const f of found) {
-    console.log(`  ${f.file}:${f.line}  ${f.text.slice(0, 120)}`);
+    console.log(`  ${f.file}:${f.line}  ${f.text.split('\n')[0]?.slice(0, 120)}`);
   }
   process.exit(1);
 }
