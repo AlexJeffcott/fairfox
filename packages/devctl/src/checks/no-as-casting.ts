@@ -6,8 +6,9 @@
 // each file with the TypeScript compiler API: see findCasts in casts.ts.
 import { join } from 'node:path';
 import { repoRoot } from '../repo.ts';
-import { findCasts, type Finding } from './casts.ts';
+import { findCasts } from './casts.ts';
 import { typeScriptFiles } from './sources.ts';
+import type { Finding } from './syntax.ts';
 
 const root = await repoRoot();
 const files = await typeScriptFiles(root);

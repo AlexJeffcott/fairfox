@@ -186,7 +186,29 @@ export const CHECKS: readonly Check[] = [
         find: '  await Bun.write(path, original.replace(change.find, change.replace));\n',
         replace:
           '  await Bun.write(path, original.replace(change.find, change.replace));\n  await new Promise((r) => setTimeout(r, 100));\n',
-        output: '[fixed sleep: new Promise wrapping setTimeout]',
+        output: 'packages/devctl/src/ci.ts:102  [a timer that resolves a promise]',
+      },
+      {
+        breaks: "ci --red waits on setTimeout(() => resolve(), 100), which eal's line scan let through",
+        file: 'packages/devctl/src/ci.ts',
+        find: '  await Bun.write(path, original.replace(change.find, change.replace));\n',
+        replace:
+          '  await Bun.write(path, original.replace(change.find, change.replace));\n  await new Promise<void>((resolve) => {\n    setTimeout(() => resolve(), 100);\n  });\n',
+        output: 'packages/devctl/src/ci.ts:103  [a timer that resolves a promise]',
+      },
+      {
+        breaks: "devctl imports setTimeout from node:timers/promises, which eal's line scan let through",
+        file: 'packages/devctl/src/proc.ts',
+        find: '/**\n * The environment every child process gets',
+        replace: "import { setTimeout } from 'node:timers/promises';\n/**\n * The environment every child process gets",
+        output: 'packages/devctl/src/proc.ts:1  [a sleep imported from bun or timers/promises]',
+      },
+      {
+        breaks: "every child process waits on a destructured Bun.sleep, which eal's line scan let through",
+        file: 'packages/devctl/src/proc.ts',
+        find: '  const started = performance.now();\n',
+        replace: '  const { sleep } = Bun;\n  await sleep(50);\n  const started = performance.now();\n',
+        output: 'packages/devctl/src/proc.ts:25  [Bun.sleep, destructured]',
       },
     ],
   },
@@ -209,6 +231,13 @@ export const CHECKS: readonly Check[] = [
         replace:
           "  walk(source, (node) => {\n    if (ts.isMappedTypeNode(node) && node.nameType !== undefined) {\n      found.push(finding(source, node, 'type assertion'));\n    }\n",
         output: '(fail) findCasts > leaves the as of a mapped type',
+      },
+      {
+        breaks: 'findFixedWaits takes a string that names Bun.sleep for a wait',
+        file: 'packages/devctl/src/checks/waits.ts',
+        find: '    if (isBunSleep(node)) {\n',
+        replace: "    if (ts.isStringLiteralLike(node) && node.text.includes('Bun.sleep(')) {\n      report(node, 'Bun.sleep');\n    } else if (isBunSleep(node)) {\n",
+        output: '(fail) findFixedWaits > leaves a string that names a wait',
       },
     ],
   },
