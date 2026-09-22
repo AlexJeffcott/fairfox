@@ -232,4 +232,18 @@ export const CHECKS: readonly Check[] = [
       },
     ],
   },
+  {
+    name: 'mutation',
+    catches: 'a test that passes when the code is wrong (L6, "test gaps"): Stryker on the permissions package',
+    run: [...DEVCTL, 'mutation', 'permissions'],
+    red: [
+      {
+        breaks: 'the test that each entry is an action its kind allows asserts nothing',
+        file: 'packages/permissions/src/index.property.test.ts',
+        find: '          expect(list[entry.kind]).toContain(entry.action);\n',
+        replace: '',
+        output: '[Survived] ObjectLiteral',
+      },
+    ],
+  },
 ];

@@ -14,4 +14,15 @@ describe('entries', () => {
       }),
     );
   });
+
+  // Added after Stryker: the count alone let entries return empty entries.
+  test('each entry is an action that its kind allows', () => {
+    fc.assert(
+      fc.property(lists, (list) => {
+        for (const entry of entries(list)) {
+          expect(list[entry.kind]).toContain(entry.action);
+        }
+      }),
+    );
+  });
 });
