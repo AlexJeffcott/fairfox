@@ -18,6 +18,10 @@ import { childEnv, run } from './proc.ts';
  *   the pure functions its tests call. The rest is the command flow and the
  *   check scripts, which run as processes; devctl ci --red sees each check
  *   red (M3).
+ * - shell: nothing. Its tests are the @browser feature, in WebKit: its
+ *   command, src/mutation-shell.ts, builds the shell in Stryker's sandbox and
+ *   gives the page the active mutant, which the page cannot read from
+ *   process.env.
  */
 const CONFIGS = 'stryker';
 const SUFFIX = '.conf.json';
@@ -27,7 +31,6 @@ const SUFFIX = '.conf.json';
  * on a package it touched that has neither a config nor an entry here.
  */
 export const EXEMPT: Readonly<Record<string, string>> = {
-  shell: 'no code yet: the shell is built at step 7b',
   client: "no logic of its own: createClient is one call to Eden's treaty",
   permissions: 'no code yet: the list is empty until stage 1',
 };

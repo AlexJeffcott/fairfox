@@ -557,9 +557,16 @@ export const CHECKS: readonly Check[] = [
       {
         breaks: 'a touched package with no Stryker config and no reason passes',
         file: 'packages/devctl/src/mutation.ts',
-        find: "  shell: 'no code yet: the shell is built at step 7b',\n",
+        find: '  client: "no logic of its own: createClient is one call to Eden\'s treaty",\n',
         replace: '',
-        output: 'packages/shell changed since main and has no Stryker config',
+        output: 'packages/client changed since main and has no Stryker config',
+      },
+      {
+        breaks: 'the shell page is not given the active mutant, so no shell mutant is ever tried',
+        file: 'packages/devctl/src/mutation-shell.ts',
+        find: 'activeMutant: ${JSON.stringify(mutant)}',
+        replace: 'activeMutant: ""',
+        output: 'packages/shell/src/index.ts:8:21',
       },
     ],
   },
