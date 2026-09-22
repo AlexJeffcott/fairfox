@@ -8,6 +8,10 @@
     "devctl": "bun packages/devctl/src/index.ts"
   },
   "devDependencies": {
+    "@cucumber/gherkin": "42.0.1",
+    "@cucumber/messages": "34.2.1",
+    "@fairfox/client": "workspace:*",
+    "@fairfox/server": "workspace:*",
     "@types/bun": "1.4.2",
     "typescript": "6.0.3"
   }
