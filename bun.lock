@@ -32,13 +32,13 @@
     "packages/devctl": {
       "name": "@fairfox/devctl",
       "version": "0.0.0",
+      "devDependencies": {
+        "fast-check": "4.10.2",
+      },
     },
     "packages/permissions": {
       "name": "@fairfox/permissions",
       "version": "0.0.0",
-      "devDependencies": {
-        "fast-check": "4.10.2",
-      },
     },
     "packages/server": {
       "name": "@fairfox/server",

@@ -25,6 +25,7 @@ export const EXEMPT: Readonly<Record<string, string>> = {
   server:
     'no business logic yet (step 0a): its one behaviour is the @local version feature, which M1 does not let a unit test repeat. Its first logic comes at stage 1',
   devctl: 'the development CLI that runs these checks, not the product: each check is seen red by devctl ci --red (M3)',
+  permissions: 'no code yet: the list is empty until stage 1',
 };
 
 /** The packages that have a Stryker config. */

@@ -254,11 +254,11 @@ export const CHECKS: readonly Check[] = [
     run: ['bun', 'test', '.property.test.ts'],
     red: [
       {
-        breaks: 'entries drops the first action of each kind',
-        file: 'packages/permissions/src/index.ts',
-        find: 'actions.map((action)',
-        replace: 'actions.slice(1).map((action)',
-        output: '(fail) entries > a list has one entry for each of its actions',
+        breaks: 'ci writes its record when two or more checks are red; one red check still stops it',
+        file: 'packages/devctl/src/record.ts',
+        find: 'if (run.red > 0) {',
+        replace: 'if (run.red === 1) {',
+        output: '(fail) the ci record > is written only for a full run with no red check, on one clean commit',
       },
     ],
   },
@@ -330,13 +330,6 @@ export const CHECKS: readonly Check[] = [
     catches: 'a test that passes when the code is wrong (L6, "test gaps"): Stryker on each package this branch touched',
     run: [...DEVCTL, 'mutation', '--since', 'main'],
     red: [
-      {
-        breaks: 'the test that each entry is an action its kind allows asserts nothing',
-        file: 'packages/permissions/src/index.property.test.ts',
-        find: '          expect(list[entry.kind]).toContain(entry.action);\n',
-        replace: '',
-        output: '[Survived] ObjectLiteral',
-      },
       {
         breaks: 'the test of a one-character answer is gone from the cli package',
         file: 'packages/cli/src/version.test.ts',
