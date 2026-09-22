@@ -13,7 +13,7 @@ import { describe, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AstBuilder, compile, GherkinClassicTokenMatcher, Parser } from '@cucumber/gherkin';
-import { IdGenerator, type Pickle, type PickleStep } from '@cucumber/messages';
+import { type GherkinDocument, IdGenerator, type Pickle, type PickleStep, type Step } from '@cucumber/messages';
 
 export type StepDefinition<World> = {
   /** Matched against the whole text of a step. Its groups are the step's arguments. */
@@ -33,7 +33,31 @@ export type Suite<World> = {
   dispose: (world: World) => void | Promise<void>;
 };
 
-type Feature = { name: string; file: string; pickles: readonly Pickle[] };
+type Feature = {
+  name: string;
+  file: string;
+  pickles: readonly Pickle[];
+  /** The keyword each step is written with (Given, When, Then, And, But), by the id of its step in the file. */
+  keywords: ReadonlyMap<string, string>;
+};
+
+function keywords(document: GherkinDocument): Map<string, string> {
+  const found = new Map<string, string>();
+  const add = (steps: readonly Step[] | undefined): void => {
+    for (const step of steps ?? []) {
+      found.set(step.id, step.keyword.trim());
+    }
+  };
+  for (const child of document.feature?.children ?? []) {
+    add(child.background?.steps);
+    add(child.scenario?.steps);
+    for (const inRule of child.rule?.children ?? []) {
+      add(inRule.background?.steps);
+      add(inRule.scenario?.steps);
+    }
+  }
+  return found;
+}
 
 function readFeatures(dir: string): Feature[] {
   const newId = IdGenerator.uuid();
@@ -43,7 +67,12 @@ function readFeatures(dir: string): Feature[] {
     .sort();
   return files.map((file) => {
     const document = parser.parse(readFileSync(join(dir, file), 'utf8'));
-    return { name: document.feature?.name ?? file, file, pickles: compile(document, file, newId) };
+    return {
+      name: document.feature?.name ?? file,
+      file,
+      pickles: compile(document, file, newId),
+      keywords: keywords(document),
+    };
   });
 }
 
@@ -72,16 +101,26 @@ function bind<World>(steps: readonly StepDefinition<World>[], step: PickleStep):
   return first;
 }
 
-async function runPickle<World>(suite: Suite<World>, pickle: Pickle): Promise<void> {
+/**
+ * Run one scenario. A step that fails throws its own error, with the scenario
+ * and the step, as written in the file, put in front of its message:
+ * `Step failed in "<scenario>": Then <step>`.
+ */
+async function runPickle<World>(suite: Suite<World>, feature: Feature, pickle: Pickle): Promise<void> {
   const world = suite.newWorld();
   try {
     for (const step of pickle.steps) {
-      const [definition, args] = bind(suite.steps, step);
+      const keyword = feature.keywords.get(step.astNodeIds[0] ?? '') ?? '';
+      const where = `Step failed in "${pickle.name}": ${keyword} ${step.text}`;
       try {
+        const [definition, args] = bind(suite.steps, step);
         await definition.run(world, ...args);
       } catch (error) {
-        console.error(`The step failed: ${step.text}`);
-        throw error;
+        if (error instanceof Error) {
+          error.message = `${where}\n${error.message}`;
+          throw error;
+        }
+        throw new Error(`${where}\n${String(error)}`);
       }
     }
   } finally {
@@ -100,7 +139,7 @@ export function runFeatures<World>(suite: Suite<World>): void {
     count += pickles.length;
     describe(feature.name, () => {
       for (const pickle of pickles) {
-        test(pickle.name, () => runPickle(suite, pickle));
+        test(pickle.name, () => runPickle(suite, feature, pickle));
       }
     });
   }
