@@ -28,6 +28,7 @@ _devctl() {
     'ci:Run every registered check on the commit that is checked out'
     'browser:Run the @browser features in WebKit on a screen 320px wide'
     'tlc:Model-check each hand-written TLA+ spec with TLC'
+    'verify:Run polly verify on the anchored handlers, inside 120 s'
   )
 
   if (( CURRENT == 2 )); then
@@ -60,6 +61,9 @@ _devctl() {
       ;;
     tlc)
       _arguments '(-h --help)'{-h,--help}'[show the help of tlc]'
+      ;;
+    verify)
+      _arguments '(-h --help)'{-h,--help}'[show the help of verify]'
       ;;
   esac
 }

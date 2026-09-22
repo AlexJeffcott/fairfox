@@ -204,4 +204,26 @@ export const CHECKS: readonly Check[] = [
       },
     ],
   },
+  // polly verify, with the spec anchors in the handlers and the TLA+ it generates.
+  {
+    name: 'verify',
+    catches: 'a state that a set of handlers can reach and that breaks a rule written beside them',
+    run: [...DEVCTL, 'verify'],
+    red: [
+      {
+        breaks: 'the handler takes a turn without its guard',
+        file: 'packages/server/src/turns.ts',
+        find: "  requires(turns.value.taken < 1, 'a second turn is refused');\n",
+        replace: '',
+        output: 'Action property EnsuresAfter_HandlePostTurn is violated',
+      },
+      {
+        breaks: 'the run does not finish inside its time limit',
+        file: 'packages/devctl/src/verify.ts',
+        find: 'export const LIMIT_SECONDS = 120;',
+        replace: 'export const LIMIT_SECONDS = 1;',
+        output: 'polly verify did not finish inside its time limit of 1 s',
+      },
+    ],
+  },
 ];

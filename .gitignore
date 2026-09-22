@@ -4,3 +4,4 @@ packages/*/dist/
 .features-gen/
 test-results/
 playwright-report/
+packages/server/specs/tla/generated/

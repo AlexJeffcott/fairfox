@@ -3,6 +3,7 @@ import { build } from './build.ts';
 import { ci } from './ci.ts';
 import { type Command, commandHelp } from './command.ts';
 import { tlc } from './tlc.ts';
+import { verify } from './verify.ts';
 
 const intro = `devctl: the development CLI of Fairfox. It runs on a developer's machine
 and never in production. Every development task is one of its commands.`;
@@ -49,4 +50,4 @@ as \`devctl <command> --help\`.
 };
 
 /** Every devctl command, in the order `devctl --help` lists them. To add a command, add it here. */
-export const COMMANDS: readonly Command[] = [help, build, ci, browser, tlc];
+export const COMMANDS: readonly Command[] = [help, build, ci, browser, tlc, verify];
