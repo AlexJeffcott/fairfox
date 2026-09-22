@@ -239,6 +239,13 @@ export const CHECKS: readonly Check[] = [
         replace: "    if (ts.isStringLiteralLike(node) && node.text.includes('Bun.sleep(')) {\n      report(node, 'Bun.sleep');\n    } else if (isBunSleep(node)) {\n",
         output: '(fail) findFixedWaits > leaves a string that names a wait',
       },
+      {
+        breaks: 'the CLI prints whatever the server answers as the commit, undefined included',
+        file: 'packages/cli/src/version.ts',
+        find: 'export function commitOf(answer: unknown): string {\n',
+        replace: "export function commitOf(answer: unknown): string {\n  return String(Reflect.get(Object(answer), 'commit'));\n",
+        output: '(fail) the commit in a version answer > an answer with no commit is refused',
+      },
     ],
   },
   {

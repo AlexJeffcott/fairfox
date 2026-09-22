@@ -2,6 +2,7 @@
 // The Fairfox CLI: the first client of the API, through @fairfox/client (A2).
 import { parseArgs } from 'node:util';
 import { createClient } from '@fairfox/client';
+import { commitOf } from './version.ts';
 
 const USAGE = `Usage: fairfox <command> --server <origin>
 
@@ -23,7 +24,7 @@ async function version(server: string): Promise<number> {
     );
     return 1;
   }
-  console.log(answer.data.commit);
+  console.log(commitOf(answer.data));
   return 0;
 }
 
