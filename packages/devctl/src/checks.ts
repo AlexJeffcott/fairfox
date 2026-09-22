@@ -349,6 +349,21 @@ export const CHECKS: readonly Check[] = [
         output: 'polly did not run TLC in the polly-tla:latest devctl verify built',
       },
       {
+        breaks: 'an anchored route is added, and messages.include leaves it out of the model',
+        file: 'packages/server/src/turns.ts',
+        find: '  return { taken: turns.value.taken };\n});\n',
+        replace:
+          "  return { taken: turns.value.taken };\n}).post('/reset', () => {\n  ensures(turns.value.taken >= 0, 'the count is never negative');\n  return {};\n});\n",
+        output: 'Anchored routes missing from messages.include in packages/server/specs/verification.config.ts: POST /reset.',
+      },
+      {
+        breaks: 'messages.include names a route that has no anchors',
+        file: 'packages/server/specs/verification.config.ts',
+        find: "    include: ['POST /turn'],",
+        replace: "    include: ['POST /turn', 'POST /reset'],",
+        output: 'Names in messages.include with no anchored route in packages/server/src: POST /reset.',
+      },
+      {
         breaks: 'the jar for polly-tla is not the tla2tools.jar the checkout pins',
         file: 'packages/devctl/src/tlc.ts',
         find: "sha256: '936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88'",

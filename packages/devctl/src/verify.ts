@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { mkdir, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
+import { anchoredRoutesIn, includedRoutes } from './anchors.ts';
 import type { Command } from './command.ts';
 import { dockerAnswers, dockerDown } from './docker.ts';
 import { childEnv, run, seconds } from './proc.ts';
@@ -19,6 +20,29 @@ const PACKAGE = join('packages', 'server');
 
 /** Where polly writes the TLA+ it generates, and runs TLC. */
 const GENERATED = join(PACKAGE, 'specs', 'tla', 'generated');
+
+/**
+ * Whether the routes polly will model are the anchored ones: every route in
+ * the package's src whose handler calls requires or ensures, each named in
+ * messages.include of the config, and nothing else named there. polly leaves
+ * a route out of the model when include does not name it, and its run stays
+ * green. Returns what differs, or an empty list.
+ */
+async function modelDrift(root: string): Promise<string[]> {
+  const config = join(PACKAGE, 'specs', 'verification.config.ts');
+  const anchored = await anchoredRoutesIn(join(root, PACKAGE, 'src'));
+  const included = await includedRoutes(join(root, config));
+  const drift: string[] = [];
+  const missing = anchored.filter((route) => !included.includes(route));
+  if (missing.length > 0) {
+    drift.push(`Anchored routes missing from messages.include in ${config}: ${missing.join(', ')}.`);
+  }
+  const extra = included.filter((route) => !anchored.includes(route));
+  if (extra.length > 0) {
+    drift.push(`Names in messages.include with no anchored route in ${PACKAGE}/src: ${extra.join(', ')}.`);
+  }
+  return drift;
+}
 
 /** The TLC image polly runs. polly gives it this name; nothing here can change it. */
 const POLLY_IMAGE = 'polly-tla:latest';
@@ -96,6 +120,12 @@ Docker. The model's bounds are in ${PACKAGE}/specs/verification.config.ts.
 --strict is passed, so a declared field that no handler writes fails the
 run. polly checks the model it builds from the anchors, not the code.
 
+Before polly runs, the routes in the model are compared with the anchored
+routes of ${PACKAGE}/src: each route whose handler calls requires or ensures
+from @fairfox/polly/verify, found with the TypeScript compiler. A route
+missing from messages.include, or a name there with no anchored route, fails
+the run: polly would leave the route out of its model and stay green.
+
 First it builds ${POLLY_IMAGE}, the image polly runs TLC in, from
 packages/devctl/polly-tla/: Java by digest and tla2tools.jar checked by
 hash, as devctl tlc runs them. A leftover image of that name is never used.
@@ -112,6 +142,11 @@ the first number its pattern meets. Docker must be running.
   run: async ({ root, positionals }) => {
     if (positionals.length > 0) {
       console.error('devctl verify takes no arguments');
+      return 1;
+    }
+    const drift = await modelDrift(root);
+    if (drift.length > 0) {
+      console.error(`${drift.join('\n')}\npolly verify is not run: its model would not be the anchored routes.`);
       return 1;
     }
     if (!(await dockerAnswers(root))) {
