@@ -462,7 +462,7 @@ export const CHECKS: readonly Check[] = [
   {
     name: 'replica',
     catches:
-      'a backup pipeline that does not bring the database back: a replica Litestream does not write, a restore that is not the database that was set up, a replica older than one hour (S7, S7a). Runs on the image the image check built',
+      'a backup pipeline that does not bring the database back: a replica Litestream does not write, a restore that is not the database that was set up, a replica older than one hour, a boot on an empty volume that does not restore first (S7, S7a, TG2). Runs on the image the image check built',
     run: [...DEVCTL, 'replica'],
     red: [
       {
@@ -503,9 +503,23 @@ export const CHECKS: readonly Check[] = [
       {
         breaks: 'serve.sh runs the server without Litestream, so no snapshot is ever written',
         file: 'packages/server/serve.sh',
-        find: 'exec litestream replicate -exec "bun packages/server/src/main.ts" "$FAIRFOX_DATABASE_PATH" "$FAIRFOX_REPLICA_URL"',
+        find: 'exec litestream replicate -restore-if-db-not-exists -exec "bun packages/server/src/main.ts" "$FAIRFOX_DATABASE_PATH" "$FAIRFOX_REPLICA_URL"',
         replace: 'exec bun packages/server/src/main.ts',
         output: '"snapshot complete" did not appear inside',
+      },
+      {
+        breaks: 'serve.sh does not ask Litestream to restore, so a boot on an empty volume makes a fresh database (TG2)',
+        file: 'packages/server/serve.sh',
+        find: 'exec litestream replicate -restore-if-db-not-exists -exec',
+        replace: 'exec litestream replicate -exec',
+        output: '"restore completed" did not appear inside',
+      },
+      {
+        breaks: 'the second boot keeps the old database directory, so nothing is restored and the check proves nothing about an empty volume',
+        file: 'packages/devctl/src/replica.ts',
+        find: "  await rm(join(dir, 'data'), { recursive: true, force: true });\n  await mkdir(join(dir, 'data'));\n  await serveWith(root, tag, commit, dir, [RESTORED_ON_BOOT]);",
+        replace: '  await serveWith(root, tag, commit, dir, [RESTORED_ON_BOOT]);',
+        output: '"restore completed" did not appear inside',
       },
     ],
   },
