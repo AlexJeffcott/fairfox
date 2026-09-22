@@ -134,6 +134,42 @@ export const CHECKS: readonly Check[] = [
 
   // Step 0a, the tests and the lint scripts.
   {
+    name: 'no-as-casting',
+    catches: 'a value whose type the code asserts with `as` and the compiler never checks',
+    run: ['bun', 'packages/devctl/src/checks/no-as-casting.ts'],
+    red: [
+      {
+        breaks: 'devctl asserts that PATH is a string',
+        file: 'packages/devctl/src/proc.ts',
+        find: 'const path = process.env.PATH;',
+        replace: 'const path = process.env.PATH as string;',
+        output: 'packages/devctl/src/proc.ts:7',
+      },
+      {
+        breaks: "a return asserts its type, which eal's rules let through",
+        file: 'packages/devctl/src/record.ts',
+        find: "  return 'write';",
+        replace: "  return 'write' as RecordDecision;",
+        output: 'packages/devctl/src/record.ts:36',
+      },
+    ],
+  },
+  {
+    name: 'no-fixed-waits',
+    catches: 'a wait that guesses how long an operation takes, instead of waiting on a signal',
+    run: ['bun', 'packages/devctl/src/checks/no-fixed-waits.ts'],
+    red: [
+      {
+        breaks: 'ci --red sleeps after it writes the changed file',
+        file: 'packages/devctl/src/ci.ts',
+        find: '  await Bun.write(path, original.replace(change.find, change.replace));\n',
+        replace:
+          '  await Bun.write(path, original.replace(change.find, change.replace));\n  await new Promise((r) => setTimeout(r, 100));\n',
+        output: '[fixed sleep: new Promise wrapping setTimeout]',
+      },
+    ],
+  },
+  {
     name: 'unit',
     catches: 'a wrong result from one function',
     run: ['bun', 'test', './packages', '--path-ignore-patterns=**/*.property.test.ts'],
