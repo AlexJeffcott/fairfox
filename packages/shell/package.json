@@ -3,5 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" }
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@fairfox/polly": "0.82.1",
+    "@preact/signals": "2.9.0",
+    "preact": "10.29.1"
+  }
 }

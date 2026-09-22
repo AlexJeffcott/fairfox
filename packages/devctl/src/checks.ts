@@ -76,7 +76,7 @@ export const CHECKS: readonly Check[] = [
       {
         breaks: 'the shell is dropped from the build table',
         file: 'packages/devctl/src/build.ts',
-        find: "  { name: 'shell', target: 'browser' },\n",
+        find: "  { name: 'shell', target: 'browser', page: true },\n",
         replace: '',
         output: 'packages/shell is not in the build table',
       },
@@ -128,6 +128,28 @@ export const CHECKS: readonly Check[] = [
         find: '(server client cli shell permissions devctl)',
         replace: '(server client cli permissions devctl)',
         output: 'lacks packages of build: shell',
+      },
+    ],
+  },
+  // The screens: Preact, Signals and polly, each pinned to one version (M12).
+  {
+    name: 'pins',
+    catches: 'a framework of the screens given as a range, or a second copy of it installed (M12)',
+    run: ['bun', 'packages/devctl/src/checks/pins.ts'],
+    red: [
+      {
+        breaks: 'the shell gives Preact as a range',
+        file: 'packages/shell/package.json',
+        find: '"preact": "10.29.1"',
+        replace: '"preact": "^10.29.1"',
+        output: 'gives preact as ^10.29.1, not one exact version',
+      },
+      {
+        breaks: 'the lockfile holds a second Preact, under polly',
+        file: 'bun.lock',
+        find: '    "preact": ["preact@10.29.1"',
+        replace: '    "@fairfox/polly/preact": ["preact@10.29.8", "", {}, ""],\n    "preact": ["preact@10.29.1"',
+        output: 'bun.lock holds 2 copies of preact: 10.29.8, 10.29.1',
       },
     ],
   },
