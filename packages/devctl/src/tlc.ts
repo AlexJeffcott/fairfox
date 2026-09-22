@@ -56,15 +56,32 @@ export async function tlaTools(root: string): Promise<string> {
 
 type Spec = { dir: string; module: string };
 
+/** A cfg that names no invariant has TLC check nothing but deadlock. */
+const INVARIANT = /^\s*INVARIANTS?\s+[A-Za-z_]/m;
+
+/**
+ * Every spec under SPECS. Each <Module>.tla needs a <Module>.cfg beside it,
+ * and each cfg names at least one invariant: a spec TLC would skip, or check
+ * for nothing, fails here rather than passing unseen.
+ */
 async function specs(root: string): Promise<Spec[]> {
   const found: Spec[] = [];
   const dirs = await readdir(join(root, SPECS), { withFileTypes: true });
   for (const dir of dirs.filter((d) => d.isDirectory())) {
     const files = await readdir(join(root, SPECS, dir.name));
     for (const cfg of files.filter((f) => f.endsWith('.cfg'))) {
-      const module = basename(cfg, '.cfg');
-      if (!files.includes(`${module}.tla`)) {
-        throw new Error(`${join(SPECS, dir.name, cfg)} has no ${module}.tla beside it`);
+      if (!files.includes(`${basename(cfg, '.cfg')}.tla`)) {
+        throw new Error(`${join(SPECS, dir.name, cfg)} has no ${basename(cfg, '.cfg')}.tla beside it`);
+      }
+    }
+    for (const tla of files.filter((f) => f.endsWith('.tla'))) {
+      const module = basename(tla, '.tla');
+      const cfg = join(SPECS, dir.name, `${module}.cfg`);
+      if (!files.includes(`${module}.cfg`)) {
+        throw new Error(`${join(SPECS, dir.name, tla)} has no ${module}.cfg beside it: TLC would not check it`);
+      }
+      if (!INVARIANT.test(await Bun.file(join(root, cfg)).text())) {
+        throw new Error(`${cfg} names no INVARIANT: TLC would check nothing but deadlock`);
       }
       found.push({ dir: join(SPECS, dir.name), module });
     }
@@ -112,9 +129,10 @@ export const tlc: Command = {
   args: '',
   help: `
 Model-check each hand-written TLA+ spec (S4) with TLC: every
-specs/tla/<dir>/<Module>.cfg, with the <Module>.tla beside it. Fails on a
-violated invariant, a deadlock, a run that did not complete, a queue left
-unexplored, and a run that took no step past the initial states.
+specs/tla/<dir>/<Module>.tla, with the <Module>.cfg beside it. Fails on a
+spec with no cfg, a cfg that names no INVARIANT, a violated invariant, a
+deadlock, a run that did not complete, a queue left unexplored, and a run
+that took no step past the initial states.
 
 TLC is tla2tools.jar ${TLA_TOOLS.version}, pinned by its SHA-256; it is downloaded
 into .devctl/tools/ on the first run and its hash is checked on every run.

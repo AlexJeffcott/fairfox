@@ -202,6 +202,20 @@ export const CHECKS: readonly Check[] = [
         replace: "sha256: '0000000000000000000000000000000000000000000000000000000000000000'",
         output: 'not the pinned 0000000000000000000000000000000000000000000000000000000000000000',
       },
+      {
+        breaks: 'the cfg names no invariant, so TLC checks nothing but deadlock',
+        file: 'specs/tla/two-writers/TwoWriters.cfg',
+        find: 'INVARIANTS TypeOK NoLostUpdate\n',
+        replace: '',
+        output: 'TwoWriters.cfg names no INVARIANT',
+      },
+      {
+        breaks: 'a spec has no cfg beside it (the specs are read from a fixture that holds one)',
+        file: 'packages/devctl/src/tlc.ts',
+        find: "const SPECS = join('specs', 'tla');",
+        replace: "const SPECS = join('packages', 'devctl', 'fixtures', 'tla');",
+        output: 'Orphan.tla has no Orphan.cfg beside it',
+      },
     ],
   },
   // polly verify, with the spec anchors in the handlers and the TLA+ it generates.
