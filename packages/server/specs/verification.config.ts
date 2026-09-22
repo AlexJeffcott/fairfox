@@ -19,6 +19,12 @@ export default defineVerification({
     // two. Measured on 2026-09-22: 1,590,976 distinct states, where maxTabs 1
     // gave 6,344,512.
     maxClients: 1,
+    // The handlers in the model: the anchored ones, each named here. polly
+    // models every route of the package otherwise, and a route with no anchor
+    // still multiplies the ways a message can be sent. GET /version, added
+    // at the merge of step 0a, took the model from 1,590,976 distinct states
+    // to 6,759,232 and TLC from 16 s to 66 s.
+    include: ['POST /turn'],
   },
   // The rest of those states are polly's web-extension MessageRouter, and
   // polly 0.82.1 has no setting for any of it: three contexts (background,
