@@ -20,8 +20,14 @@ export const turnRoutes = new Elysia().post('/turn', ({ status }) => {
   if (turns.value.taken >= 1) {
     return status(409, { taken: turns.value.taken });
   }
+  // The anchors are not mutated. polly 0.82.1's requires and ensures are empty
+  // functions (`function requires(condition, message) {}`), so a mutant of
+  // their arguments changes no answer, no state and no error: no test of the
+  // route can tell it from the code. The anchors are checked by polly verify.
+  // Stryker disable next-line all: an argument of an empty function
   requires(turns.value.taken < 1, 'a second turn is refused');
   turns.value = { taken: turns.value.taken + 1 };
+  // Stryker disable next-line all: an argument of an empty function
   ensures(turns.value.taken <= 1, 'no more than one turn is taken');
   return { taken: turns.value.taken };
 });

@@ -548,6 +548,13 @@ export const CHECKS: readonly Check[] = [
         output: 'packages/cli/src/version.ts:9:5',
       },
       {
+        breaks: "the test of the turn route's answers is gone: return {} survives",
+        file: 'packages/server/src/turns.test.ts',
+        find: "test('each answer says how many turns are taken', async () => {\n  const answers = [await takeTurn(), await takeTurn(), await takeTurn()];\n  expect(answers).toEqual([\n    { status: 200, body: { taken: 1 } },\n    { status: 409, body: { taken: 1 } },\n    { status: 409, body: { taken: 1 } },\n  ]);\n});\n",
+        replace: '',
+        output: 'packages/server/src/turns.ts:32:10',
+      },
+      {
         breaks: 'a touched package with no Stryker config and no reason passes',
         file: 'packages/devctl/src/mutation.ts',
         find: "  shell: 'no code yet: the shell is built at step 7b',\n",
