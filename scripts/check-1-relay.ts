@@ -13,6 +13,7 @@
 // each the same as sent. Anything else exits 1 and says what differed.
 import { parseArgs } from 'node:util';
 import { MediaStreamTrack, RTCPeerConnection, RtpHeader, RtpPacket, usePCMU } from 'werift';
+import { candidates, gathered, within } from './webrtc.ts';
 import {
   PACKET_MS,
   SAMPLES_PER_PACKET,
@@ -49,23 +50,6 @@ if (secret === '') {
 }
 const payloads = packetize(readWav(await Bun.file(inPath).bytes()));
 
-/** Rejects when `promise` has not settled after `ms`: a limit, not a wait. */
-function within<T>(ms: number, what: string, promise: Promise<T>): Promise<T> {
-  return new Promise<T>((fulfil, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${what}: nothing after ${ms} ms.`)), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        fulfil(value);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
-}
-
 function peer(label: string, policy: 'relay' | 'all'): RTCPeerConnection {
   const { username, credential } = turnCredentials(secret, `check1-${label}`, new Date(), 600);
   return new RTCPeerConnection({
@@ -73,26 +57,6 @@ function peer(label: string, policy: 'relay' | 'all'): RTCPeerConnection {
     iceServers: [{ urls: `turn:${relay}?transport=udp`, username, credential }],
     iceTransportPolicy: policy,
   });
-}
-
-/** The session description once every candidate is gathered: no trickle. */
-async function gathered(pc: RTCPeerConnection, label: string): Promise<{ type: 'offer' | 'answer'; sdp: string }> {
-  if (pc.iceGatheringState !== 'complete') {
-    await within(15_000, `${label}: gathering candidates`, pc.iceGatheringStateChange.watch((state) => state === 'complete'));
-  }
-  const description = pc.localDescription;
-  if (description === null || (description.type !== 'offer' && description.type !== 'answer')) {
-    throw new Error(`${label}: no local offer or answer after gathering.`);
-  }
-  return { type: description.type, sdp: description.sdp };
-}
-
-/** The candidate lines of an SDP, and whether each is a relay candidate. */
-function candidates(sdp: string): { line: string; relay: boolean }[] {
-  return sdp
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith('a=candidate:'))
-    .map((line) => ({ line, relay: / typ relay( |$)/.test(line) }));
 }
 
 const sender = peer('send', 'relay');
