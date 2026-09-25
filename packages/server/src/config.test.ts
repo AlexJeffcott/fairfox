@@ -11,11 +11,20 @@ describe('the server settings', () => {
     );
   });
 
-  test('the commit and the database path are read', () => {
-    expect(readConfig({ FAIRFOX_COMMIT: '3f9c2e1', FAIRFOX_DATABASE_PATH: '/data/fairfox.db' })).toStrictEqual({
+  test('the commit, the database path and the relay secret are read', () => {
+    expect(
+      readConfig({ FAIRFOX_COMMIT: '3f9c2e1', FAIRFOX_DATABASE_PATH: '/data/fairfox.db', FAIRFOX_TURN_SECRET: 'relay' }),
+    ).toStrictEqual({
       commit: '3f9c2e1',
       databasePath: '/data/fairfox.db',
+      turnSecret: 'relay',
     });
+  });
+
+  test('a missing relay secret names the setting', () => {
+    expect(() => readConfig({ FAIRFOX_COMMIT: '3f9c2e1', FAIRFOX_DATABASE_PATH: ':memory:' })).toThrow(
+      'The setting FAIRFOX_TURN_SECRET is not set',
+    );
   });
 });
 

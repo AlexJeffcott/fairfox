@@ -1,20 +1,15 @@
 // Step 0c, check 1: a call forced through the relay `fairfox-turn` carries
-// sound. Two werift peers run in this process. The sender may use relay
-// candidates only (iceTransportPolicy "relay"), so every packet it sends goes
-// to the relay on Fly and comes back to the receiver's public address. The
-// receiver takes any path. One peer sends a WAV file as PCMU; the other saves
-// what it receives and compares it, packet by packet, with what was sent.
-// Listen to the saved file to hear the sound.
-//
-// Both peers forced through the relay does not connect: the relay would send
-// to its own public address, and on 2026-09-26 no packet came back that way.
-// A call between two members whose networks both need the relay fails the
-// same way; that is recorded for the owner, not tested here.
+// sound. Two werift peers run in this process. Both may use relay candidates
+// only (iceTransportPolicy "relay"), so every packet leaves this machine for
+// the relay on Fly, goes from one allocation to the other, and comes back.
+// One peer sends a WAV file as PCMU; the other saves what it receives and
+// compares it, packet by packet, with what was sent. Listen to the saved file
+// to hear the sound.
 //
 //   bun scripts/check-1-relay.ts --secret-file ~/.config/fairfox/turn-secret \
 //     --relay 213.188.221.129:3478 --in in.wav --out out.wav
 //
-// Exit 0: the sender connected through the relay only, every packet arrived,
+// Exit 0: both peers connected through the relay only, every packet arrived,
 // each the same as sent. Anything else exits 1 and says what differed.
 import { parseArgs } from 'node:util';
 import { MediaStreamTrack, RTCPeerConnection, RtpHeader, RtpPacket, usePCMU } from 'werift';
@@ -101,7 +96,7 @@ function candidates(sdp: string): { line: string; relay: boolean }[] {
 }
 
 const sender = peer('send', 'relay');
-const receiver = peer('receive', 'all');
+const receiver = peer('receive', 'relay');
 const track = new MediaStreamTrack({ kind: 'audio' });
 sender.addTransceiver(track, { direction: 'sendonly' });
 receiver.addTransceiver('audio', { direction: 'recvonly' });
@@ -139,9 +134,11 @@ for (const { label, list } of sides) {
   }
   console.log(`${label}: ${list.map((c) => c.line.split(' ').slice(4, 8).join(' ')).join(', ')}`);
 }
-const direct = offered.filter((c) => !c.relay);
-if (direct.length > 0) {
-  throw new Error(`sender: a candidate that is not a relay candidate:\n${direct.map((c) => c.line).join('\n')}`);
+for (const { label, list } of sides) {
+  const direct = list.filter((c) => !c.relay);
+  if (direct.length > 0) {
+    throw new Error(`${label}: a candidate that is not a relay candidate:\n${direct.map((c) => c.line).join('\n')}`);
+  }
 }
 
 const connected = (pc: RTCPeerConnection) =>

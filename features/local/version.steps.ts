@@ -64,7 +64,7 @@ export const steps: readonly StepDefinition<World>[] = [
   {
     pattern: /a server running commit "([^"]+)"/,
     run: (world, commit) => {
-      start(world, { FAIRFOX_COMMIT: commit, FAIRFOX_DATABASE_PATH: ':memory:' });
+      start(world, { FAIRFOX_COMMIT: commit, FAIRFOX_DATABASE_PATH: ':memory:', FAIRFOX_TURN_SECRET: 'local' });
     },
   },
   {

@@ -11,6 +11,7 @@ The check `env-list` compares this table with the code: the `SETTINGS` table in 
 | `FAIRFOX_COMMIT` | `packages/server/src/main.ts`, through `config.ts`: the version route answers it (C5) | `devctl deploy`, as `--env FAIRFOX_COMMIT=<HEAD>` on each deploy; `devctl rollback` sets the commit of the release it goes back to |
 | `FAIRFOX_DATABASE_PATH` | `packages/server/src/main.ts` and `status.ts`, through `config.ts`; `packages/server/serve.sh`, which hands it to Litestream (C1) | `fly.toml`, `[env]`: `/data/fairfox.db`, on the volume |
 | `FAIRFOX_PORT` | `packages/server/src/main.ts`, through `config.ts` | `fly.toml`, `[env]`: `3000`, the same number as `internal_port` |
+| `FAIRFOX_TURN_SECRET` | `packages/server/src/main.ts`, through `config.ts`: the check 3 routes of step 0c mint relay credentials with it (`check3.ts`). It leaves with them | a secret: `fly secrets set FAIRFOX_TURN_SECRET=...`, the same value as `TURN_SHARED_SECRET` on `fairfox-turn` |
 | `FAIRFOX_REPLICA_URL` | `packages/server/serve.sh`, which hands it to Litestream; `packages/server/src/status.ts`, to read the replica's age (S7a) | a secret: `fly secrets set FAIRFOX_REPLICA_URL=...`. It names the bucket and the path in it |
 
 ## Settings Litestream reads

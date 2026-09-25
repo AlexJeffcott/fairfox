@@ -43,13 +43,13 @@ export async function buildImage(root: string): Promise<{ commit: string; tag: s
 /**
  * The environment the server is started with in a container: what fly.toml
  * gives it, the commit the image was tagged with, and a replica that needs
- * no credentials. `FAIRFOX_DATABASE_PATH` is fly.toml's, on the volume
+ * no credentials, and a relay secret that opens no relay. `FAIRFOX_DATABASE_PATH` is fly.toml's, on the volume
  * mounted at /data; the caller mounts something there.
  */
 export async function containerEnv(root: string, commit: string, replicaUrl: string): Promise<{ env: Record<string, string>; port: number }> {
   const fly = readFlyConfig(await Bun.file(join(root, 'fly.toml')).text());
   return {
-    env: { ...fly.env, FAIRFOX_COMMIT: commit, FAIRFOX_REPLICA_URL: replicaUrl },
+    env: { ...fly.env, FAIRFOX_COMMIT: commit, FAIRFOX_REPLICA_URL: replicaUrl, FAIRFOX_TURN_SECRET: 'image-check' },
     port: fly.internalPort,
   };
 }

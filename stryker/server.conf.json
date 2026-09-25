@@ -13,7 +13,9 @@
     "!**/*.test.ts",
     "!packages/server/src/main.ts",
     "!packages/server/src/status.ts",
-    "!packages/server/src/environment.ts"
+    "!packages/server/src/environment.ts",
+    "!packages/server/src/check3.ts",
+    "!packages/server/src/check3-page.ts"
   ],
   "thresholds": {
     "high": 100,

@@ -13,15 +13,18 @@ export const SETTINGS = {
   port: 'FAIRFOX_PORT',
   /** Where Litestream replicates the database to (S7a). A secret on Fly: it names the bucket. */
   replicaUrl: 'FAIRFOX_REPLICA_URL',
+  /** The shared secret of the relay fairfox-turn. The check 3 routes mint relay credentials with it. Step 0c only. */
+  turnSecret: 'FAIRFOX_TURN_SECRET',
 } as const;
 
 /** Settings as a process environment holds them. A test passes them as an argument (C2). */
 export type Settings = Readonly<Record<string, string | undefined>>;
 
-/** What the app needs: the commit it answers and the database it opens. */
+/** What the app needs: the commit it answers, the database it opens, and the relay's secret for check 3. */
 export type Config = {
   commit: string;
   databasePath: string;
+  turnSecret: string;
 };
 
 function required(settings: Settings, name: string): string {
@@ -36,6 +39,7 @@ export function readConfig(settings: Settings): Config {
   return {
     commit: required(settings, SETTINGS.commit),
     databasePath: required(settings, SETTINGS.databasePath),
+    turnSecret: required(settings, SETTINGS.turnSecret),
   };
 }
 
