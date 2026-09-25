@@ -15,6 +15,7 @@ import { createHash } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { MediaStreamTrack, RTCPeerConnection, RtpHeader, RtpPacket, usePCMU } from 'werift';
 import { PACKET_MS, SAMPLES_PER_PACKET, decodeMulaw, packetize, readWav, writeWav } from './audio.ts';
+import { Room, relayServers } from './signal.ts';
 import { candidates, gathered, within } from './webrtc.ts';
 
 const { values } = parseArgs({
@@ -27,8 +28,8 @@ const { values } = parseArgs({
   },
 });
 const origin = values.origin;
-const room = values.room;
-if (origin === undefined || room === undefined) {
+const roomName = values.room;
+if (origin === undefined || roomName === undefined) {
   throw new Error('--origin and --room are required. They have no default.');
 }
 if ((values.send === undefined) === (values.receive === undefined)) {
@@ -37,109 +38,21 @@ if ((values.send === undefined) === (values.receive === undefined)) {
 const role = values.send === undefined ? 'receiver' : 'sender';
 const policy = values.relay ? 'relay' : 'all';
 
-type Message =
-  | { type: 'joined'; others: number }
-  | { type: 'hello' }
-  | { type: 'left' }
-  | { type: 'full' }
-  | { type: 'offer'; sdp: string }
-  | { type: 'answer'; sdp: string }
-  | { type: 'done'; packets: number; sha256: string };
-
-function parse(data: unknown): Message {
-  const value: unknown = JSON.parse(String(data));
-  if (typeof value !== 'object' || value === null || typeof Reflect.get(value, 'type') !== 'string') {
-    throw new Error(`Not a message: ${String(data)}`);
-  }
-  const type: unknown = Reflect.get(value, 'type');
-  const text = (key: string) => String(Reflect.get(value, key));
-  const count = (key: string) => Number(Reflect.get(value, key));
-  switch (type) {
-    case 'joined':
-      return { type, others: count('others') };
-    case 'hello':
-      return { type };
-    case 'left':
-      return { type };
-    case 'full':
-      return { type };
-    case 'offer':
-      return { type, sdp: text('sdp') };
-    case 'answer':
-      return { type, sdp: text('sdp') };
-    case 'done':
-      return { type, packets: count('packets'), sha256: text('sha256') };
-    default:
-      throw new Error(`Unknown message type: ${String(type)}`);
-  }
-}
-
-const iceResponse: unknown = await (await fetch(`${origin}/check/3/ice`)).json();
-const iceServers: unknown = typeof iceResponse === 'object' && iceResponse !== null ? Reflect.get(iceResponse, 'iceServers') : undefined;
-if (!Array.isArray(iceServers)) {
-  throw new Error(`${origin}/check/3/ice gave no iceServers.`);
-}
 const pc = new RTCPeerConnection({
   codecs: { audio: [usePCMU()] },
-  // The relay by UDP, with its credentials. The server also lists TCP and
-  // STUN; werift takes the first URL of an entry, and this check needs UDP.
-  iceServers: iceServers
-    .map((entry: unknown) => ({
-      urls: String(Reflect.get(Object(entry), 'urls')).split(',')[0] ?? '',
-      username: String(Reflect.get(Object(entry), 'username')),
-      credential: String(Reflect.get(Object(entry), 'credential')),
-    }))
-    .filter((server) => server.urls.startsWith('turn:')),
+  iceServers: await relayServers(origin),
   iceTransportPolicy: policy,
 });
 
-const socket = new WebSocket(`${origin.replace(/^http/, 'ws')}/check/3/ws?room=${encodeURIComponent(room)}`);
-const send = (message: Message) => socket.send(JSON.stringify(message));
-const inbox: Message[] = [];
-const waiting: ((m: Message) => void)[] = [];
-socket.onmessage = (event) => {
-  const message = parse(event.data);
-  const next = waiting.shift();
-  if (next === undefined) {
-    inbox.push(message);
-  } else {
-    next(message);
-  }
-};
-socket.onclose = () => console.log('signalling closed');
-function nextMessage(): Promise<Message> {
-  const queued = inbox.shift();
-  if (queued !== undefined) {
-    return Promise.resolve(queued);
-  }
-  return new Promise((resolve) => waiting.push(resolve));
-}
-function isType<T extends Message['type']>(message: Message, type: T): message is Extract<Message, { type: T }> {
-  return message.type === type;
-}
-/** The next message of one type; others are logged and dropped. */
-async function expectMessage<T extends Message['type']>(type: T, ms: number): Promise<Extract<Message, { type: T }>> {
-  for (;;) {
-    const message = await within(ms, `waiting for "${type}"`, nextMessage());
-    if (message.type === 'full') {
-      throw new Error(`Room ${room} is full: two machines are in it.`);
-    }
-    if (isType(message, type)) {
-      return message;
-    }
-    console.log(`(${message.type})`);
-  }
-}
-
-await within(10_000, 'opening the signalling socket', new Promise((resolve) => socket.addEventListener('open', resolve)));
-const joined = await expectMessage('joined', 10_000);
-console.log(`${role}: joined room ${room}; ${joined.others} other machine(s) in it; policy ${policy}`);
+const room = await Room.join(origin, roomName);
+const joined = await room.expect(['joined'], 10_000);
+console.log(`${role}: joined room ${roomName}; ${joined.others} other machine(s) in it; policy ${policy}`);
 if (joined.others > 0) {
-  send({ type: 'hello' });
+  room.send({ type: 'hello' });
 } else {
   console.log(`${role}: waiting up to 10 minutes for the other machine`);
-  await expectMessage('hello', 600_000);
-  send({ type: 'hello' });
+  await room.expect(['hello'], 600_000);
+  room.send({ type: 'hello' });
 }
 
 function report(label: string, sdp: string): void {
@@ -171,13 +84,13 @@ if (role === 'receiver') {
   await pc.setLocalDescription(await pc.createOffer());
   const offer = await gathered(pc, 'receiver');
   report('this machine', offer.sdp);
-  send({ type: 'offer', sdp: offer.sdp });
-  const answer = await expectMessage('answer', 30_000);
+  room.send({ type: 'offer', sdp: offer.sdp });
+  const answer = await room.expect(['answer'], 30_000);
   report('other machine', answer.sdp);
   await pc.setRemoteDescription({ type: 'answer', sdp: answer.sdp });
   await within(30_000, 'connecting', connected());
   console.log(`connected: ${chosenPath()}`);
-  const done = await expectMessage('done', 600_000);
+  const done = await room.expect(['done'], 600_000);
   // The last packets may still be on the way when "done" arrives: up to 3 s more.
   expected = done.packets;
   if (received.size < expected) {
@@ -208,7 +121,7 @@ if (role === 'receiver') {
 }
 
 const payloads = packetize(readWav(await Bun.file(values.send ?? '').bytes()));
-const offer = await expectMessage('offer', 60_000);
+const offer = await room.expect(['offer'], 60_000);
 report('other machine', offer.sdp);
 await pc.setRemoteDescription({ type: 'offer', sdp: offer.sdp });
 const transceiver = pc.getTransceivers()[0];
@@ -221,7 +134,7 @@ await transceiver.sender.replaceTrack(track);
 await pc.setLocalDescription(await pc.createAnswer());
 const answer = await gathered(pc, 'sender');
 report('this machine', answer.sdp);
-send({ type: 'answer', sdp: answer.sdp });
+room.send({ type: 'answer', sdp: answer.sdp });
 await within(30_000, 'connecting', connected());
 console.log(`connected: ${chosenPath()}`);
 
@@ -234,9 +147,9 @@ const pacing = setInterval(() => {
   const payload = payloads[next];
   if (payload === undefined) {
     clearInterval(pacing);
-    send({ type: 'done', packets: payloads.length, sha256: hash.digest('hex') });
+    room.send({ type: 'done', packets: payloads.length, sha256: hash.digest('hex') });
     console.log(`sender: sent ${payloads.length} packets. The receiver reports the result.`);
-    socket.close();
+    room.close();
     process.exit(0);
   }
   hash.update(payload);
