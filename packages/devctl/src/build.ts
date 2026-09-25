@@ -21,9 +21,10 @@ export const PACKAGES: readonly { name: string; target: 'bun' | 'browser'; page?
 
 /**
  * Code outside the packages, type-checked by its own tsconfig.json and not
- * bundled: the Bun runner and step definitions of the @local features.
+ * bundled: the Bun runner and step definitions of the @local features, and
+ * the throwaway checks of step 0c under scripts/.
  */
-export const TYPECHECKED: readonly string[] = ['features/local'];
+export const TYPECHECKED: readonly string[] = ['features/local', 'scripts'];
 
 type Built = { name: string; ok: boolean; ms: number; output: string };
 
