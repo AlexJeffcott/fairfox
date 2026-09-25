@@ -18,7 +18,7 @@ export const STORE = 'node_modules/.bun';
  * are made to agree in the same commit that moves them apart. A reason names
  * what pulls the package in, not what the package does.
  */
-// Stryker disable next-line ObjectLiteral: the table is data, not logic. What proves it is `devctl image` against a built image, and a unit test that repeated the 17 names would only repeat them
+// Stryker disable next-line ObjectLiteral: the table is data, not logic. What proves it is `devctl image` against a built image, and a unit test that repeated the names would only repeat them
 export const IMAGE_PACKAGES: Readonly<Record<string, string>> = {
   elysia: 'the one runtime dependency packages/server declares',
   cookie: 'elysia',
@@ -37,6 +37,44 @@ export const IMAGE_PACKAGES: Readonly<Record<string, string>> = {
   ieee754: 'token-types',
   debug: '@tokenizer/inflate',
   ms: 'debug',
+  // Step 0c: werift, for the server end of check 5. The last deploy of 0c
+  // removes the check and these rows with it.
+  werift: 'a runtime dependency of packages/server at step 0c, for the server end of check 5',
+  '@fidm/x509': 'werift',
+  '@fidm/asn1': '@fidm/x509',
+  '@noble/curves': 'werift',
+  '@noble/hashes': '@noble/curves',
+  '@peculiar/x509': 'werift',
+  '@peculiar/asn1-cms': '@peculiar/x509',
+  '@peculiar/asn1-csr': '@peculiar/x509',
+  '@peculiar/asn1-ecc': '@peculiar/x509',
+  '@peculiar/asn1-pkcs9': '@peculiar/x509',
+  '@peculiar/asn1-pfx': '@peculiar/asn1-pkcs9',
+  '@peculiar/asn1-pkcs8': '@peculiar/asn1-pfx and @peculiar/asn1-pkcs9',
+  '@peculiar/asn1-rsa': '@peculiar/x509',
+  '@peculiar/asn1-schema': '@peculiar/x509 and the other @peculiar/asn1 packages',
+  '@peculiar/asn1-x509': '@peculiar/x509 and the other @peculiar/asn1 packages',
+  '@peculiar/asn1-x509-attr': '@peculiar/asn1-cms and @peculiar/asn1-pkcs9',
+  '@peculiar/utils': '@peculiar/asn1-schema and @peculiar/asn1-x509',
+  asn1js: 'the @peculiar/asn1 packages',
+  pvtsutils: '@peculiar/x509 and asn1js',
+  pvutils: 'asn1js',
+  'reflect-metadata': '@peculiar/x509',
+  tsyringe: '@peculiar/x509',
+  tslib: 'the @peculiar packages, asn1js, pvtsutils and tsyringe',
+  '@shinyoshiaki/binary-data': 'werift',
+  'generate-function': '@shinyoshiaki/binary-data',
+  'is-property': 'generate-function',
+  'is-plain-object': '@shinyoshiaki/binary-data',
+  isobject: 'is-plain-object',
+  buffer: 'werift',
+  'base64-js': 'buffer',
+  mediabunny: 'werift',
+  'multicast-dns': 'werift',
+  'dns-packet': 'multicast-dns',
+  '@leichtgewicht/ip-codec': 'dns-packet',
+  thunky: 'multicast-dns',
+  tweetnacl: 'werift and @fidm/x509',
 };
 
 /**

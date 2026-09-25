@@ -1,5 +1,6 @@
 import { Elysia } from 'elysia';
 import { check3Routes } from './check3.ts';
+import { check5Routes } from './check5.ts';
 import { readConfig, type Settings } from './config.ts';
 import { openDatabase } from './database.ts';
 
@@ -20,8 +21,11 @@ function publicRoutes(commit: string) {
 export function createApp(settings: Settings) {
   const config = readConfig(settings);
   const { database } = openDatabase(config.databasePath);
-  // Step 0c only: the bare page of check 3. The last deploy of 0c removes it (L2).
-  const routes = new Elysia().use(publicRoutes(config.commit)).use(check3Routes(config.turnSecret));
+  // Step 0c only: the bare page of check 3 and the server end of check 5. The last deploy of 0c removes them (L2).
+  const routes = new Elysia()
+    .use(publicRoutes(config.commit))
+    .use(check3Routes(config.turnSecret))
+    .use(check5Routes(config.turnSecret));
   // Stryker disable next-line ArrowFunction: no route reads the database yet, so its close cannot be seen from outside
   return routes.onStop(() => database.close());
 }

@@ -27,6 +27,7 @@ export const CHECK3_PAGE = `<!doctype html>
   <label><input type="radio" name="policy" value="all" checked> Any path</label>
   <label><input type="radio" name="policy" value="relay"> Relay only</label>
   <p>For the relay run, choose Relay only on one device or on both.</p>
+  <label><input type="checkbox" id="server"> Call the server (check 5): it sends back what it hears</label>
 </fieldset>
 <p><label>Room <input id="room" value="a" maxlength="32" size="8"></label>
 <button id="join">Join</button> <button id="leave" disabled>Leave</button></p>
@@ -59,7 +60,9 @@ async function start() {
   pc.ontrack = (e) => { $('remote').srcObject = e.streams[0]; $('remote').play().catch((err) => log('play: ' + err)); };
   pc.onconnectionstatechange = () => log('connection: ' + pc.connectionState);
   pc.oniceconnectionstatechange = () => log('ice: ' + pc.iceConnectionState);
-  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/check/3/ws?room=' + encodeURIComponent(room));
+  const path = $('server').checked ? '/check/5/ws' : '/check/3/ws?room=' + encodeURIComponent(room);
+  log(path.startsWith('/check/5') ? 'calling the server' : 'room: ' + room);
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + path);
   ws.onmessage = async (e) => {
     const m = JSON.parse(e.data);
     if (m.type === 'full') { log('room is full: two devices are in it'); return; }

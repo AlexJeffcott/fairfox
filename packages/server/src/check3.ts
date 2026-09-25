@@ -12,7 +12,7 @@ import { Elysia, t } from 'elysia';
 import { CHECK3_PAGE } from './check3-page.ts';
 
 /** The relay fairfox-turn: its dedicated IPv4 and port, from turn/fly.toml. */
-const RELAY = '213.188.221.129:3478';
+export const RELAY = '213.188.221.129:3478';
 const CREDENTIAL_SECONDS = 3600;
 const ROOM_SIZE = 2;
 
@@ -21,7 +21,7 @@ const ROOM_SIZE = 2;
  * in Unix seconds and a label, the password the Base64 HMAC-SHA1 of the user
  * name under the relay's shared secret. The same rule as scripts/audio.ts.
  */
-function turnCredentials(secret: string, now: Date): { username: string; credential: string } {
+export function turnCredentials(secret: string, now: Date): { username: string; credential: string } {
   const username = `${Math.floor(now.getTime() / 1000) + CREDENTIAL_SECONDS}:check3`;
   return { username, credential: createHmac('sha1', secret).update(username).digest('base64') };
 }

@@ -5,7 +5,8 @@
   "type": "module",
   "exports": { ".": "./src/index.ts" },
   "dependencies": {
-    "elysia": "1.4.30"
+    "elysia": "1.4.30",
+    "werift": "0.24.4"
   },
   "devDependencies": {
     "@fairfox/polly": "0.82.1"
