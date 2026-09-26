@@ -110,9 +110,9 @@ try {
   await first.locator('#log').filter({ hasText: /left[\s\S]*left/ }).waitFor({ timeout: 10_000 });
   await second.locator('#log').filter({ hasText: 'ended with no Leave' }).waitFor({ timeout: 10_000 });
   await first.click('#leave');
-  // The page sends its lines once a second: wait until the first page's last line is on the server.
+  // The page sends its lines in order: wait until the first page's last line, its socket closed by Leave, is on the server.
   await first.waitForFunction(
-    `fetch('/check/3/log').then((r) => r.text()).then((t) => t.split('\\n').some((l) => l.includes('first-${tag}') && l.includes('result: Not connected')))`,
+    `fetch('/check/3/log').then((r) => r.text()).then((t) => t.split('\\n').some((l) => l.includes('first-${tag}') && l.includes('signalling closed (1005)')))`,
     undefined,
     { timeout: 10_000, polling: 500 },
   );
@@ -149,9 +149,14 @@ try {
     console.error(`${unstamped.length} lines have no Berlin time, the first: ${unstamped[0]}`);
   }
   const results = mine.filter((line) => /result: (Straight path|Through the relay).*packets [1-9]/.test(line));
-  if (results.length < 2) {
+  if (results.length < 3) {
     ok = false;
-    console.error(`the log has ${results.length} results with sound packets; 2 expected (both after call 1; after call 2, the first)`);
+    console.error(`the log has ${results.length} results with sound packets; 3 expected (both after call 1; the first after call 2)`);
+  }
+  const stray = mine.filter((line) => line.includes('result: Not connected'));
+  if (stray.length > 0) {
+    ok = false;
+    console.error(`the log has ${stray.length} results of no call, the first: ${stray[0]}`);
   }
   console.log(`the log holds ${mine.length} lines of this run, ${results.length} results with sound packets`);
 } catch (error) {

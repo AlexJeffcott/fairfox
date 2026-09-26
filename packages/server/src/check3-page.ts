@@ -160,6 +160,8 @@ async function handle(m) {
   if (m.type === 'left') {
     // The server says this when the other device's socket closes. Its call may still be live.
     if (live()) { gone = true; log('the other device left the signalling; the call goes on while ICE holds', true); return; }
+    // No call to end: the other device's socket closed after its bye, or before any call.
+    if (pc.connectionState === 'new') { log('the socket of the other device closed'); return; }
     log('the other device left', true); await result(); newPeer();
   }
 }
