@@ -54,10 +54,13 @@ let pc, ws, stream, timer, iceServers, policy, polite = false, lastPath = '', he
 // Each line goes on the page and, once a second, to the server. The session
 // tells apart two runs of one device.
 let session = Math.random().toString(36).slice(2, 8), unsent = [], sending = false;
-const log = (text) => {
+// An urgent line is sent at once, not with the next second's lines: the page
+// may not live another second.
+const log = (text, urgent) => {
   const line = new Date().toISOString().slice(11, 19) + ' ' + text;
   $('log').textContent += line + '\\n';
   unsent.push(line);
+  if (urgent) flush();
 };
 const network = () => document.querySelector('input[name=network]:checked').value;
 async function flush() {
@@ -73,10 +76,29 @@ async function flush() {
   sending = false;
 }
 setInterval(flush, 1000);
-addEventListener('pagehide', flush);
 
-try { $('device').value = localStorage.getItem('check3-device') ?? ''; } catch {}
-$('device').onchange = () => { try { localStorage.setItem('check3-device', $('device').value.trim()); } catch {} };
+// The name and the network are kept for the next load of the page.
+try {
+  $('device').value = localStorage.getItem('check3-device') ?? '';
+  const kept = document.querySelector('input[name=network][value="' + localStorage.getItem('check3-network') + '"]');
+  if (kept) kept.checked = true;
+} catch {}
+$('device').oninput = () => { try { localStorage.setItem('check3-device', $('device').value.trim()); } catch {} };
+for (const input of document.querySelectorAll('input[name=network]')) input.onchange = () => { try { localStorage.setItem('check3-network', network()); } catch {} };
+
+// Why a call ends with no Leave. Join puts a mark in sessionStorage and Leave
+// takes it away. The mark lives as long as the tab, so a mark found when the
+// page loads means the page was reloaded, or its tab crashed and Safari
+// loaded it again, in the middle of a call. A closed tab leaves no mark.
+const MARK = 'check3-call';
+const navigation = (performance.getEntriesByType('navigation')[0] || {}).type || 'unknown';
+let mark = null;
+try { mark = sessionStorage.getItem(MARK); sessionStorage.removeItem(MARK); } catch {}
+log('page loaded (' + navigation + ')' + (mark ? '; the call of session ' + mark + ' ended with no Leave: this page was reloaded or its tab crashed' : ''), true);
+document.addEventListener('visibilitychange', () => log('page ' + document.visibilityState, true));
+addEventListener('pagehide', (e) => log('page closed or left' + (e.persisted ? ', kept in memory' : ''), true));
+addEventListener('pageshow', (e) => { if (e.persisted) log('page shown again from memory', true); });
+
 
 function send(message) { ws.send(JSON.stringify(message)); }
 
@@ -94,7 +116,7 @@ function newPeer() {
   const own = pc;
   pc.onicecandidate = (e) => { if (e.candidate && own === pc) { send({ type: 'candidate', candidate: e.candidate }); log('local candidate: ' + kind(e.candidate)); } };
   pc.ontrack = (e) => { $('remote').srcObject = e.streams[0]; $('remote').play().catch((err) => log('play: ' + err)); };
-  pc.onconnectionstatechange = () => { if (own === pc) log('connection: ' + pc.connectionState); };
+  pc.onconnectionstatechange = () => { if (own === pc) log('connection: ' + pc.connectionState, true); };
   pc.oniceconnectionstatechange = () => { if (own !== pc) return; log('ice: ' + pc.iceConnectionState); if (pc.iceConnectionState === 'failed') pairs(); };
 }
 
@@ -107,7 +129,7 @@ async function handle(m) {
   if (m.type === 'offer') { if (pc.signalingState !== 'stable' || pc.remoteDescription) newPeer(); await pc.setRemoteDescription({ type: 'offer', sdp: m.sdp }); await release(); await pc.setLocalDescription(await pc.createAnswer()); send({ type: 'answer', sdp: pc.localDescription.sdp }); return; }
   if (m.type === 'answer') { await pc.setRemoteDescription({ type: 'answer', sdp: m.sdp }); await release(); return; }
   if (m.type === 'candidate') { log('remote candidate: ' + kind(m.candidate)); if (pc.remoteDescription) await pc.addIceCandidate(m.candidate).catch((err) => log('candidate: ' + err)); else held.push(m.candidate); return; }
-  if (m.type === 'left') { log('the other device left'); await result(); newPeer(); }
+  if (m.type === 'left') { log('the other device left', true); await result(); newPeer(); }
 }
 
 async function release() {
@@ -132,6 +154,7 @@ async function start() {
   policy = document.querySelector('input[name=policy]:checked').value;
   const room = $('room').value.trim();
   session = Math.random().toString(36).slice(2, 8);
+  try { sessionStorage.setItem(MARK, session); } catch {}
   log('device: ' + ($('device').value.trim() || 'no name') + ', network: ' + network() + ', ' + navigator.userAgent);
   log('policy: ' + policy + ', room: ' + room);
   // The audio element plays only after a tap on iOS; Join is that tap.
@@ -147,7 +170,7 @@ async function start() {
     const m = JSON.parse(e.data);
     queue = queue.then(() => handle(m)).catch((err) => log('error: ' + err));
   };
-  ws.onclose = () => log('signalling closed');
+  ws.onclose = (e) => log('signalling closed (' + e.code + ')', true);
   timer = setInterval(stats, 2000);
   $('leave').disabled = false;
 }
@@ -185,6 +208,7 @@ async function result() {
 
 async function stop() {
   clearInterval(timer);
+  try { sessionStorage.removeItem(MARK); } catch {}
   await result();
   pc && pc.close(); ws && ws.close(); stream && stream.getTracks().forEach((t) => t.stop());
   pc = ws = stream = undefined;

@@ -1,8 +1,10 @@
 // Step 0c, check 3: the page's own log and a second call in one room. Two
 // headless Chromium pages, named and with a network marked, join one room and
 // connect. The second leaves and joins again while the first stays; the call
-// must connect again. Then /check/3/log must hold the lines of both pages,
-// under their names, with the result of each call.
+// must connect again. Then the second reloads in the middle of a call, and
+// its page must log that the call ended with no Leave. Then /check/3/log must
+// hold the lines of both pages, under their names, with the result of each
+// call.
 //
 //   bun scripts/check-3-log.ts --secret-file ~/.config/fairfox/turn-secret
 //       starts the server on this machine and tests it
@@ -77,8 +79,9 @@ try {
   console.log(`call 2, the same room: ${await first.textContent('#path')}`);
   await heard(first);
   await heard(second);
-  await second.click('#leave');
+  await second.reload();
   await first.locator('#log').filter({ hasText: /left[\s\S]*left/ }).waitFor({ timeout: 10_000 });
+  await second.locator('#log').filter({ hasText: 'ended with no Leave' }).waitFor({ timeout: 10_000 });
   await first.click('#leave');
   // The page sends its lines once a second: wait until the first page's last line is on the server.
   await first.waitForFunction(
@@ -98,6 +101,8 @@ try {
     'path: ',
     'result: ',
     'the other device left',
+    'page loaded (reload); the call of session',
+    'page closed or left',
   ];
   for (const piece of want) {
     if (!mine.some((line) => line.includes(piece))) {
@@ -106,9 +111,9 @@ try {
     }
   }
   const results = mine.filter((line) => /result: (Straight path|Through the relay).*packets [1-9]/.test(line));
-  if (results.length < 3) {
+  if (results.length < 2) {
     ok = false;
-    console.error(`the log has ${results.length} results with sound packets; 3 expected (first after call 1, both after call 2)`);
+    console.error(`the log has ${results.length} results with sound packets; 2 expected (both after call 1; after call 2, the first)`);
   }
   console.log(`the log holds ${mine.length} lines of this run, ${results.length} results with sound packets`);
 } catch (error) {
