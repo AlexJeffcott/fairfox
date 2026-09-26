@@ -110,6 +110,12 @@ try {
       console.error(`the log has no line with "${piece}"`);
     }
   }
+  // Times are the owner's, Berlin and Rome: CEST or CET, or GMT+2 or GMT+1 where a browser names the zone so.
+  const unstamped = mine.filter((line) => !/ \d\d:\d\d:\d\d (CEST|CET|GMT\+[12]) /.test(line));
+  if (unstamped.length > 0) {
+    ok = false;
+    console.error(`${unstamped.length} lines have no Berlin time, the first: ${unstamped[0]}`);
+  }
   const results = mine.filter((line) => /result: (Straight path|Through the relay).*packets [1-9]/.test(line));
   if (results.length < 2) {
     ok = false;

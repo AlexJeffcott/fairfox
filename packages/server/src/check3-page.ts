@@ -54,10 +54,18 @@ let pc, ws, stream, timer, iceServers, policy, polite = false, lastPath = '', he
 // Each line goes on the page and, once a second, to the server. The session
 // tells apart two runs of one device.
 let session = Math.random().toString(36).slice(2, 8), unsent = [], sending = false;
+// The owner's time, Berlin and Rome, whatever zone the device is set to:
+// 11:35:50 CEST in summer, CET in winter.
+const clock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZoneName: 'short' });
+function stamp() {
+  const parts = Object.fromEntries(clock.formatToParts(new Date()).map((p) => [p.type, p.value]));
+  return parts.hour + ':' + parts.minute + ':' + parts.second + ' ' + parts.timeZoneName;
+}
+
 // An urgent line is sent at once, not with the next second's lines: the page
 // may not live another second.
 const log = (text, urgent) => {
-  const line = new Date().toISOString().slice(11, 19) + ' ' + text;
+  const line = stamp() + ' ' + text;
   $('log').textContent += line + '\\n';
   unsent.push(line);
   if (urgent) flush();
