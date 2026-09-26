@@ -1,8 +1,10 @@
 // The bare page of step 0c, check 3. One HTML file with its script inline: no
 // build, no framework, no sign-in. Two devices open it, type the same room,
 // and press Join. The second to join starts the call. The page shows the path
-// the call took (a straight path or the relay) and the sound level heard, so
-// the owner can write the result down. See check3.ts.
+// the call took (a straight path or the relay) and the sound level heard. Each
+// log line also goes to the server, which shows every device's lines at
+// /check/3/log. The device name and the network are typed in by hand: Safari
+// tells neither. See check3.ts.
 export const CHECK3_PAGE = `<!doctype html>
 <html lang="en">
 <head>
@@ -29,6 +31,14 @@ export const CHECK3_PAGE = `<!doctype html>
   <p>For the relay run, choose Relay only on one device or on both.</p>
   <label><input type="checkbox" id="server"> Call the server (check 5): it sends back what it hears</label>
 </fieldset>
+<fieldset>
+  <legend>This device</legend>
+  <label>Name <input id="device" maxlength="32" size="10" placeholder="iPad"></label>
+  <p>Network:
+  <label><input type="radio" name="network" value="wifi"> Wi-Fi</label>
+  <label><input type="radio" name="network" value="mobile"> Mobile data</label>
+  <label><input type="radio" name="network" value="unknown" checked> Not given</label></p>
+</fieldset>
 <p><label>Room <input id="room" value="a" maxlength="32" size="8"></label>
 <button id="join">Join</button> <button id="leave" disabled>Leave</button></p>
 <p id="path">Not connected</p>
@@ -36,42 +46,106 @@ export const CHECK3_PAGE = `<!doctype html>
 <div id="level"></div>
 <audio id="remote" autoplay playsinline></audio>
 <pre id="log"></pre>
+<p><a href="/check/3/log" target="_blank">The log of every device</a></p>
 <script type="module">
 const $ = (id) => document.getElementById(id);
-const log = (text) => { $('log').textContent += new Date().toISOString().slice(11, 19) + ' ' + text + '\\n'; };
-let pc, ws, stream, timer, polite = false;
+let pc, ws, stream, timer, iceServers, policy, polite = false, lastPath = '', held = [], queue = Promise.resolve();
+
+// Each line goes on the page and, once a second, to the server. The session
+// tells apart two runs of one device.
+let session = Math.random().toString(36).slice(2, 8), unsent = [], sending = false;
+const log = (text) => {
+  const line = new Date().toISOString().slice(11, 19) + ' ' + text;
+  $('log').textContent += line + '\\n';
+  unsent.push(line);
+};
+const network = () => document.querySelector('input[name=network]:checked').value;
+async function flush() {
+  if (sending || unsent.length === 0) return;
+  sending = true;
+  const lines = unsent.splice(0, 100);
+  try {
+    const answer = await fetch('/check/3/log', { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ session, device: $('device').value.trim(), network: network(), lines }) });
+    if (!answer.ok) throw new Error('status ' + answer.status);
+  } catch (err) {
+    unsent.unshift(...lines);
+  }
+  sending = false;
+}
+setInterval(flush, 1000);
+addEventListener('pagehide', flush);
+
+try { $('device').value = localStorage.getItem('check3-device') ?? ''; } catch {}
+$('device').onchange = () => { try { localStorage.setItem('check3-device', $('device').value.trim()); } catch {} };
 
 function send(message) { ws.send(JSON.stringify(message)); }
 
+const kind = (candidate) => (/ typ (\\w+)/.exec(candidate.candidate ?? '') ?? [])[1] + ' ' + ((/ (udp|tcp) /i.exec(candidate.candidate ?? '') ?? [])[1] ?? '').toLowerCase();
+
+// A new peer connection for each call. The old one is closed when the other
+// device leaves or says hello again, so a second call in the same room starts
+// clean.
+function newPeer() {
+  if (pc) pc.close();
+  held = [];
+  lastPath = '';
+  pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: policy });
+  for (const track of stream.getTracks()) pc.addTrack(track, stream);
+  const own = pc;
+  pc.onicecandidate = (e) => { if (e.candidate && own === pc) { send({ type: 'candidate', candidate: e.candidate }); log('local candidate: ' + kind(e.candidate)); } };
+  pc.ontrack = (e) => { $('remote').srcObject = e.streams[0]; $('remote').play().catch((err) => log('play: ' + err)); };
+  pc.onconnectionstatechange = () => { if (own === pc) log('connection: ' + pc.connectionState); };
+  pc.oniceconnectionstatechange = () => { if (own !== pc) return; log('ice: ' + pc.iceConnectionState); if (pc.iceConnectionState === 'failed') pairs(); };
+}
+
+// Messages are handled one at a time, in the order they came: a candidate
+// never meets a description that is still being set.
+async function handle(m) {
+  if (m.type === 'full') { log('room is full: two devices are in it'); return; }
+  if (m.type === 'joined') { log('joined; other devices in the room: ' + m.others); polite = m.others > 0; if (polite) send({ type: 'hello' }); return; }
+  if (m.type === 'hello') { log('the other device joined; calling'); newPeer(); await pc.setLocalDescription(await pc.createOffer()); send({ type: 'offer', sdp: pc.localDescription.sdp }); return; }
+  if (m.type === 'offer') { if (pc.signalingState !== 'stable' || pc.remoteDescription) newPeer(); await pc.setRemoteDescription({ type: 'offer', sdp: m.sdp }); await release(); await pc.setLocalDescription(await pc.createAnswer()); send({ type: 'answer', sdp: pc.localDescription.sdp }); return; }
+  if (m.type === 'answer') { await pc.setRemoteDescription({ type: 'answer', sdp: m.sdp }); await release(); return; }
+  if (m.type === 'candidate') { log('remote candidate: ' + kind(m.candidate)); if (pc.remoteDescription) await pc.addIceCandidate(m.candidate).catch((err) => log('candidate: ' + err)); else held.push(m.candidate); return; }
+  if (m.type === 'left') { log('the other device left'); await result(); newPeer(); }
+}
+
+async function release() {
+  for (const candidate of held.splice(0)) await pc.addIceCandidate(candidate).catch((err) => log('candidate: ' + err));
+}
+
+// When ICE fails: what each candidate pair did, so the log shows why.
+async function pairs() {
+  const report = await pc.getStats();
+  const counts = {};
+  report.forEach((s) => {
+    if (s.type !== 'candidate-pair') return;
+    const local = report.get(s.localCandidateId), remote = report.get(s.remoteCandidateId);
+    const key = (local ? local.candidateType : '?') + '-' + (remote ? remote.candidateType : '?') + ' ' + s.state;
+    counts[key] = (counts[key] ?? 0) + 1;
+  });
+  log('candidate pairs: ' + (Object.entries(counts).map(([k, n]) => k + ' x' + n).join(', ') || 'none'));
+}
+
 async function start() {
   $('join').disabled = true;
-  const policy = document.querySelector('input[name=policy]:checked').value;
+  policy = document.querySelector('input[name=policy]:checked').value;
   const room = $('room').value.trim();
-  log('device: ' + navigator.userAgent);
+  session = Math.random().toString(36).slice(2, 8);
+  log('device: ' + ($('device').value.trim() || 'no name') + ', network: ' + network() + ', ' + navigator.userAgent);
   log('policy: ' + policy + ', room: ' + room);
   // The audio element plays only after a tap on iOS; Join is that tap.
   $('remote').play().catch(() => {});
   stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   log('microphone: ' + stream.getAudioTracks().map((t) => t.label).join(', '));
-  const { iceServers } = await (await fetch('/check/3/ice')).json();
-  pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: policy });
-  for (const track of stream.getTracks()) pc.addTrack(track, stream);
-  pc.onicecandidate = (e) => { if (e.candidate) { send({ type: 'candidate', candidate: e.candidate }); log('local candidate: ' + e.candidate.type + ' ' + (e.candidate.protocol || '')); } };
-  pc.ontrack = (e) => { $('remote').srcObject = e.streams[0]; $('remote').play().catch((err) => log('play: ' + err)); };
-  pc.onconnectionstatechange = () => log('connection: ' + pc.connectionState);
-  pc.oniceconnectionstatechange = () => log('ice: ' + pc.iceConnectionState);
+  ({ iceServers } = await (await fetch('/check/3/ice')).json());
+  newPeer();
   const path = $('server').checked ? '/check/5/ws' : '/check/3/ws?room=' + encodeURIComponent(room);
   log(path.startsWith('/check/5') ? 'calling the server' : 'room: ' + room);
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + path);
-  ws.onmessage = async (e) => {
+  ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
-    if (m.type === 'full') { log('room is full: two devices are in it'); return; }
-    if (m.type === 'joined') { log('joined; other devices in the room: ' + m.others); polite = m.others > 0; if (polite) send({ type: 'hello' }); return; }
-    if (m.type === 'hello') { log('the other device joined; calling'); await pc.setLocalDescription(await pc.createOffer()); send({ type: 'offer', sdp: pc.localDescription.sdp }); return; }
-    if (m.type === 'offer') { await pc.setRemoteDescription({ type: 'offer', sdp: m.sdp }); await pc.setLocalDescription(await pc.createAnswer()); send({ type: 'answer', sdp: pc.localDescription.sdp }); return; }
-    if (m.type === 'answer') { await pc.setRemoteDescription({ type: 'answer', sdp: m.sdp }); return; }
-    if (m.type === 'candidate') { await pc.addIceCandidate(m.candidate).catch((err) => log('candidate: ' + err)); return; }
-    if (m.type === 'left') { log('the other device left'); }
+    queue = queue.then(() => handle(m)).catch((err) => log('error: ' + err));
   };
   ws.onclose = () => log('signalling closed');
   timer = setInterval(stats, 2000);
@@ -91,6 +165,7 @@ async function stats() {
     const local = report.get(pair.localCandidateId), remote = report.get(pair.remoteCandidateId);
     const relayed = local.candidateType === 'relay' || remote.candidateType === 'relay';
     $('path').textContent = (relayed ? 'Through the relay' : 'Straight path') + ': this device ' + local.candidateType + ', other device ' + remote.candidateType + ' (' + (local.protocol || '') + ')';
+    if ($('path').textContent !== lastPath) { lastPath = $('path').textContent; log('path: ' + lastPath); }
   }
   if (audio) {
     const level = audio.audioLevel ?? 0;
@@ -99,16 +174,25 @@ async function stats() {
   }
 }
 
-function stop() {
+// The result of a call: the path and the sound packets this device received.
+async function result() {
+  if (!pc) return;
+  await stats();
+  log('result: ' + $('path').textContent + '; ' + ($('path').title || 'no sound packets'));
+  $('path').textContent = 'Not connected';
+  $('path').title = '';
+}
+
+async function stop() {
   clearInterval(timer);
-  $('path').textContent && log('result: ' + $('path').textContent);
+  await result();
   pc && pc.close(); ws && ws.close(); stream && stream.getTracks().forEach((t) => t.stop());
   pc = ws = stream = undefined;
   $('join').disabled = false; $('leave').disabled = true;
 }
 
 $('join').onclick = () => start().catch((err) => { log('error: ' + err); $('join').disabled = false; });
-$('leave').onclick = stop;
+$('leave').onclick = () => stop().finally(flush);
 </script>
 </body>
 </html>
