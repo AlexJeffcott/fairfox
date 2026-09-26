@@ -59,6 +59,14 @@ async function heard(page: Page): Promise<void> {
 }
 
 const first = await open(`first-${tag}`, 'wifi');
+// A swipe down must not reload the page in a call: no overscroll on the page, none passed on from the log.
+const overscroll = await first.evaluate(
+  "[getComputedStyle(document.documentElement).overscrollBehaviorY, getComputedStyle(document.body).overscrollBehaviorY, getComputedStyle(document.getElementById('log')).overscrollBehaviorY].join(' ')",
+);
+if (overscroll !== 'none none contain') {
+  console.error(`overscroll on the page, the body and the log: ${overscroll}; none none contain expected`);
+  process.exit(1);
+}
 const second = await open(`second-${tag}`, 'mobile');
 let ok = true;
 try {

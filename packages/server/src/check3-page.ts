@@ -13,12 +13,14 @@ export const CHECK3_PAGE = `<!doctype html>
 <title>Check 3</title>
 <style>
   :root { color-scheme: light dark; font: 16px/1.4 system-ui, sans-serif; }
+  /* A swipe down at the top reloads a page in Safari on the iPhone, and ends the call. */
+  html, body { overscroll-behavior: none; }
   body { margin: 0 auto; padding: 16px; max-width: 40rem; }
   fieldset { border: 1px solid #8888; margin: 0 0 12px; }
   button, input { font: inherit; padding: 8px 12px; }
   #path { font-size: 1.4rem; font-weight: 600; }
   #level { height: 12px; background: #2a7; width: 0; transition: width 0.2s; }
-  pre { white-space: pre-wrap; font-size: 0.8rem; background: #8881; padding: 8px; max-height: 40vh; overflow: auto; }
+  pre { overscroll-behavior: contain; white-space: pre-wrap; font-size: 0.8rem; background: #8881; padding: 8px; max-height: 40vh; overflow: auto; }
 </style>
 </head>
 <body>
