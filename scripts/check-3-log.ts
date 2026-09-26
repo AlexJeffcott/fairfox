@@ -1,7 +1,9 @@
 // Step 0c, check 3: the page's own log and a second call in one room. Two
 // headless Chromium pages, named and with a network marked, join one room and
 // connect. The second leaves and joins again while the first stays; the call
-// must connect again. Then the second reloads in the middle of a call, and
+// must connect again. In call 2 the second's signalling socket closes with no
+// Leave: the call must go on, and the socket open again. Then the second
+// reloads in the middle of the call, and
 // its page must log that the call ended with no Leave. Then /check/3/log must
 // hold the lines of both pages, under their names, with the result of each
 // call.
@@ -36,8 +38,8 @@ if (secretFile !== undefined) {
 }
 
 const browser = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
-const room = `log-${Date.now() % 100000}`;
 const tag = `${Date.now() % 100000}`;
+const room = `log-${tag}`;
 
 async function open(name: string, network: 'wifi' | 'mobile'): Promise<Page> {
   const context = await browser.newContext({ permissions: ['microphone'] });
@@ -51,6 +53,12 @@ async function open(name: string, network: 'wifi' | 'mobile'): Promise<Page> {
 
 async function connected(page: Page): Promise<void> {
   await page.locator('#path').filter({ hasText: /Straight path|Through the relay/ }).waitFor({ timeout: 20_000 });
+}
+
+/** The number of sound packets a page has received in this call, from the title the page sets on its path line. */
+async function packets(page: Page): Promise<number> {
+  const title = (await page.getAttribute('#path', 'title')) ?? '';
+  return Number(/packets (\d+)/.exec(title)?.[1] ?? 0);
 }
 
 /** A string, run in the page: at least 50 sound packets received in this call. */
@@ -87,6 +95,17 @@ try {
   console.log(`call 2, the same room: ${await first.textContent('#path')}`);
   await heard(first);
   await heard(second);
+
+  // The second's signalling closes as a network would close it. The call goes on; the socket opens again.
+  const before = await packets(first);
+  await second.evaluate('dropSignalling()');
+  await first.locator('#log').filter({ hasText: 'left the signalling; the call goes on' }).waitFor({ timeout: 10_000 });
+  await second.locator('#log').filter({ hasText: 'signalling back; the call goes on' }).waitFor({ timeout: 10_000 });
+  await first.waitForFunction(`Number(/packets (\\d+)/.exec(document.getElementById('path')?.title ?? '')?.[1] ?? 0) > ${before + 100}`, undefined, {
+    timeout: 10_000,
+  });
+  console.log(`call 2 went on through a lost signalling socket: ${before} packets, then ${await packets(first)}`);
+
   await second.reload();
   await first.locator('#log').filter({ hasText: /left[\s\S]*left/ }).waitFor({ timeout: 10_000 });
   await second.locator('#log').filter({ hasText: 'ended with no Leave' }).waitFor({ timeout: 10_000 });
@@ -111,6 +130,11 @@ try {
     'the other device left',
     'page loaded (reload); the call of session',
     'page closed or left',
+    'alive: connection connected',
+    'audioLevel ',
+    'socket opened; others in the room: 1',
+    'socket closed (4000)',
+    'socket closed (1005)',
   ];
   for (const piece of want) {
     if (!mine.some((line) => line.includes(piece))) {

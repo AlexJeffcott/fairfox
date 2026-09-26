@@ -10,6 +10,7 @@ export type Message =
   | { type: 'joined'; others: number }
   | { type: 'hello' }
   | { type: 'left' }
+  | { type: 'bye' }
   | { type: 'full' }
   | { type: 'offer'; sdp: string }
   | { type: 'answer'; sdp: string }
@@ -41,6 +42,8 @@ export function parse(data: unknown): Message {
     case 'hello':
       return { type };
     case 'left':
+      return { type };
+    case 'bye':
       return { type };
     case 'full':
       return { type };

@@ -51,7 +51,8 @@ export const CHECK3_PAGE = `<!doctype html>
 <p><a href="/check/3/log" target="_blank">The log of every device</a></p>
 <script type="module">
 const $ = (id) => document.getElementById(id);
-let pc, ws, stream, timer, iceServers, policy, polite = false, lastPath = '', held = [], queue = Promise.resolve();
+let pc, ws, stream, timer, heart, iceServers, policy, room, lastPath = '', held = [], queue = Promise.resolve();
+let gone = false, leaving = false, lastPong = 0, quiet = false;
 
 // Each line goes on the page and, once a second, to the server. The session
 // tells apart two runs of one device.
@@ -110,36 +111,57 @@ addEventListener('pagehide', (e) => log('page closed or left' + (e.persisted ? '
 addEventListener('pageshow', (e) => { if (e.persisted) log('page shown again from memory', true); });
 
 
-function send(message) { ws.send(JSON.stringify(message)); }
+function send(message) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message)); }
 
 const kind = (candidate) => (/ typ (\\w+)/.exec(candidate.candidate ?? '') ?? [])[1] + ' ' + ((/ (udp|tcp) /i.exec(candidate.candidate ?? '') ?? [])[1] ?? '').toLowerCase();
 
 // A new peer connection for each call. The old one is closed when the other
-// device leaves or says hello again, so a second call in the same room starts
-// clean.
+// device says hello again, presses Leave, or its call fails, so a second call
+// in the same room starts clean.
 function newPeer() {
   if (pc) pc.close();
   held = [];
   lastPath = '';
+  gone = false;
   pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: policy });
   for (const track of stream.getTracks()) pc.addTrack(track, stream);
   const own = pc;
   pc.onicecandidate = (e) => { if (e.candidate && own === pc) { send({ type: 'candidate', candidate: e.candidate }); log('local candidate: ' + kind(e.candidate)); } };
   pc.ontrack = (e) => { $('remote').srcObject = e.streams[0]; $('remote').play().catch((err) => log('play: ' + err)); };
   pc.onconnectionstatechange = () => { if (own === pc) log('connection: ' + pc.connectionState, true); };
-  pc.oniceconnectionstatechange = () => { if (own !== pc) return; log('ice: ' + pc.iceConnectionState); if (pc.iceConnectionState === 'failed') pairs(); };
+  pc.oniceconnectionstatechange = () => {
+    if (own !== pc) return;
+    log('ice: ' + pc.iceConnectionState, true);
+    if (pc.iceConnectionState === 'failed') {
+      pairs();
+      // The other device's signalling went, and now its sound has too: the call is over.
+      if (gone) queue = queue.then(async () => { await result(); newPeer(); });
+    }
+  };
 }
+
+// A call counts as live while ICE holds, whatever the signalling does.
+const live = () => pc && ['connected', 'completed', 'checking'].includes(pc.iceConnectionState);
 
 // Messages are handled one at a time, in the order they came: a candidate
 // never meets a description that is still being set.
 async function handle(m) {
+  if (m.type === 'pong') { lastPong = Date.now(); quiet = false; return; }
   if (m.type === 'full') { log('room is full: two devices are in it'); return; }
-  if (m.type === 'joined') { log('joined; other devices in the room: ' + m.others); polite = m.others > 0; if (polite) send({ type: 'hello' }); return; }
-  if (m.type === 'hello') { log('the other device joined; calling'); newPeer(); await pc.setLocalDescription(await pc.createOffer()); send({ type: 'offer', sdp: pc.localDescription.sdp }); return; }
+  if (m.type === 'joined') {
+    if (live()) { log('signalling back; the call goes on. Other devices in the room: ' + m.others, true); return; }
+    log('joined; other devices in the room: ' + m.others); if (m.others > 0) send({ type: 'hello' }); return;
+  }
+  if (m.type === 'hello') { log('the other device joined; calling'); if (pc.connectionState !== 'new') await result(); newPeer(); await pc.setLocalDescription(await pc.createOffer()); send({ type: 'offer', sdp: pc.localDescription.sdp }); return; }
   if (m.type === 'offer') { if (pc.signalingState !== 'stable' || pc.remoteDescription) newPeer(); await pc.setRemoteDescription({ type: 'offer', sdp: m.sdp }); await release(); await pc.setLocalDescription(await pc.createAnswer()); send({ type: 'answer', sdp: pc.localDescription.sdp }); return; }
   if (m.type === 'answer') { await pc.setRemoteDescription({ type: 'answer', sdp: m.sdp }); await release(); return; }
   if (m.type === 'candidate') { log('remote candidate: ' + kind(m.candidate)); if (pc.remoteDescription) await pc.addIceCandidate(m.candidate).catch((err) => log('candidate: ' + err)); else held.push(m.candidate); return; }
-  if (m.type === 'left') { log('the other device left', true); await result(); newPeer(); }
+  if (m.type === 'bye') { log('the other device left: it pressed Leave', true); await result(); newPeer(); return; }
+  if (m.type === 'left') {
+    // The server says this when the other device's socket closes. Its call may still be live.
+    if (live()) { gone = true; log('the other device left the signalling; the call goes on while ICE holds', true); return; }
+    log('the other device left', true); await result(); newPeer();
+  }
 }
 
 async function release() {
@@ -159,10 +181,49 @@ async function pairs() {
   log('candidate pairs: ' + (Object.entries(counts).map(([k, n]) => k + ' x' + n).join(', ') || 'none'));
 }
 
+// The signalling socket. When it closes and Leave was not pressed, it opens
+// again after 2 seconds; the call, if live, goes on through it.
+function connect() {
+  const path = $('server').checked ? '/check/5/ws' : '/check/3/ws?room=' + encodeURIComponent(room) + '&session=' + session;
+  const socket = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + path);
+  ws = socket;
+  lastPong = Date.now();
+  socket.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    queue = queue.then(() => handle(m)).catch((err) => log('error: ' + err));
+  };
+  socket.onclose = (e) => {
+    log('signalling closed (' + e.code + ')', true);
+    if (ws === socket && !leaving) { log('signalling: opening again in 2 s', true); setTimeout(() => { if (!leaving && ws === socket) connect(); }, 2000); }
+  };
+}
+
+// Every 5 seconds: a ping to the server, and a line that says the page is
+// alive, with what the call is doing. The last such line before a page dies
+// says what it was doing then.
+async function beat() {
+  if (!$('server').checked) {
+    send({ type: 'ping' });
+    const silent = Math.round((Date.now() - lastPong) / 1000);
+    if (silent > 15 && !quiet) { quiet = true; log('no pong from the server for ' + silent + ' s', true); }
+  }
+  if (!pc) return;
+  const report = await pc.getStats();
+  let inbound, outbound;
+  report.forEach((s) => {
+    if (s.type === 'inbound-rtp' && s.kind === 'audio') inbound = s;
+    if (s.type === 'outbound-rtp' && s.kind === 'audio') outbound = s;
+  });
+  log('alive: connection ' + pc.connectionState + ', ice ' + pc.iceConnectionState + ', signalling ' + (ws ? ['connecting', 'open', 'closing', 'closed'][ws.readyState] : 'none') +
+    ', received ' + (inbound ? inbound.packetsReceived + ' packets, lost ' + inbound.packetsLost + ', audioLevel ' + inbound.audioLevel : 'nothing') +
+    ', sent ' + (outbound ? outbound.packetsSent + ' packets' : 'nothing'));
+}
+
 async function start() {
   $('join').disabled = true;
+  leaving = false;
   policy = document.querySelector('input[name=policy]:checked').value;
-  const room = $('room').value.trim();
+  room = $('room').value.trim();
   session = Math.random().toString(36).slice(2, 8);
   try { sessionStorage.setItem(MARK, session); } catch {}
   log('device: ' + ($('device').value.trim() || 'no name') + ', network: ' + network() + ', ' + navigator.userAgent);
@@ -173,16 +234,18 @@ async function start() {
   log('microphone: ' + stream.getAudioTracks().map((t) => t.label).join(', '));
   ({ iceServers } = await (await fetch('/check/3/ice')).json());
   newPeer();
-  const path = $('server').checked ? '/check/5/ws' : '/check/3/ws?room=' + encodeURIComponent(room);
-  log(path.startsWith('/check/5') ? 'calling the server' : 'room: ' + room);
-  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + path);
-  ws.onmessage = (e) => {
-    const m = JSON.parse(e.data);
-    queue = queue.then(() => handle(m)).catch((err) => log('error: ' + err));
-  };
-  ws.onclose = (e) => log('signalling closed (' + e.code + ')', true);
+  log($('server').checked ? 'calling the server' : 'room: ' + room);
+  connect();
   timer = setInterval(stats, 2000);
+  heart = setInterval(beat, 5000);
   $('leave').disabled = false;
+}
+
+// The bar shows the level of the sound from the other device, in decibels
+// from -60 to 0. audioLevel runs from 0 to 1, and speech is mostly below 0.3.
+function bar(level) {
+  const db = level > 0 ? 20 * Math.log10(level) : -60;
+  $('level').style.width = Math.max(0, Math.min(100, Math.round((db + 60) / 60 * 100))) + '%';
 }
 
 async function stats() {
@@ -201,8 +264,7 @@ async function stats() {
     if ($('path').textContent !== lastPath) { lastPath = $('path').textContent; log('path: ' + lastPath); }
   }
   if (audio) {
-    const level = audio.audioLevel ?? 0;
-    $('level').style.width = Math.min(100, Math.round(level * 300)) + '%';
+    bar(audio.audioLevel ?? 0);
     $('path').title = 'packets ' + audio.packetsReceived + ', lost ' + audio.packetsLost + ', jitter ' + audio.jitter;
   }
 }
@@ -214,16 +276,22 @@ async function result() {
   log('result: ' + $('path').textContent + '; ' + ($('path').title || 'no sound packets'));
   $('path').textContent = 'Not connected';
   $('path').title = '';
+  bar(0);
 }
 
 async function stop() {
-  clearInterval(timer);
+  leaving = true;
+  clearInterval(timer); clearInterval(heart);
   try { sessionStorage.removeItem(MARK); } catch {}
   await result();
+  send({ type: 'bye' });
   pc && pc.close(); ws && ws.close(); stream && stream.getTracks().forEach((t) => t.stop());
   pc = ws = stream = undefined;
   $('join').disabled = false; $('leave').disabled = true;
 }
+
+// For scripts/check-3-log.ts: close the signalling socket as a network would, with no Leave.
+window.dropSignalling = () => ws && ws.close(4000);
 
 $('join').onclick = () => start().catch((err) => { log('error: ' + err); $('join').disabled = false; });
 $('leave').onclick = () => stop().finally(flush);

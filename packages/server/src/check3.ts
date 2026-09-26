@@ -6,7 +6,9 @@
 //
 //   GET /check/3            the page
 //   GET /check/3/ice        relay credentials, valid for one hour
-//   WS  /check/3/ws?room=x  passes each message to the other device in room x
+//   WS  /check/3/ws?room=x&session=y
+//                           passes each message to the other device in room x;
+//                           answers a ping itself with a pong
 //   POST /check/3/log       the page sends its log lines here
 //   GET  /check/3/log       every device's log lines, oldest first, as text
 import { createHmac } from 'node:crypto';
@@ -32,18 +34,36 @@ export function turnCredentials(secret: string, now: Date): { username: string; 
 
 type Socket = { id: string; send: (message: string) => unknown; close: () => unknown };
 
+/** The owner's time, Berlin and Rome, as the page writes it: 11:35:50 CEST. */
+const clock = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Berlin',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+  timeZoneName: 'short',
+});
+function stamp(now: Date): string {
+  const parts = Object.fromEntries(clock.formatToParts(now).map((part) => [part.type, part.value]));
+  return `${parts.hour}:${parts.minute}:${parts.second} ${parts.timeZoneName}`;
+}
+
 export function check3Routes(turnSecret: string) {
   const rooms = new Map<string, Map<string, Socket>>();
   const logLines: string[] = [];
+  const keep = (lines: string[]) => {
+    logLines.push(...lines);
+    logLines.splice(0, Math.max(0, logLines.length - LOG_LINES));
+  };
+  // The server's own lines: when each device's signalling socket opens and closes, as the server sees it.
+  const serverLine = (room: string, session: string, text: string) =>
+    keep([`server (room ${room}) ${session} ${stamp(new Date())} ${text}`]);
   return new Elysia()
     .post(
       '/check/3/log',
       ({ body }) => {
         const who = `${body.device || '?'} (${body.network}) ${body.session}`;
-        for (const line of body.lines) {
-          logLines.push(`${who} ${line}`);
-        }
-        logLines.splice(0, Math.max(0, logLines.length - LOG_LINES));
+        keep(body.lines.map((line) => `${who} ${line}`));
         return new Response(null, { status: 204 });
       },
       {
@@ -67,30 +87,47 @@ export function check3Routes(turnSecret: string) {
       };
     })
     .ws('/check/3/ws', {
-      query: t.Object({ room: t.String({ minLength: 1, maxLength: 32 }) }),
+      query: t.Object({
+        room: t.String({ minLength: 1, maxLength: 32 }),
+        session: t.Optional(t.String({ maxLength: 16 })),
+      }),
       open(ws) {
-        const room = rooms.get(ws.data.query.room) ?? new Map<string, Socket>();
+        const { room: name, session = '?' } = ws.data.query;
+        const room = rooms.get(name) ?? new Map<string, Socket>();
         if (room.size >= ROOM_SIZE) {
+          serverLine(name, session, 'socket refused: the room is full');
           ws.send(JSON.stringify({ type: 'full' }));
           ws.close();
           return;
         }
         room.set(ws.id, ws);
-        rooms.set(ws.data.query.room, room);
+        rooms.set(name, room);
+        serverLine(name, session, `socket opened; others in the room: ${room.size - 1}`);
         ws.send(JSON.stringify({ type: 'joined', others: room.size - 1 }));
       },
       message(ws, message) {
         const text = typeof message === 'string' ? message : JSON.stringify(message);
+        if (text === '{"type":"ping"}') {
+          ws.send(JSON.stringify({ type: 'pong' }));
+          return;
+        }
         for (const [id, other] of rooms.get(ws.data.query.room) ?? []) {
           if (id !== ws.id) {
             other.send(text);
           }
         }
       },
-      close(ws) {
-        const room = rooms.get(ws.data.query.room);
-        room?.delete(ws.id);
-        for (const other of room?.values() ?? []) {
+      close(ws, code) {
+        const { room: name, session = '?' } = ws.data.query;
+        const room = rooms.get(name);
+        const was = room?.delete(ws.id) ?? false;
+        const others = [...(room?.values() ?? [])];
+        // A socket the full room refused was never in it: the two in the call are not told it left.
+        if (!was) {
+          return;
+        }
+        serverLine(name, session, `socket closed (${code}); "left" sent to ${others.length}`);
+        for (const other of others) {
           other.send(JSON.stringify({ type: 'left' }));
         }
         if (room?.size === 0) {
