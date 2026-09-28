@@ -24,7 +24,7 @@ let origin = given ?? '';
 let stopServer = async () => {};
 if (secretFile !== undefined) {
   const secret = (await Bun.file(secretFile).text()).trim();
-  const app = createApp({ FAIRFOX_COMMIT: 'check5', FAIRFOX_DATABASE_PATH: ':memory:', FAIRFOX_TURN_SECRET: secret }).listen({
+  const app = createApp({ FAIRFOX_COMMIT: 'check5', FAIRFOX_DATABASE_PATH: ':memory:', FAIRFOX_TURN_SECRET: secret, FAIRFOX_CHECK7_PUSH_KEY: 'check7' }).listen({
     hostname: 'localhost',
     port: 0,
   });

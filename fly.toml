@@ -10,6 +10,9 @@ primary_region = "ams"
   FAIRFOX_PORT = "3000"
   # The database, on the volume mounted below. Litestream reads the same variable (C1).
   FAIRFOX_DATABASE_PATH = "/data/fairfox.db"
+  # Step 0c, check 7: the public key of the push sender. Not a secret; the
+  # private key stays on the laptop (scripts/check-7-push.ts). It leaves with check 7.
+  FAIRFOX_CHECK7_PUSH_KEY = "BFSYIZCiwNgz-GvSLoPdlYVG17qjBdoslp1hV77iJIJX6PpTEpnf2_uzJdBo9pNMeiz8DjORBAKWkr60ASbtZFI"
   # Not here: FAIRFOX_COMMIT, set by devctl deploy on each deploy; and
   # FAIRFOX_REPLICA_URL, a secret (fly secrets set).
 

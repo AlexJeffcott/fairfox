@@ -15,16 +15,19 @@ export const SETTINGS = {
   replicaUrl: 'FAIRFOX_REPLICA_URL',
   /** The shared secret of the relay fairfox-turn. The check 3 routes mint relay credentials with it. Step 0c only. */
   turnSecret: 'FAIRFOX_TURN_SECRET',
+  /** The public key of check 7's push sender, base64url. Not a secret: the page hands it to the browser. Step 0c only. */
+  pushKey: 'FAIRFOX_CHECK7_PUSH_KEY',
 } as const;
 
 /** Settings as a process environment holds them. A test passes them as an argument (C2). */
 export type Settings = Readonly<Record<string, string | undefined>>;
 
-/** What the app needs: the commit it answers, the database it opens, and the relay's secret for check 3. */
+/** What the app needs: the commit it answers, the database it opens, the relay's secret for check 3, and the push key for check 7. */
 export type Config = {
   commit: string;
   databasePath: string;
   turnSecret: string;
+  pushKey: string;
 };
 
 function required(settings: Settings, name: string): string {
@@ -40,6 +43,7 @@ export function readConfig(settings: Settings): Config {
     commit: required(settings, SETTINGS.commit),
     databasePath: required(settings, SETTINGS.databasePath),
     turnSecret: required(settings, SETTINGS.turnSecret),
+    pushKey: required(settings, SETTINGS.pushKey),
   };
 }
 

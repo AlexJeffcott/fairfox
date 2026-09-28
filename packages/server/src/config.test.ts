@@ -11,19 +11,26 @@ describe('the server settings', () => {
     );
   });
 
-  test('the commit, the database path and the relay secret are read', () => {
+  test('the commit, the database path, the relay secret and the push key are read', () => {
     expect(
-      readConfig({ FAIRFOX_COMMIT: '3f9c2e1', FAIRFOX_DATABASE_PATH: '/data/fairfox.db', FAIRFOX_TURN_SECRET: 'relay' }),
+      readConfig({ FAIRFOX_COMMIT: '3f9c2e1', FAIRFOX_DATABASE_PATH: '/data/fairfox.db', FAIRFOX_TURN_SECRET: 'relay', FAIRFOX_CHECK7_PUSH_KEY: 'key' }),
     ).toStrictEqual({
       commit: '3f9c2e1',
       databasePath: '/data/fairfox.db',
       turnSecret: 'relay',
+      pushKey: 'key',
     });
   });
 
   test('a missing relay secret names the setting', () => {
     expect(() => readConfig({ FAIRFOX_COMMIT: '3f9c2e1', FAIRFOX_DATABASE_PATH: ':memory:' })).toThrow(
       'The setting FAIRFOX_TURN_SECRET is not set',
+    );
+  });
+
+  test('a missing push key names the setting', () => {
+    expect(() => readConfig({ FAIRFOX_COMMIT: '3f9c2e1', FAIRFOX_DATABASE_PATH: ':memory:', FAIRFOX_TURN_SECRET: 'relay' })).toThrow(
+      'The setting FAIRFOX_CHECK7_PUSH_KEY is not set',
     );
   });
 });
