@@ -19,7 +19,7 @@ describe('parse', () => {
   // The parser is a separate process: one left running keeps the caller from exiting, and bun test exits regardless.
   // The time limit kills a child that does not exit, so a failed run leaves no process behind.
   test('lets the process that parsed exit', async () => {
-    const script = `import { parse } from ${JSON.stringify(join(import.meta.dir, 'syntax.ts'))}; await parse('a.ts', 'const a = 1;'); console.log('parsed');`;
+    const script = `import { parse, parseAll } from ${JSON.stringify(join(import.meta.dir, 'syntax.ts'))}; await parse('a.ts', 'const a = 1;'); await parseAll([{ file: 'b.ts', text: 'const b = 1;' }]); console.log('parsed');`;
     const child = Bun.spawn(['bun', '-e', script], { stdout: 'pipe', stderr: 'inherit', timeout: 4000 });
     expect(await child.exited).toBe(0);
     expect(await new Response(child.stdout).text()).toBe('parsed\n');

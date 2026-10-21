@@ -9,39 +9,29 @@ export type Parsed = { file: string; source: SourceFile };
 
 /** Parse one file with an API that is open: TypeScript, or TSX when its name ends in .tsx. */
 async function parseWith(api: API, file: string, text: string): Promise<Parsed> {
-  const retained = await api.createSourceFile(file, text);
-  await retained.dispose();
+  await using retained = await api.createSourceFile(file, text);
   return { file, source: retained.sourceFile };
 }
 
 /**
- * Run `use` with an API to TypeScript 7's parser, a separate process. The
- * process is stopped before this returns, because one left running keeps the
- * caller from exiting. The trees it parsed stay usable after it stops.
+ * Parse each file with TypeScript 7's parser, a separate process, started
+ * once for all of them. `await using` stops it before this returns, because
+ * one left running keeps the caller from exiting. The trees stay usable after
+ * it stops.
  */
-async function withParser<T>(use: (api: API) => Promise<T>): Promise<T> {
-  const api = new API();
-  try {
-    return await use(api);
-  } finally {
-    await api.close();
+export async function parseAll(files: readonly { file: string; text: string }[]): Promise<Parsed[]> {
+  await using api = new API();
+  const parsed: Parsed[] = [];
+  for (const { file, text } of files) {
+    parsed.push(await parseWith(api, file, text));
   }
+  return parsed;
 }
 
-/** Parse each file, with one parser process for all of them: see parseWith. */
-export function parseAll(files: readonly { file: string; text: string }[]): Promise<Parsed[]> {
-  return withParser(async (api) => {
-    const parsed: Parsed[] = [];
-    for (const { file, text } of files) {
-      parsed.push(await parseWith(api, file, text));
-    }
-    return parsed;
-  });
-}
-
-/** Parse one file: see parseWith. */
-export function parse(file: string, text: string): Promise<Parsed> {
-  return withParser((api) => parseWith(api, file, text));
+/** Parse one file: see parseAll. */
+export async function parse(file: string, text: string): Promise<Parsed> {
+  await using api = new API();
+  return await parseWith(api, file, text);
 }
 
 /** Call `visit` on `node` and every node inside it, depth first. */
