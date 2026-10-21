@@ -18,10 +18,10 @@
 #   - the RUN below deletes the type-only packages, which arrive as optional
 #     peers of elysia and are not devDependencies of anything here.
 #
-# Bun 1.4.2, pinned by digest. Bun runs the install and the server. Node is
+# Bun 1.4.3, pinned by digest. Bun runs the install and the server. Node is
 # not here: it was here for Stryker 10, which needs Node 22 or later, and
 # Stryker no longer runs in an image.
-FROM oven/bun:1.4.2@sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895
+FROM oven/bun:1.4.3@sha256:ec06c3b6cea04192ae6770c434f668ca41d343ad19fa6472216c7b48be39c598
 RUN bun --version
 
 # Litestream 0.5.17, one static binary copied from the official image, pinned

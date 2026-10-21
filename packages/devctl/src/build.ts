@@ -28,13 +28,13 @@ export const TYPECHECKED: readonly string[] = ['features/local'];
 type Built = { name: string; ok: boolean; ms: number; output: string };
 
 async function typecheckOne(root: string, dir: string): Promise<Built> {
-  const types = await run(['bun', 'node_modules/typescript/bin/tsc', '--noEmit', '-p', join(dir, 'tsconfig.json')], root);
+  const types = await run(['bun', 'check', '--no-pretty', '-p', join(dir, 'tsconfig.json')], root);
   return { name: dir, ok: types.code === 0, ms: types.ms, output: types.output };
 }
 
 async function buildOne(root: string, name: string, target: 'bun' | 'browser', page: boolean): Promise<Built> {
   const dir = join('packages', name);
-  const types = await run(['bun', 'node_modules/typescript/bin/tsc', '--noEmit', '-p', join(dir, 'tsconfig.json')], root);
+  const types = await run(['bun', 'check', '--no-pretty', '-p', join(dir, 'tsconfig.json')], root);
   if (types.code !== 0) {
     return { name, ok: false, ms: types.ms, output: types.output };
   }
@@ -64,7 +64,7 @@ export const build: Command = {
   summary: 'Type-check and bundle each package of the workspace',
   args: '[package...]',
   help: `
-Type-check each package with tsc (strict, no emit), then bundle its
+Type-check each package with bun check (strict, no emit), then bundle its
 src/index.ts with Bun into packages/<name>/dist/. With no package named,
 build all of them: ${PACKAGES.map((p) => p.name).join(', ')}; and
 type-check the code outside the packages: ${TYPECHECKED.join(', ')}.

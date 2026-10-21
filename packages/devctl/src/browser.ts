@@ -10,7 +10,7 @@ const PLAYWRIGHT = ['bun', 'node_modules/@playwright/test/cli.js'];
  */
 const STEPS: readonly (readonly string[])[] = [
   ['bun', 'packages/devctl/src/index.ts', 'build', 'shell'],
-  ['bun', 'node_modules/typescript/bin/tsc', '--noEmit', '-p', 'features/browser/tsconfig.json'],
+  ['bun', 'check', '--no-pretty', '-p', 'features/browser/tsconfig.json'],
   // Downloads the WebKit this Playwright pins when it is missing; does nothing when it is there.
   [...PLAYWRIGHT, 'install', 'webkit'],
   ['bun', 'node_modules/playwright-bdd/dist/cli/index.js'],

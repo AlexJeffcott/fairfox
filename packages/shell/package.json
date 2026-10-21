@@ -5,8 +5,8 @@
   "type": "module",
   "exports": { ".": "./src/index.ts" },
   "dependencies": {
-    "@fairfox/polly": "0.82.1",
-    "@preact/signals": "2.9.0",
-    "preact": "10.29.1"
+    "@fairfox/polly": "0.92.1",
+    "@preact/signals": "2.11.3",
+    "preact": "10.29.8"
   }
 }
