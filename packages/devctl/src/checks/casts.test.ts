@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import { findCasts } from './casts.ts';
+import { parse } from './syntax.ts';
 
 // Each form found by the cold read of rebuild-local, or by the session, that
 // eal's line scan let through.
 const casts: readonly [string, string][] = [
   ['a cast of a call', 'const user = JSON.parse(raw) as User;'],
+  ['a cast to a keyword type', 'const n = value as number;'],
   ['an exported cast', 'export const b = a as User;'],
   ['a cast on a line that also holds as const', 'const a = b as User, c = [1] as const;'],
   ['a cast after )', 'const user = load() as User;'],
@@ -38,25 +40,25 @@ const notCasts: readonly [string, string][] = [
 
 describe('findCasts', () => {
   for (const [name, source] of casts) {
-    test(`finds ${name}`, () => {
-      expect(findCasts('a.ts', source)).toHaveLength(1);
+    test(`finds ${name}`, async () => {
+      expect(findCasts(await parse('a.ts', source))).toHaveLength(1);
     });
   }
   for (const [name, source] of tsxCasts) {
-    test(`finds ${name}`, () => {
-      expect(findCasts('a.tsx', source)).toHaveLength(1);
+    test(`finds ${name}`, async () => {
+      expect(findCasts(await parse('a.tsx', source))).toHaveLength(1);
     });
   }
   for (const [name, source] of notCasts) {
-    test(`leaves ${name}`, () => {
-      expect(findCasts('a.ts', source)).toEqual([]);
+    test(`leaves ${name}`, async () => {
+      expect(findCasts(await parse('a.ts', source))).toEqual([]);
     });
   }
-  test('leaves JSX text in .tsx', () => {
-    expect(findCasts('a.tsx', 'const p = <p>Signed in as guest</p>;')).toEqual([]);
+  test('leaves JSX text in .tsx', async () => {
+    expect(findCasts(await parse('a.tsx', 'const p = <p>Signed in as guest</p>;'))).toEqual([]);
   });
-  test('names the line of the cast', () => {
-    expect(findCasts('a.ts', 'const a = 1;\nconst b = a as User;')).toEqual([
+  test('names the line of the cast', async () => {
+    expect(findCasts(await parse('a.ts', 'const a = 1;\nconst b = a as User;'))).toEqual([
       { file: 'a.ts', line: 2, text: 'a as User', reason: 'type assertion' },
     ]);
   });

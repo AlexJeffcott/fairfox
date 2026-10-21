@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { findFixedWaits } from './waits.ts';
+import { parse } from './syntax.ts';
 
 const SLEEP = 'Bun.sleep';
 const TAKEN = 'Bun.sleep, destructured';
@@ -49,6 +50,7 @@ const waits: readonly [string, string, readonly string[]][] = [
 // Near misses: each is one step from a form above, and none is a fixed wait.
 const notWaits: readonly [string, string][] = [
   ['a string that names a wait', "const s = 'await Bun.sleep(100)';"],
+  ['a timer in a promise, called with nothing', 'await new Promise((go) => setTimeout());'],
   ['a template that names a wait', 'const s = `await new Promise((r) => setTimeout(r, 100))`;'],
   ['a comment that names a wait', '// await Bun.sleep(100)\n/* setTimeout(resolve, 100) */'],
   ['a check that Bun exists', "if (typeof Bun !== 'undefined') {}"],
@@ -84,18 +86,18 @@ const notWaits: readonly [string, string][] = [
 
 describe('findFixedWaits', () => {
   for (const [name, source, reasons] of waits) {
-    test(`finds ${name}`, () => {
-      expect(findFixedWaits('a.ts', source).map((f) => f.reason)).toEqual([...reasons]);
+    test(`finds ${name}`, async () => {
+      expect(findFixedWaits(await parse('a.ts', source)).map((f) => f.reason)).toEqual([...reasons]);
     });
   }
   for (const [name, source] of notWaits) {
-    test(`leaves ${name}`, () => {
-      expect(findFixedWaits('a.ts', source)).toEqual([]);
+    test(`leaves ${name}`, async () => {
+      expect(findFixedWaits(await parse('a.ts', source))).toEqual([]);
     });
   }
-  test('reports each wait once, in the order of its lines, with its text', () => {
+  test('reports each wait once, in the order of its lines, with its text', async () => {
     const source = 'await new Promise((go) => {\n  Bun.sleepSync(1);\n  setTimeout(go, 1);\n});';
-    expect(findFixedWaits('a.ts', source)).toEqual([
+    expect(findFixedWaits(await parse('a.ts', source))).toEqual([
       { file: 'a.ts', line: 2, text: 'Bun.sleepSync', reason: SLEEP },
       { file: 'a.ts', line: 3, text: 'setTimeout(go, 1)', reason: TIMER },
     ]);

@@ -5,20 +5,21 @@
 // a process's exit, a condition polled until it holds.
 //
 // eal's script matched four patterns line by line. This one parses each file
-// with the TypeScript compiler API, so no file needs an exemption: see
+// with TypeScript 7's parser, so no file needs an exemption: see
 // findFixedWaits in waits.ts.
 import { join } from 'node:path';
 import { repoRoot } from '../repo.ts';
 import { typeScriptFiles } from './sources.ts';
-import type { Finding } from './syntax.ts';
+import { type Finding, parseAll } from './syntax.ts';
 import { findFixedWaits } from './waits.ts';
 
 const root = await repoRoot();
 const files = await typeScriptFiles(root);
-const found: Finding[] = [];
+const texts: { file: string; text: string }[] = [];
 for (const file of files) {
-  found.push(...findFixedWaits(file, await Bun.file(join(root, file)).text()));
+  texts.push({ file, text: await Bun.file(join(root, file)).text() });
 }
+const found: Finding[] = (await parseAll(texts)).flatMap(findFixedWaits);
 
 if (found.length > 0) {
   console.log(`Found ${found.length} fixed wait(s):`);

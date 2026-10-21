@@ -38,12 +38,14 @@ COPY packages ./packages
 RUN bun install --frozen-lockfile --production
 
 # The type-only packages elysia asks for as optional peers. Nothing reads them
-# at run time, and typescript alone is 24 MB. They cannot be dropped with
+# at run time, and typescript alone is 24 MB, with its compiler for the
+# platform in @typescript/typescript-<platform> beside it. They cannot be dropped with
 # --omit=peer: that also drops @sinclair/typebox, which elysia does read at
 # run time, and the server then fails to start with the image still green.
 # The name is matched without its version, so a version bump does not make
 # this line miss; what is left is checked by name, not by this line.
 RUN rm -rf node_modules/.bun/typescript@* \
+           node_modules/.bun/@typescript+typescript-* \
            node_modules/.bun/@types+* \
            node_modules/.bun/bun-types@* \
            node_modules/.bun/undici-types@* \
