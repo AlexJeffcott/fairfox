@@ -4,50 +4,52 @@ import type { Command } from './command.ts';
 import { childEnv, run } from './proc.ts';
 
 /**
- * Stryker mutation testing, as in lingua: one package at a time, each with its
- * own config, stryker/<package>.conf.json, that mutates that package's src and
- * runs that package's tests with Stryker's command runner. No patch. A
- * config's break threshold is 100: one mutant that the tests let pass fails
- * the run. The defect it catches: a test that passes when the code is wrong
- * (L6, "test gaps").
- *
- * A config may mutate part of its package. What each leaves out, and why:
- * - cli: src/index.ts, the command flow, which the @local features run as a
- *   process.
- * - devctl: all but the pure functions its tests call: record.ts,
- *   checks/casts.ts, syntax.ts and waits.ts, and the decisions of step 0b
- *   (deploy-decisions.ts, rollback-decisions.ts, restore-decisions.ts,
- *   releases.ts, fly-config.ts, version-answer.ts, env-list.ts). The rest is
- *   the command flow, the check scripts and the thin wrappers around docker
- *   and fly, which run as processes; devctl ci --red sees each check red
- *   (M3), and devctl deploy and rollback are never run in CI.
- * - server: main.ts, status.ts and environment.ts, the two entry points and
- *   the one function that reads process.env. They run as processes in the
- *   image: devctl image and devctl replica see them red (M3).
- * - shell: nothing. Its tests are the @browser feature, in WebKit: its
- *   command, src/mutation-shell.ts, builds the shell in Stryker's sandbox and
- *   gives the page the active mutant, which the page cannot read from
- *   process.env.
+ * Mutation testing with polly mutate, one package at a time, each with its
+ * own config, packages/<package>/polly.mutate.ts, that names the files it
+ * mutates and the tests that run them. A config's break threshold is 100: one
+ * mutant that the tests let pass fails the run. The defect it catches: a test
+ * that passes when the code is wrong (L6, "test gaps"). What a config leaves
+ * out of its package, and why, is written in the config.
  */
-const CONFIGS = 'stryker';
-const SUFFIX = '.conf.json';
+const CONFIG = 'polly.mutate.ts';
+/** Where polly mutate writes its report, from the directory of the config: its default. */
+const REPORT = join('reports', 'mutation', 'mutation.json');
 
 /**
- * The packages with no Stryker config, each with the reason. `--since` fails
- * on a package it touched that has neither a config nor an entry here.
+ * The packages with no mutation config, each with the reason. Every run fails
+ * on a package that has neither a config nor an entry here, touched or not.
  */
 export const EXEMPT: Readonly<Record<string, string>> = {
   client: "no logic of its own: createClient is one call to Eden's treaty",
   permissions: 'no code yet: the list is empty until stage 1',
 };
 
-/** The packages that have a Stryker config. */
-async function configured(root: string): Promise<string[]> {
-  const files = await readdir(join(root, CONFIGS));
-  return files
-    .filter((f) => f.endsWith(SUFFIX))
-    .map((f) => f.slice(0, -SUFFIX.length))
-    .sort();
+/** The config of a package, from the root of the checkout. */
+function configOf(name: string): string {
+  return join('packages', name, CONFIG);
+}
+
+/** Every package of the workspace: each directory under packages/ that holds a package.json. */
+async function workspace(root: string): Promise<string[]> {
+  const entries = await readdir(join(root, 'packages'), { withFileTypes: true });
+  const found: string[] = [];
+  for (const entry of entries.filter((e) => e.isDirectory())) {
+    if (await Bun.file(join(root, 'packages', entry.name, 'package.json')).exists()) {
+      found.push(entry.name);
+    }
+  }
+  return found.sort();
+}
+
+/** The packages that have a mutation config. */
+async function configured(root: string, all: readonly string[]): Promise<string[]> {
+  const have: string[] = [];
+  for (const name of all) {
+    if (await Bun.file(join(root, configOf(name))).exists()) {
+      have.push(name);
+    }
+  }
+  return have;
 }
 
 /**
@@ -75,46 +77,94 @@ async function touched(root: string, ref: string): Promise<string[]> {
   return present.sort();
 }
 
-/** Run Stryker on one package, and let it print as it goes. */
+/** Run polly mutate on one package, and let it print as it goes. */
 async function mutate(root: string, name: string): Promise<boolean> {
-  console.log(`\nmutation: ${name} (${CONFIGS}/${name}${SUFFIX})`);
-  const proc = Bun.spawn(['node_modules/.bin/stryker', 'run', join(CONFIGS, `${name}${SUFFIX}`)], {
+  console.log(`\nmutation: ${name} (${configOf(name)})`);
+  const proc = Bun.spawn(['node_modules/.bin/polly', 'mutate', 'run', '--config', configOf(name)], {
     cwd: root,
     env: childEnv(),
     stdin: 'ignore',
     stdout: 'inherit',
     stderr: 'inherit',
   });
-  return (await proc.exited) === 0 && proc.signalCode === null;
+  const ok = (await proc.exited) === 0 && proc.signalCode === null;
+  if (!ok) {
+    await printSurvivors(root, name);
+  }
+  return ok;
+}
+
+/** The statuses of a mutant that no test killed. */
+const UNKILLED = ['Survived', 'NoCoverage'];
+
+/**
+ * Print each mutant no test killed, as `packages/<name>/<file>:<line>:<column>
+ * <mutator> <status>`, from the report polly mutate writes. polly prints its
+ * own list only when the score reaches the break threshold, so a failed run
+ * names no survivor without this.
+ */
+async function printSurvivors(root: string, name: string): Promise<void> {
+  const path = join(root, 'packages', name, REPORT);
+  const file = Bun.file(path);
+  if (!(await file.exists())) {
+    console.error(`No mutation report at ${path}`);
+    return;
+  }
+  const report: unknown = await file.json();
+  const files = typeof report === 'object' && report !== null && 'files' in report ? report.files : undefined;
+  if (typeof files !== 'object' || files === null) {
+    console.error(`The mutation report at ${path} has no files`);
+    return;
+  }
+  for (const [source, entry] of Object.entries(files)) {
+    const mutants: unknown = typeof entry === 'object' && entry !== null && 'mutants' in entry ? entry.mutants : [];
+    for (const m of Array.isArray(mutants) ? mutants : []) {
+      if (UNKILLED.includes(m.status)) {
+        const at = m.location.start;
+        console.log(`unkilled: ${join('packages', name, source)}:${at.line}:${at.column} ${m.mutatorName} ${m.status}`);
+      }
+    }
+  }
 }
 
 export const mutation: Command = {
   name: 'mutation',
-  summary: 'Run Stryker on named packages, or on the packages a branch touched',
+  summary: 'Run polly mutate on named packages, or on the packages a branch touched',
   args: '[package...]',
   help: `
-Mutation testing with Stryker, one package at a time. Each package has its
-own config, stryker/<package>.conf.json: it mutates that package's src and
-runs that package's tests with Stryker's command runner. A mutant the tests
-let pass fails the run.
+Mutation testing with polly mutate, one package at a time. Each package has
+its own config, packages/<package>/polly.mutate.ts: it names the files it
+mutates and the tests that run them. A mutant the tests let pass fails the
+run.
 
 Name the packages, or give --since <ref> to run on each package whose files
-changed between the merge base of <ref> and HEAD. With --since, a touched
-package with no config fails the run, unless EXEMPT in
-packages/devctl/src/mutation.ts gives the reason it has none. devctl ci runs
---since main. One or the other; there is no default.
+changed between the merge base of <ref> and HEAD. devctl ci runs --since
+main. One or the other; there is no default.
+
+Either way, a package with no config fails the run, touched or not, unless
+EXEMPT in packages/devctl/src/mutation.ts gives the reason it has none.
 `,
   flags: [{ name: 'since', takes: 'ref', help: 'Run on the packages this branch touched since the merge base of <ref>' }],
   run: async ({ root, positionals, values }) => {
     const since = values('since');
-    const have = await configured(root);
+    const all = await workspace(root);
+    const have = await configured(root, all);
     if (since.length > 1 || (since.length === 1) === positionals.length > 0) {
       console.error(`Name the packages, or give one --since <ref>. Packages with a config: ${have.join(', ')}`);
       return 1;
     }
     const both = have.filter((name) => name in EXEMPT);
     if (both.length > 0) {
-      console.error(`Both a Stryker config and an exemption: ${both.join(', ')}. Remove the exemption from EXEMPT.`);
+      console.error(`Both a mutation config and an exemption: ${both.join(', ')}. Remove the exemption from EXEMPT.`);
+      return 1;
+    }
+    const bare = all.filter((name) => !have.includes(name) && !(name in EXEMPT));
+    if (bare.length > 0) {
+      for (const name of bare) {
+        console.error(
+          `packages/${name} has no mutation config (${configOf(name)}) and no reason in EXEMPT (packages/devctl/src/mutation.ts).`,
+        );
+      }
       return 1;
     }
     let chosen: readonly string[] = positionals;
@@ -124,24 +174,15 @@ packages/devctl/src/mutation.ts gives the reason it has none. devctl ci runs
       for (const name of changed.filter((n) => n in EXEMPT)) {
         console.log(`Not mutated: ${name}: ${EXEMPT[name]}`);
       }
-      const bare = changed.filter((name) => !have.includes(name) && !(name in EXEMPT));
-      if (bare.length > 0) {
-        for (const name of bare) {
-          console.error(
-            `packages/${name} changed since ${ref} and has no Stryker config (${CONFIGS}/${name}${SUFFIX}) and no reason in EXEMPT (packages/devctl/src/mutation.ts).`,
-          );
-        }
-        return 1;
-      }
       chosen = changed.filter((name) => have.includes(name));
       if (chosen.length === 0) {
-        console.log(`No package with a Stryker config changed since ${ref}.`);
+        console.log(`No package with a mutation config changed since ${ref}.`);
         return 0;
       }
     }
     const missing = chosen.filter((name) => !have.includes(name));
     if (missing.length > 0) {
-      console.error(`No Stryker config for: ${missing.join(', ')}. Packages with a config: ${have.join(', ')}`);
+      console.error(`No mutation config for: ${missing.join(', ')}. Packages with a config: ${have.join(', ')}`);
       return 1;
     }
     const failed: string[] = [];

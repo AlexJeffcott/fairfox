@@ -26,7 +26,7 @@ _devctl() {
     'help:List every command, or show the help of one'
     'build:Type-check and bundle each package of the workspace'
     'ci:Run every registered check on the commit that is checked out'
-    'mutation:Run Stryker on named packages, or on the packages a branch touched'
+    'mutation:Run polly mutate on named packages, or on the packages a branch touched'
     'browser:Run the @browser features in WebKit on a screen 320px wide'
     'tlc:Model-check each hand-written TLA+ spec with TLC'
     'verify:Run polly verify on the anchored handlers, inside 120 s'
@@ -104,12 +104,12 @@ _devctl_checks() {
   compadd -a checks
 }
 
-# The packages with a Stryker config, from stryker/*.conf.json.
+# The packages with a mutation config, packages/*/polly.mutate.ts.
 _devctl_mutated() {
   local root
   root=$(git rev-parse --show-toplevel 2>/dev/null) || return
   local -a packages
-  packages=("$root"/stryker/*.conf.json(N:t:r:r))
+  packages=("$root"/packages/*/polly.mutate.ts(N:h:t))
   compadd -a packages
 }
 

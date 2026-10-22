@@ -18,7 +18,7 @@ export const STORE = 'node_modules/.bun';
  * are made to agree in the same commit that moves them apart. A reason names
  * what pulls the package in, not what the package does.
  */
-// Stryker disable next-line ObjectLiteral: the table is data, not logic. What proves it is `devctl image` against a built image, and a unit test that repeated the 17 names would only repeat them
+// polly-mutate disable next-line ObjectLiteral: the table is data, not logic. What proves it is `devctl image` against a built image, and a unit test that repeated the 17 names would only repeat them
 export const IMAGE_PACKAGES: Readonly<Record<string, string>> = {
   elysia: 'the one runtime dependency packages/server declares',
   cookie: 'elysia',

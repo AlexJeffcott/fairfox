@@ -20,15 +20,11 @@ export const turnRoutes = new Elysia().post('/turn', ({ status }) => {
   if (turns.value.taken >= 1) {
     return status(409, { taken: turns.value.taken });
   }
-  // The anchors are not mutated. polly 0.93.0's requires and ensures throw a
-  // ContractViolation only when POLLY_CONTRACTS is `all` or `ensures`, and
-  // return at once otherwise. Nothing here sets it, so a mutant of their
-  // arguments changes no answer, no state and no error: no test of the route
-  // can tell it from the code. The anchors are checked by polly verify.
-  // Stryker disable next-line all: an argument of a function that does nothing
+  // The anchors are not mutated: polly mutate reports a mutant of the
+  // arguments of requires and ensures as Ignored (polly#143). The anchors are
+  // checked by polly verify.
   requires(turns.value.taken < 1, 'a second turn is refused');
   turns.value = { taken: turns.value.taken + 1 };
-  // Stryker disable next-line all: an argument of a function that does nothing
   ensures(turns.value.taken <= 1, 'no more than one turn is taken');
   return { taken: turns.value.taken };
 });
