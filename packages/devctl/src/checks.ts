@@ -746,7 +746,7 @@ export const CHECKS: readonly Check[] = [
         file: 'packages/devctl/src/checks/waits.test.ts',
         find: "  ['self.setTimeout resolving a promise', 'await new Promise((go) => self.setTimeout(go, 100));', [TIMER]],\n",
         replace: '',
-        output: 'packages/devctl/src/checks/waits.ts:7:60',
+        output: 'packages/devctl/src/checks/waits.ts:23:60',
       },
       {
         breaks: 'the test of an empty setting is gone from the server',
@@ -756,11 +756,11 @@ export const CHECKS: readonly Check[] = [
         output: 'packages/server/src/config.ts:29:30',
       },
       {
-        breaks: 'the test of a one-character answer is gone from the cli package',
+        breaks: 'the test of an answer with more than the commit is gone from the cli package',
         file: 'packages/cli/src/version.test.ts',
-        find: "    expect(() => commitOf('x')).toThrow(refused);\n",
+        find: "    expect(() => commitOf({ commit: '3f9c2e1', database: ':memory:' })).toThrow(refused);\n",
         replace: '',
-        output: 'packages/cli/src/version.ts:9:5',
+        output: 'packages/cli/src/version.ts:11:5',
       },
       {
         breaks: "the test of the turn route's answers is gone: return {} survives",
