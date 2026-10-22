@@ -57,9 +57,7 @@ function isBunSleep(node: Node): boolean {
 
 /** `const { sleep } = Bun`, `{ sleep: nap }`, a parameter `({ sleep } = Bun)`, or a nested default `{ a: { sleep } = Bun }`. */
 function isBunSleepTaken(node: Node): boolean {
-  // Stryker disable next-line ConditionalExpression: equivalent, no other kind of node has a binding pattern for a name
   const declares = isVariableDeclaration(node) || isParameterDeclaration(node) || isBindingElement(node);
-  // Stryker disable next-line ConditionalExpression: equivalent, a binding with an initializer always has a name
   if (!declares || !named(node.initializer, BUN) || node.name === undefined || !isObjectBindingPattern(node.name)) {
     return false;
   }
@@ -68,7 +66,6 @@ function isBunSleepTaken(node: Node): boolean {
 
 /** `import { sleep } from 'bun'`, or any import from timers/promises, whose timers wait a fixed time. */
 function isSleepImport(node: Node): boolean {
-  // Stryker disable next-line ConditionalExpression: equivalent, the module of an import declaration is always a string literal
   if (!isImportDeclaration(node) || !isStringLiteral(node.moduleSpecifier)) {
     return false;
   }

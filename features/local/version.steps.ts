@@ -8,9 +8,8 @@
  */
 import { expect } from 'bun:test';
 import { join } from 'node:path';
-// The server and the client are imported by path, not by package name: under
-// Stryker, which links the root node_modules into its copy of the tree, a
-// package name would reach the server that is not mutated.
+// The server and the client are imported by path, not by package name, so
+// the file loaded is the file named in packages/server/polly.mutate.ts.
 import { type Client, createClient } from '../../packages/client/src/index.ts';
 import { type App, createApp } from '../../packages/server/src/index.ts';
 import type { StepDefinition } from './gherkin.ts';

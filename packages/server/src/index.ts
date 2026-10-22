@@ -19,7 +19,7 @@ function publicRoutes(commit: string) {
 export function createApp(settings: Settings) {
   const config = readConfig(settings);
   const { database } = openDatabase(config.databasePath);
-  // Stryker disable next-line ArrowFunction: no route reads the database yet, so its close cannot be seen from outside
+  // polly-mutate disable next-line ArrowFunction: no route reads the database yet, so its close cannot be seen from outside
   return new Elysia().use(publicRoutes(config.commit)).onStop(() => database.close());
 }
 

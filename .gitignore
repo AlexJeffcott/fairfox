@@ -1,7 +1,7 @@
 node_modules/
 packages/*/dist/
 .devctl/
-.stryker-tmp/
+packages/*/reports/
 .features-gen/
 test-results/
 playwright-report/

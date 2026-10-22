@@ -97,7 +97,7 @@ describe('the table itself', () => {
   });
 
   test('no development tool is named', () => {
-    const tools = ['typescript', 'ts-morph', '@stryker-mutator/api', '@types/bun', 'fast-check', '@fairfox/polly'];
+    const tools = ['typescript', 'ts-morph', 'oxc-parser', '@types/bun', 'fast-check', '@fairfox/polly'];
     expect(tools.filter((tool) => tool in IMAGE_PACKAGES)).toEqual([]);
   });
 });

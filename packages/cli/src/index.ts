@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 // The Fairfox CLI: the first client of the API, through @fairfox/client (A2).
-// Stryker leaves this file out (stryker/cli.conf.json): it is the command
-// flow, which the @local features run as a process, and Stryker runs the
-// package's unit tests only.
+// Mutation testing leaves this file out (packages/cli/polly.mutate.ts): it is
+// the command flow, which the @local features run as a process, and the
+// mutation run uses the package's unit tests only.
 import { parseArgs } from 'node:util';
 import { createClient } from '@fairfox/client';
 import { commitOf } from './version.ts';
