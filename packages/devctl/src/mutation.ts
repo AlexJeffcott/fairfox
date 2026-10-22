@@ -16,8 +16,8 @@ const CONFIG = 'polly.mutate.ts';
 const REPORT = join('reports', 'mutation', 'mutation.json');
 
 /**
- * The packages with no mutation config, each with the reason. `--since` fails
- * on a package it touched that has neither a config nor an entry here.
+ * The packages with no mutation config, each with the reason. Every run fails
+ * on a package that has neither a config nor an entry here, touched or not.
  */
 export const EXEMPT: Readonly<Record<string, string>> = {
   client: "no logic of its own: createClient is one call to Eden's treaty",
@@ -29,16 +29,27 @@ function configOf(name: string): string {
   return join('packages', name, CONFIG);
 }
 
-/** The packages that have a mutation config. */
-async function configured(root: string): Promise<string[]> {
+/** Every package of the workspace: each directory under packages/ that holds a package.json. */
+async function workspace(root: string): Promise<string[]> {
   const entries = await readdir(join(root, 'packages'), { withFileTypes: true });
-  const have: string[] = [];
+  const found: string[] = [];
   for (const entry of entries.filter((e) => e.isDirectory())) {
-    if (await Bun.file(join(root, configOf(entry.name))).exists()) {
-      have.push(entry.name);
+    if (await Bun.file(join(root, 'packages', entry.name, 'package.json')).exists()) {
+      found.push(entry.name);
     }
   }
-  return have.sort();
+  return found.sort();
+}
+
+/** The packages that have a mutation config. */
+async function configured(root: string, all: readonly string[]): Promise<string[]> {
+  const have: string[] = [];
+  for (const name of all) {
+    if (await Bun.file(join(root, configOf(name))).exists()) {
+      have.push(name);
+    }
+  }
+  return have;
 }
 
 /**
@@ -127,15 +138,17 @@ mutates and the tests that run them. A mutant the tests let pass fails the
 run.
 
 Name the packages, or give --since <ref> to run on each package whose files
-changed between the merge base of <ref> and HEAD. With --since, a touched
-package with no config fails the run, unless EXEMPT in
-packages/devctl/src/mutation.ts gives the reason it has none. devctl ci runs
---since main. One or the other; there is no default.
+changed between the merge base of <ref> and HEAD. devctl ci runs --since
+main. One or the other; there is no default.
+
+Either way, a package with no config fails the run, touched or not, unless
+EXEMPT in packages/devctl/src/mutation.ts gives the reason it has none.
 `,
   flags: [{ name: 'since', takes: 'ref', help: 'Run on the packages this branch touched since the merge base of <ref>' }],
   run: async ({ root, positionals, values }) => {
     const since = values('since');
-    const have = await configured(root);
+    const all = await workspace(root);
+    const have = await configured(root, all);
     if (since.length > 1 || (since.length === 1) === positionals.length > 0) {
       console.error(`Name the packages, or give one --since <ref>. Packages with a config: ${have.join(', ')}`);
       return 1;
@@ -145,21 +158,21 @@ packages/devctl/src/mutation.ts gives the reason it has none. devctl ci runs
       console.error(`Both a mutation config and an exemption: ${both.join(', ')}. Remove the exemption from EXEMPT.`);
       return 1;
     }
+    const bare = all.filter((name) => !have.includes(name) && !(name in EXEMPT));
+    if (bare.length > 0) {
+      for (const name of bare) {
+        console.error(
+          `packages/${name} has no mutation config (${configOf(name)}) and no reason in EXEMPT (packages/devctl/src/mutation.ts).`,
+        );
+      }
+      return 1;
+    }
     let chosen: readonly string[] = positionals;
     const [ref] = since;
     if (ref !== undefined) {
       const changed = await touched(root, ref);
       for (const name of changed.filter((n) => n in EXEMPT)) {
         console.log(`Not mutated: ${name}: ${EXEMPT[name]}`);
-      }
-      const bare = changed.filter((name) => !have.includes(name) && !(name in EXEMPT));
-      if (bare.length > 0) {
-        for (const name of bare) {
-          console.error(
-            `packages/${name} changed since ${ref} and has no mutation config (${configOf(name)}) and no reason in EXEMPT (packages/devctl/src/mutation.ts).`,
-          );
-        }
-        return 1;
       }
       chosen = changed.filter((name) => have.includes(name));
       if (chosen.length === 0) {

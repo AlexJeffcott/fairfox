@@ -770,11 +770,11 @@ export const CHECKS: readonly Check[] = [
         output: 'packages/server/src/turns.ts:29:10',
       },
       {
-        breaks: 'a touched package with no mutation config and no reason passes',
+        breaks: 'a package with no mutation config and no reason passes',
         file: 'packages/devctl/src/mutation.ts',
         find: '  client: "no logic of its own: createClient is one call to Eden\'s treaty",\n',
         replace: '',
-        output: 'packages/client changed since main and has no mutation config',
+        output: 'packages/client has no mutation config',
       },
       {
         breaks: 'the shell page is not given the active mutant, so no shell mutant is ever tried',
