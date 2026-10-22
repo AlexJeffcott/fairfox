@@ -2,7 +2,7 @@
   "name": "fairfox",
   "private": true,
   "type": "module",
-  "packageManager": "bun@1.4.2",
+  "packageManager": "bun@1.4.3",
   "workspaces": ["packages/*"],
   "scripts": {
     "devctl": "bun packages/devctl/src/index.ts"
@@ -10,10 +10,10 @@
   "devDependencies": {
     "@cucumber/gherkin": "42.0.1",
     "@cucumber/messages": "34.2.1",
-    "@stryker-mutator/core": "10.0.0",
-    "@playwright/test": "1.63.0",
-    "@types/bun": "1.4.2",
+    "@fairfox/polly": "0.94.0",
+    "@playwright/test": "1.64.1",
+    "@types/bun": "1.4.3",
     "playwright-bdd": "9.2.1",
-    "typescript": "6.0.3"
+    "typescript": "7.1.0-beta"
   }
 }

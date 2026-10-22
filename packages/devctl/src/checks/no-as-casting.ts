@@ -3,19 +3,20 @@
 // never checks. Narrow with a type guard instead.
 //
 // eal's script scanned lines, and let most casts through. This one parses
-// each file with the TypeScript compiler API: see findCasts in casts.ts.
+// each file with TypeScript 7's parser: see findCasts in casts.ts.
 import { join } from 'node:path';
 import { repoRoot } from '../repo.ts';
 import { findCasts } from './casts.ts';
 import { typeScriptFiles } from './sources.ts';
-import type { Finding } from './syntax.ts';
+import { type Finding, parseAll } from './syntax.ts';
 
 const root = await repoRoot();
 const files = await typeScriptFiles(root);
-const found: Finding[] = [];
+const texts: { file: string; text: string }[] = [];
 for (const file of files) {
-  found.push(...findCasts(file, await Bun.file(join(root, file)).text()));
+  texts.push({ file, text: await Bun.file(join(root, file)).text() });
 }
+const found: Finding[] = (await parseAll(texts)).flatMap(findCasts);
 
 if (found.length > 0) {
   console.log(`Found ${found.length} type assertion(s):`);

@@ -1,7 +1,20 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import ts from 'typescript';
-import { parse, walk } from './checks/syntax.ts';
+import type { Node } from 'typescript/ast';
+import {
+  isArrowFunction,
+  isCallExpression,
+  isFunctionDeclaration,
+  isFunctionExpression,
+  isIdentifier,
+  isImportDeclaration,
+  isNamedImports,
+  isPropertyAccessExpression,
+  isStringLiteral,
+  isStringLiteralLikeNode,
+  isVariableDeclaration,
+} from 'typescript/ast/is';
+import { type Parsed, parseAll, walk } from './checks/syntax.ts';
 
 /** The route methods polly's analyzer reads, as Elysia names them. */
 const METHODS = new Set(['get', 'post', 'put', 'delete', 'patch']);
@@ -16,17 +29,16 @@ const VERIFY = '@fairfox/polly/verify';
  * any local name. The handler is the route's second argument: a function
  * written there, or the name of a function declared in the same file.
  */
-export function anchoredRoutes(file: string, text: string): string[] {
-  const source = parse(file, text);
+export function anchoredRoutes({ source }: Parsed): string[] {
   const anchors = new Set<string>();
   for (const statement of source.statements) {
-    const bindings = ts.isImportDeclaration(statement) ? statement.importClause?.namedBindings : undefined;
+    const bindings = isImportDeclaration(statement) ? statement.importClause?.namedBindings : undefined;
     if (
-      ts.isImportDeclaration(statement) &&
-      ts.isStringLiteral(statement.moduleSpecifier) &&
+      isImportDeclaration(statement) &&
+      isStringLiteral(statement.moduleSpecifier) &&
       statement.moduleSpecifier.text === VERIFY &&
       bindings !== undefined &&
-      ts.isNamedImports(bindings)
+      isNamedImports(bindings)
     ) {
       for (const element of bindings.elements) {
         const imported = (element.propertyName ?? element.name).text;
@@ -40,24 +52,24 @@ export function anchoredRoutes(file: string, text: string): string[] {
     return [];
   }
 
-  const named = new Map<string, ts.Node>();
+  const named = new Map<string, Node>();
   walk(source, (node) => {
-    if (ts.isFunctionDeclaration(node) && node.name !== undefined) {
+    if (isFunctionDeclaration(node) && node.name !== undefined) {
       named.set(node.name.text, node);
     } else if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
+      isVariableDeclaration(node) &&
+      isIdentifier(node.name) &&
       node.initializer !== undefined &&
-      (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+      (isArrowFunction(node.initializer) || isFunctionExpression(node.initializer))
     ) {
       named.set(node.name.text, node.initializer);
     }
   });
 
-  const callsAnAnchor = (handler: ts.Node): boolean => {
+  const callsAnAnchor = (handler: Node): boolean => {
     let found = false;
     walk(handler, (node) => {
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && anchors.has(node.expression.text)) {
+      if (isCallExpression(node) && isIdentifier(node.expression) && anchors.has(node.expression.text)) {
         found = true;
       }
     });
@@ -66,15 +78,15 @@ export function anchoredRoutes(file: string, text: string): string[] {
 
   const routes: string[] = [];
   walk(source, (node) => {
-    if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) {
+    if (!isCallExpression(node) || !isPropertyAccessExpression(node.expression)) {
       return;
     }
     const method = node.expression.name.text;
     const [path, handler] = node.arguments;
-    if (!METHODS.has(method) || path === undefined || !ts.isStringLiteralLike(path) || handler === undefined) {
+    if (!METHODS.has(method) || path === undefined || !isStringLiteralLikeNode(path) || handler === undefined) {
       return;
     }
-    const body = ts.isIdentifier(handler) ? named.get(handler.text) : handler;
+    const body = isIdentifier(handler) ? named.get(handler.text) : handler;
     if (body !== undefined && callsAnAnchor(body)) {
       routes.push(`${method.toUpperCase()} ${path.text}`);
     }
@@ -84,13 +96,13 @@ export function anchoredRoutes(file: string, text: string): string[] {
 
 /** The anchored routes of every .ts file under `dir`, at any depth, sorted. */
 export async function anchoredRoutesIn(dir: string): Promise<string[]> {
-  const routes: string[] = [];
   const entries = await readdir(dir, { withFileTypes: true, recursive: true });
+  const files: { file: string; text: string }[] = [];
   for (const entry of entries.filter((e) => e.isFile() && e.name.endsWith('.ts'))) {
     const file = join(entry.parentPath, entry.name);
-    routes.push(...anchoredRoutes(file, await Bun.file(file).text()));
+    files.push({ file, text: await Bun.file(file).text() });
   }
-  return routes.sort();
+  return (await parseAll(files)).flatMap(anchoredRoutes).sort();
 }
 
 /** The names polly verify's config puts in its model: `messages.include`, or none. */

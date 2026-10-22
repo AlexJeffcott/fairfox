@@ -738,7 +738,7 @@ export const CHECKS: readonly Check[] = [
   },
   {
     name: 'mutation',
-    catches: 'a test that passes when the code is wrong (L6, "test gaps"): Stryker on each package this branch touched',
+    catches: 'a test that passes when the code is wrong (L6, "test gaps"): polly mutate on each package this branch touched',
     run: [...DEVCTL, 'mutation', '--since', 'main'],
     red: [
       {
@@ -746,7 +746,7 @@ export const CHECKS: readonly Check[] = [
         file: 'packages/devctl/src/checks/waits.test.ts',
         find: "  ['self.setTimeout resolving a promise', 'await new Promise((go) => self.setTimeout(go, 100));', [TIMER]],\n",
         replace: '',
-        output: 'packages/devctl/src/checks/waits.ts:7:60',
+        output: 'packages/devctl/src/checks/waits.ts:23:60',
       },
       {
         breaks: 'the test of an empty setting is gone from the server',
@@ -756,31 +756,31 @@ export const CHECKS: readonly Check[] = [
         output: 'packages/server/src/config.ts:29:30',
       },
       {
-        breaks: 'the test of a one-character answer is gone from the cli package',
+        breaks: 'the test of an answer with more than the commit is gone from the cli package',
         file: 'packages/cli/src/version.test.ts',
-        find: "    expect(() => commitOf('x')).toThrow(refused);\n",
+        find: "    expect(() => commitOf({ commit: '3f9c2e1', database: ':memory:' })).toThrow(refused);\n",
         replace: '',
-        output: 'packages/cli/src/version.ts:9:5',
+        output: 'packages/cli/src/version.ts:11:5',
       },
       {
         breaks: "the test of the turn route's answers is gone: return {} survives",
         file: 'packages/server/src/turns.test.ts',
         find: "test('each answer says how many turns are taken', async () => {\n  const answers = [await takeTurn(), await takeTurn(), await takeTurn()];\n  expect(answers).toEqual([\n    { status: 200, body: { taken: 1 } },\n    { status: 409, body: { taken: 1 } },\n    { status: 409, body: { taken: 1 } },\n  ]);\n});\n",
         replace: '',
-        output: 'packages/server/src/turns.ts:32:10',
+        output: 'packages/server/src/turns.ts:29:10',
       },
       {
-        breaks: 'a touched package with no Stryker config and no reason passes',
+        breaks: 'a package with no mutation config and no reason passes',
         file: 'packages/devctl/src/mutation.ts',
         find: '  client: "no logic of its own: createClient is one call to Eden\'s treaty",\n',
         replace: '',
-        output: 'packages/client changed since main and has no Stryker config',
+        output: 'packages/client has no mutation config',
       },
       {
         breaks: 'the shell page is not given the active mutant, so no shell mutant is ever tried',
         file: 'packages/devctl/src/mutation-shell.ts',
-        find: 'activeMutant: ${JSON.stringify(mutant)}',
-        replace: 'activeMutant: ""',
+        find: 'await build(pollyMutatePlugin());',
+        replace: 'await build(pollyMutatePlugin({}));',
         output: 'packages/shell/src/index.ts:8:21',
       },
     ],
