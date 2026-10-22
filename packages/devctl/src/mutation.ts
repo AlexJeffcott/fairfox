@@ -12,6 +12,8 @@ import { childEnv, run } from './proc.ts';
  * out of its package, and why, is written in the config.
  */
 const CONFIG = 'polly.mutate.ts';
+/** Where polly mutate writes its report, from the directory of the config: its default. */
+const REPORT = join('reports', 'mutation', 'mutation.json');
 
 /**
  * The packages with no mutation config, each with the reason. `--since` fails
@@ -74,7 +76,44 @@ async function mutate(root: string, name: string): Promise<boolean> {
     stdout: 'inherit',
     stderr: 'inherit',
   });
-  return (await proc.exited) === 0 && proc.signalCode === null;
+  const ok = (await proc.exited) === 0 && proc.signalCode === null;
+  if (!ok) {
+    await printSurvivors(root, name);
+  }
+  return ok;
+}
+
+/** The statuses of a mutant that no test killed. */
+const UNKILLED = ['Survived', 'NoCoverage'];
+
+/**
+ * Print each mutant no test killed, as `packages/<name>/<file>:<line>:<column>
+ * <mutator> <status>`, from the report polly mutate writes. polly prints its
+ * own list only when the score reaches the break threshold, so a failed run
+ * names no survivor without this.
+ */
+async function printSurvivors(root: string, name: string): Promise<void> {
+  const path = join(root, 'packages', name, REPORT);
+  const file = Bun.file(path);
+  if (!(await file.exists())) {
+    console.error(`No mutation report at ${path}`);
+    return;
+  }
+  const report: unknown = await file.json();
+  const files = typeof report === 'object' && report !== null && 'files' in report ? report.files : undefined;
+  if (typeof files !== 'object' || files === null) {
+    console.error(`The mutation report at ${path} has no files`);
+    return;
+  }
+  for (const [source, entry] of Object.entries(files)) {
+    const mutants: unknown = typeof entry === 'object' && entry !== null && 'mutants' in entry ? entry.mutants : [];
+    for (const m of Array.isArray(mutants) ? mutants : []) {
+      if (UNKILLED.includes(m.status)) {
+        const at = m.location.start;
+        console.log(`unkilled: ${join('packages', name, source)}:${at.line}:${at.column} ${m.mutatorName} ${m.status}`);
+      }
+    }
+  }
 }
 
 export const mutation: Command = {
