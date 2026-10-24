@@ -51,6 +51,23 @@ if [ -z "$EXTERNAL_IP_V4" ] && [ -z "$EXTERNAL_IP_V6" ]; then
   echo "[turn]   which on managed hosts is a private address peers can't reach." >&2
 fi
 
+# Fly delivers UDP to the address `fly-global-services`, and only packets
+# sent from that address leave with the app's public IPv4. coturn left to
+# itself binds relay sockets on every private address; an allocation on
+# another one sends from an address the peer never gave permission to, and
+# the peer drops its packets (step 0c, check 1, red on 2026-09-26). So the
+# relay binds to fly-global-services alone, and external-ip maps that one
+# address to the public one. No fallback: off Fly, the name does not resolve.
+RELAY_IP=$(getent hosts fly-global-services | awk '{ print $1; exit }')
+if [ -z "$RELAY_IP" ]; then
+  echo "[turn] fly-global-services does not resolve: this relay runs on Fly only" >&2
+  exit 1
+fi
+if [ -z "$EXTERNAL_IP_V4" ]; then
+  echo "[turn] EXTERNAL_IP_V4 is required: the app's dedicated IPv4 from fly ips list" >&2
+  exit 1
+fi
+
 CONF=/tmp/turnserver.conf
 {
   echo "listening-port=${LISTEN_PORT}"
@@ -67,15 +84,11 @@ CONF=/tmp/turnserver.conf
   echo "no-loopback-peers"
   echo "no-multicast-peers"
   echo "log-file=stdout"
-  # coturn accepts multiple external-ip lines; one per address family.
-  # When the client connects via IPv4 the v4 line wins; v6 likewise.
-  if [ -n "$EXTERNAL_IP_V4" ]; then
-    echo "external-ip=${EXTERNAL_IP_V4}"
-  fi
-  if [ -n "$EXTERNAL_IP_V6" ]; then
-    echo "external-ip=${EXTERNAL_IP_V6}"
-  fi
+  # One relay address, mapped to the public IPv4. No IPv6 line: Fly takes
+  # no UDP over public IPv6, and coturn refused a second external-ip.
+  echo "relay-ip=${RELAY_IP}"
+  echo "external-ip=${EXTERNAL_IP_V4}/${RELAY_IP}"
 } > "$CONF"
 
-echo "[turn] coturn :${LISTEN_PORT} relay=${RELAY_MIN}-${RELAY_MAX} ext4=${EXTERNAL_IP_V4:-auto} ext6=${EXTERNAL_IP_V6:-auto} realm=${REALM}"
+echo "[turn] coturn :${LISTEN_PORT} relay=${RELAY_IP}:${RELAY_MIN}-${RELAY_MAX} external=${EXTERNAL_IP_V4} realm=${REALM}"
 exec turnserver -c "$CONF"
