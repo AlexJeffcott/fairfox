@@ -7,7 +7,7 @@
       "devDependencies": {
         "@cucumber/gherkin": "42.0.1",
         "@cucumber/messages": "34.2.1",
-        "@fairfox/polly": "0.98.0",
+        "@fairfox/polly": "0.98.1",
         "@playwright/test": "1.64.1",
         "@types/bun": "1.4.3",
         "oxc-parser": "0.137.0",
@@ -50,14 +50,14 @@
         "elysia": "1.4.30",
       },
       "devDependencies": {
-        "@fairfox/polly": "0.98.0",
+        "@fairfox/polly": "0.98.1",
       },
     },
     "packages/shell": {
       "name": "@fairfox/shell",
       "version": "0.0.0",
       "dependencies": {
-        "@fairfox/polly": "0.98.0",
+        "@fairfox/polly": "0.98.1",
         "@preact/signals": "2.11.3",
         "preact": "11.0.1",
       },
@@ -102,7 +102,7 @@
 
     "@fairfox/permissions": ["@fairfox/permissions@workspace:packages/permissions"],
 
-    "@fairfox/polly": ["@fairfox/polly@0.98.0", "", { "peerDependencies": { "@automerge/automerge": ">= 3.2.0", "@automerge/automerge-repo": ">= 2.5.0", "@automerge/automerge-repo-network-websocket": ">= 2.5.0", "@automerge/automerge-repo-storage-indexeddb": ">= 2.5.0", "@automerge/automerge-repo-storage-nodefs": ">= 2.5.0", "@cucumber/gherkin": "^42.0.1", "@cucumber/messages": "^34.2.1", "@elysiajs/eden": ">= 1.2.0", "@preact/signals": "^2.5.1", "@preact/signals-core": "^1.14.0", "@roamhq/wrtc": ">= 0.8.0", "dompurify": ">= 3.0.0", "elysia": ">= 1.4.0", "marked": ">= 12.0.0", "oxc-parser": "^0.137.0", "preact": "^11.0.1", "tweetnacl": ">= 1.0.0", "typescript-7": "npm:typescript@7.1.0-beta", "weapon-regex": "^1.3.6", "werift": ">= 0.19.0", "ws": ">= 8.0.0" }, "optionalPeers": ["@automerge/automerge", "@automerge/automerge-repo", "@automerge/automerge-repo-network-websocket", "@automerge/automerge-repo-storage-indexeddb", "@automerge/automerge-repo-storage-nodefs", "@cucumber/gherkin", "@cucumber/messages", "@elysiajs/eden", "@roamhq/wrtc", "dompurify", "elysia", "marked", "oxc-parser", "tweetnacl", "typescript-7", "weapon-regex", "werift", "ws"], "bin": { "polly": "dist/cli/polly.js" } }, "sha512-EWJRvpBpQoL7bWXHtygbZCChoE/22XEr0ns8QOkIrQokSLMV8uYe6oZyeihAHzE7YX31vRUdj6XYDJaIetcgSw=="],
+    "@fairfox/polly": ["@fairfox/polly@0.98.1", "", { "peerDependencies": { "@automerge/automerge": ">= 3.2.0", "@automerge/automerge-repo": ">= 2.5.0", "@automerge/automerge-repo-network-websocket": ">= 2.5.0", "@automerge/automerge-repo-storage-indexeddb": ">= 2.5.0", "@automerge/automerge-repo-storage-nodefs": ">= 2.5.0", "@cucumber/gherkin": "^42.0.1", "@cucumber/messages": "^34.2.1", "@elysiajs/eden": ">= 1.2.0", "@preact/signals": "^2.5.1", "@preact/signals-core": "^1.14.0", "@roamhq/wrtc": ">= 0.8.0", "dompurify": ">= 3.0.0", "elysia": ">= 1.4.0", "marked": ">= 12.0.0", "oxc-parser": "^0.137.0", "preact": "^11.0.1", "tweetnacl": ">= 1.0.0", "typescript-7": "npm:typescript@7.1.0-beta", "weapon-regex": "^1.3.6", "werift": ">= 0.19.0", "ws": ">= 8.0.0" }, "optionalPeers": ["@automerge/automerge", "@automerge/automerge-repo", "@automerge/automerge-repo-network-websocket", "@automerge/automerge-repo-storage-indexeddb", "@automerge/automerge-repo-storage-nodefs", "@cucumber/gherkin", "@cucumber/messages", "@elysiajs/eden", "@roamhq/wrtc", "dompurify", "elysia", "marked", "oxc-parser", "tweetnacl", "typescript-7", "weapon-regex", "werift", "ws"], "bin": { "polly": "dist/cli/polly.js" } }, "sha512-pvpkwDeTfwVLMaFm1gsKefj/kSSfhRLbX0UhHPQ30xJra76QqJ89TBpCmKYK9xswrN3e2B+fuU0AGFseQSbZaw=="],
 
     "@fairfox/server": ["@fairfox/server@workspace:packages/server"],
 
